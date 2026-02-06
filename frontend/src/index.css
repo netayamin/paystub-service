@@ -1,0 +1,253 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+/* Design system: Concierge UI (reference: code.html). Use semantic tokens so shadcn components are styled via theme only. */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  font-family: "Inter", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-app-workspace-bg);
+}
+
+@theme {
+  /* Concierge design tokens (do not override shadcn components; use these in layout/wrappers) */
+  --color-off-white: #f9f9f7;
+  --color-studio-gray: #f1f1ef;
+  --color-brand-black: #0f0f0f;
+  --color-brand-blue: #2563eb;
+  --color-border-subtle: #e5e5e1;
+  --color-agent-green: #10b981;
+  --color-slate-heavy: #1e293b;
+  --color-app-bg: #f8fafc;
+  --color-app-workspace-bg: #F9F9F9;
+  --color-slate-deep: #0f172a;
+  --color-linen: #fdfcfb;
+  --color-primary-accent: #FF4F38;
+  --color-nav-bg: #1A1D23;
+  --color-rating-gold: #F59E0B;
+  --shadow-layered: 0 1px 2px rgba(0,0,0,0.03), 0 4px 12px rgba(0,0,0,0.05);
+  --shadow-soft: 0 2px 15px -3px rgba(0,0,0,0.07), 0 4px 6px -2px rgba(0,0,0,0.05);
+  --radius-card: 12px;
+
+  /* Legacy digital blue (kept for compatibility) */
+  --color-digital-blue-50: #e5f0ff;
+  --color-digital-blue-100: #cce0ff;
+  --color-digital-blue-200: #99c2ff;
+  --color-digital-blue-300: #66a3ff;
+  --color-digital-blue-400: #3385ff;
+  --color-digital-blue-500: #0066ff;
+  --color-digital-blue-600: #0052cc;
+  --color-digital-blue-700: #003d99;
+  --color-digital-blue-800: #002966;
+  --color-digital-blue-900: #001433;
+  --color-digital-blue-950: #000e24;
+
+  --color-base-100: #ffffff;
+  --color-base-200: var(--color-studio-gray);
+  --color-base-300: var(--color-border-subtle);
+  --color-base-content: var(--color-brand-black);
+
+  /* Primary = brand black (Concierge CTA) */
+  --color-primary: var(--color-brand-black);
+  --color-primary-content: #ffffff;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-studio-gray);
+  --color-secondary-content: var(--color-brand-black);
+  --color-accent: var(--color-brand-blue);
+  --color-accent-content: #ffffff;
+  --color-accent-foreground: #ffffff;
+  --color-neutral: var(--color-brand-black);
+  --color-neutral-content: #ffffff;
+  --color-info: var(--color-brand-blue);
+  --color-info-content: #ffffff;
+  --color-success: var(--color-agent-green);
+  --color-success-content: #ffffff;
+  --color-warning: oklch(85% 0.199 91.936);
+  --color-warning-content: oklch(0% 0 0);
+  --color-error: oklch(70% 0.191 22.216);
+  --color-error-content: oklch(0% 0 0);
+
+  --color-popover: var(--color-base-100);
+  --color-popover-foreground: var(--color-base-content);
+
+  /* App semantic names → Concierge palette */
+  --color-background: var(--color-off-white);
+  --color-foreground: var(--color-brand-black);
+  --color-muted: var(--color-studio-gray);
+  --color-muted-foreground: #78716c;
+  --color-input: var(--color-border-subtle);
+  --color-border: var(--color-border-subtle);
+  --color-ring: var(--color-brand-black);
+  --color-ring-offset: var(--color-base-100);
+  --color-destructive: var(--color-error);
+  --color-destructive-foreground: var(--color-error-content);
+
+  /* Typography: one font stack for all UI. Scale: caption/labels = xs, body = sm, display = 2xl/3xl.
+     Exceptions: font-mono for dates and code; font-display (Outfit) only for empty-state hero. */
+  --font-sans: "Inter", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  /* Semantic type scale (use Tailwind: text-xs = 12px, text-sm = 14px, text-base = 16px) */
+  --text-caption: 0.75rem;   /* 12px - badges, timestamps, micro copy */
+  --text-body: 0.875rem;     /* 14px - body, list primary */
+  --text-label: 0.75rem;     /* 12px - section headers, overlines */
+  --text-display: 1.875rem;  /* 30px - big count */
+
+  /* Radius (sharp = Concierge) */
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+}
+
+/* Layout utilities (design system; do not override component internals) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.linen-bg {
+  background-color: var(--color-linen);
+}
+
+.pulse-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  position: relative;
+}
+.pulse-dot.active {
+  background-color: var(--color-primary-accent);
+}
+.pulse-dot.active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background-color: var(--color-primary-accent);
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  opacity: 0.75;
+}
+.pulse-dot.pending {
+  background-color: #60a5fa;
+}
+.pulse-dot.idle {
+  background-color: #cbd5e1;
+}
+.pulse-dot.warning {
+  background-color: #fbbf24;
+}
+
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+/* Blue notification dot with glow/pulse */
+.notification-dot {
+  background-color: rgb(59 130 246);
+  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5), 0 0 12px rgba(59, 130, 246, 0.5);
+  animation: notification-glow 2s ease-in-out infinite;
+}
+@keyframes notification-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5), 0 0 12px rgba(59, 130, 246, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0), 0 0 20px rgba(59, 130, 246, 0.7); }
+}
+
+.calendar-segment {
+  @apply w-full bg-white/50 hover:bg-white transition-colors py-2 px-3 border-b border-slate-100 last:border-b-0;
+}
+
+.section-card {
+  background-color: white;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border-subtle);
+  overflow: hidden;
+}
+
+.ui-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #1e293b;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid #f8fafc;
+  transition: background-color 0.15s;
+  cursor: pointer;
+}
+.list-row:hover {
+  background-color: rgba(248, 250, 252, 0.8);
+}
+
+.action-btn-primary {
+  height: 2rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-primary-accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 9999px;
+  transition: filter 0.15s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.action-btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.icon-btn-accent {
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8fafc;
+  color: var(--color-primary-accent);
+  border-radius: 9999px;
+  transition: all 0.15s;
+}
+.icon-btn-accent:hover {
+  background-color: var(--color-primary-accent);
+  color: white;
+}
+
+.chat-bubble-user {
+  background-color: white;
+  border: 1px solid #f1f5f9;
+  padding: 1rem;
+  border-radius: 1rem;
+  border-top-right-radius: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  color: #334155;
+}
+
+.chat-bubble-ai {
+  background-color: white;
+  border: 1px solid #f1f5f9;
+  padding: 1rem;
+  border-radius: 1rem;
+  border-top-left-radius: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  color: #334155;
+}

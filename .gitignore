@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Poetry
+poetry.lock
+
+# Env
+.env
+.env.local
+*.local
+scripts/resy_venue_search_curl.sh
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp uploads (do not commit)
+uploads/
+tmp/
+*.tmp

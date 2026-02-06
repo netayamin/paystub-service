@@ -1,0 +1,5 @@
+{
+  "error": "Resy returned 302 (redirect to login). Your RESY_AUTH_TOKEN may be expired. Log in at resy.com, open F12 \u2192 Network, trigger a request to api.resy.com, then copy the x-resy-auth-token header into .env.",
+  "detail": null,
+  "slots": []
+}
