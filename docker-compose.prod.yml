@@ -3,8 +3,6 @@
 #   docker compose -f docker-compose.prod.yml up -d
 # Backend will wait for DB, run migrations, then listen on :8000.
 
-version: "3.8"
-
 services:
   db:
     image: postgres:15-alpine
