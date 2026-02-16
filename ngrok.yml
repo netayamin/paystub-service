@@ -1,0 +1,10 @@
+# Run with: ngrok start --all --config=ngrok.yml
+# Then open the frontend URL on your phone. Set frontend/.env VITE_API_URL to the backend URL and backend/.env CORS_ORIGINS to the frontend URL.
+version: "2"
+tunnels:
+  frontend:
+    addr: 5173
+    proto: http
+  backend:
+    addr: 8000
+    proto: http

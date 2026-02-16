@@ -1,0 +1,40 @@
+# Production: backend + Postgres for AWS EC2 (or any single host).
+# Usage: copy .env to backend/.env with DATABASE_URL, OPENAI_API_KEY, RESY_* then:
+#   docker compose -f docker-compose.prod.yml up -d
+# Backend will wait for DB, run migrations, then listen on :8000.
+
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: paystub
+      POSTGRES_USER: paystub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paystub}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paystub -d paystub"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://paystub:${POSTGRES_PASSWORD:-paystub}@db:5432/paystub
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

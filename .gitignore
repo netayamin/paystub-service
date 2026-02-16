@@ -11,27 +11,53 @@ env/
 .mypy_cache/
 .coverage
 htmlcov/
+*.egg-info/
+dist/
+build/
 
-# Poetry
-poetry.lock
-
-# Env
+# Env and secrets (never commit)
 .env
-.env.local
+.env.*
+!.env.example
 *.local
 scripts/resy_venue_search_curl.sh
+*.pem
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+.npm
+*.tsbuildinfo
+
+# iOS / Xcode
+ios/DropFeed/build/
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Temp uploads (do not commit)
+# Temp and uploads
 uploads/
 tmp/
 *.tmp
+*.log
+logs/
+
+# Docker (optional local overrides)
+docker-compose.override.yml

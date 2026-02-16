@@ -8,16 +8,24 @@ from alembic import context
 
 from app.config import settings
 from app.db.base import Base
-from app.models.chat_session import ChatSession  # noqa: F401
-from app.models.venue_search_snapshot import VenueSearchSnapshot  # noqa: F401
-from app.models.venue_notify_request import VenueNotifyRequest  # noqa: F401
-from app.models.venue_watch import VenueWatch  # noqa: F401
-from app.models.venue_watch_notification import VenueWatchNotification  # noqa: F401
-from app.models.watch_list import WatchList  # noqa: F401
-from app.models.booking_attempt import BookingAttempt  # noqa: F401
-from app.models.tool_call_log import ToolCallLog  # noqa: F401
+from app.db.tables import ALL_TABLE_NAMES
+from app.models.discovery_bucket import DiscoveryBucket  # noqa: F401
+from app.models.drop_event import DropEvent  # noqa: F401
+from app.models.feed_cache import FeedCache  # noqa: F401
+from app.models.market_metrics import MarketMetrics  # noqa: F401
+from app.models.venue import Venue  # noqa: F401
+from app.models.venue_metrics import VenueMetrics  # noqa: F401
+from app.models.venue_rolling_metrics import VenueRollingMetrics  # noqa: F401
 
 load_dotenv()
+
+# Ensure we only have current tables (no dropped tables as models).
+_registered = set(Base.metadata.tables)
+_expected = set(ALL_TABLE_NAMES)
+assert _registered == _expected, (
+    f"Model tables {_registered} must match app.db.tables.ALL_TABLE_NAMES {_expected}. "
+    "Do not add models for dropped tables."
+)
 
 config = context.config
 if config.config_file_name is not None:

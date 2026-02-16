@@ -1,3 +1,3 @@
-from app.api.routes import chat, resy
+from app.api.routes import discovery, resy
 
-__all__ = ["chat", "resy"]
+__all__ = ["discovery", "resy"]

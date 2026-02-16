@@ -46,7 +46,7 @@ AGENT_ERROR_RULES: list[tuple[Callable[[str], bool], int, str]] = [
 
 def agent_error_to_http(exc: Exception) -> HTTPException:
     """
-    Map an exception from agent/orchestrator run into an HTTPException.
+    Map an exception into an HTTPException (e.g. for API handlers).
     Uses AGENT_ERROR_RULES for known error types; otherwise returns 500 with the exception message.
     """
     msg = str(exc)

@@ -16,23 +16,53 @@ body {
 }
 
 @theme {
-  /* Concierge design tokens (do not override shadcn components; use these in layout/wrappers) */
+  /* DROP FEED palette: dark red (primary) + grey (secondary) */
+  --color-primary: #991b1b;        /* red-800 - main accent, CTAs, hot badges */
+  --color-primary-hover: #b91c1c;  /* red-700 - hover states */
+  --color-primary-muted: #fef2f2;  /* red-50 - light bg for primary accents */
+  --color-primary-dark: #7f1d1d;   /* red-900 - dark variants */
+  --color-secondary: #0f172a;      /* slate-900 - dark grey, headers */
+  --color-secondary-mid: #475569;  /* slate-600 - badges, icons */
+  --color-secondary-muted: #64748b;/* slate-500 - hints, labels */
+  --color-secondary-light: #f1f5f9;/* slate-100 - light bg */
+  --color-border: #e2e8f0;         /* slate-200 - borders */
+  --color-text-main: #0f172a;      /* slate-900 */
+  --color-text-muted: #64748b;     /* slate-500 */
+
+  /* Concierge design tokens (match code.html) */
+  --color-brand-blue: #2D66F6;
+  --color-electric-blue: #2D66F6;
+  --color-live-red: #991b1b;
+  --color-slate-bg: #F9FAFB;
+  --color-linen: #FDFCFB;
+  --color-border-light: #F1F5F9;
+  --color-text-main: #0F172A;
+  --color-text-muted: #64748B;
+  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.02), 0 1px 2px 0 rgba(0, 0, 0, 0.01);
+  --shadow-card-elevated: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px -2px rgba(0, 0, 0, 0.05);
+  --shadow-drawer: -10px 0 30px -5px rgba(0, 0, 0, 0.05);
+  --radius-sharp: 4px;
+  --radius-card: 8px;
+  --shadow-command: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  --shadow-card-hover: 0 8px 20px -4px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+
+  /* Legacy / compatibility */
   --color-off-white: #f9f9f7;
   --color-studio-gray: #f1f1ef;
   --color-brand-black: #0f0f0f;
   --color-brand-blue: #2563eb;
-  --color-border-subtle: #e5e5e1;
+  --color-border-subtle: #e5e7eb;
   --color-agent-green: #10b981;
   --color-slate-heavy: #1e293b;
   --color-app-bg: #f8fafc;
-  --color-app-workspace-bg: #F9F9F9;
+  --color-app-workspace-bg: #ffffff;
   --color-slate-deep: #0f172a;
   --color-linen: #fdfcfb;
-  --color-primary-accent: #FF4F38;
-  --color-nav-bg: #1A1D23;
+  --color-primary-accent: #2563eb;
+  --color-nav-bg: #ffffff;
   --color-rating-gold: #F59E0B;
   --shadow-layered: 0 1px 2px rgba(0,0,0,0.03), 0 4px 12px rgba(0,0,0,0.05);
-  --shadow-soft: 0 2px 15px -3px rgba(0,0,0,0.07), 0 4px 6px -2px rgba(0,0,0,0.05);
   --radius-card: 12px;
 
   /* Legacy digital blue (kept for compatibility) */
@@ -105,16 +135,14 @@ body {
 }
 
 /* Layout utilities (design system; do not override component internals) */
-.no-scrollbar::-webkit-scrollbar {
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
-.no-scrollbar {
+.no-scrollbar,
+.scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
-}
-
-.linen-bg {
-  background-color: var(--color-linen);
 }
 
 .pulse-dot {
@@ -159,6 +187,62 @@ body {
 @keyframes notification-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5), 0 0 12px rgba(59, 130, 246, 0.5); }
   50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0), 0 0 20px rgba(59, 130, 246, 0.7); }
+}
+
+/* Drop Feed: dark spotlight section (Top Opportunities) — featured look */
+.spotlight-section {
+  background: linear-gradient(165deg, #0c1222 0%, #1a1f35 25%, #1e293b 50%, #151b2e 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 4px 24px -4px rgba(0, 0, 0, 0.4),
+    0 0 80px -20px rgba(185, 28, 28, 0.08);
+  position: relative;
+  border: 1px solid transparent;
+  border-top-color: rgba(220, 38, 38, 0.2);
+}
+.spotlight-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  border-radius: inherit;
+}
+.spotlight-card {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.2),
+    0 10px 20px -10px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 40px -8px rgba(185, 28, 28, 0.35),
+    0 0 60px -20px rgba(220, 38, 38, 0.15);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  will-change: transform;
+}
+.spotlight-card:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow:
+    0 20px 40px -15px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 0 48px -6px rgba(185, 28, 28, 0.45),
+    0 0 72px -16px rgba(220, 38, 38, 0.2);
+}
+.spotlight-card .spotlight-cta {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.spotlight-card:hover .spotlight-cta {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+/* Live drop strip: animate in when new drops */
+@keyframes live-strip-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.live-strip-new {
+  animation: live-strip-in 0.35s ease-out;
 }
 
 .calendar-segment {
@@ -250,4 +334,633 @@ body {
   border-top-left-radius: 0;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   color: #334155;
+}
+
+/* Command Center layout (code.html) */
+.calendar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 75px;
+  height: 4rem;
+  border-right: 1px solid #f1f5f9;
+  background: white;
+  transition: all 0.15s;
+  cursor: pointer;
+  position: relative;
+}
+.calendar-card:last-child {
+  border-right: none;
+}
+.calendar-card.active .date-num {
+  color: var(--color-electric-blue);
+  font-weight: 500;
+}
+.calendar-card.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-electric-blue);
+}
+
+/* Calendar — day + number, blue pill when selected (reference style) */
+.calendar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 3.5rem;
+  padding: 0.4rem 0.6rem;
+  height: auto;
+  min-height: 3.5rem;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.calendar-item:hover:not(.inactive) {
+  background: rgba(45, 102, 246, 0.08);
+}
+.calendar-item.active {
+  background: var(--color-brand-blue);
+  color: white;
+}
+.calendar-item.active .calendar-item-day,
+.calendar-item.active .calendar-item-num {
+  color: white;
+}
+.calendar-item-day {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  transition: color 0.2s ease;
+}
+.calendar-item-num {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-text-main);
+  transition: color 0.2s ease;
+}
+.calendar-item.inactive .calendar-item-day,
+.calendar-item.inactive .calendar-item-num {
+  color: #cbd5e1;
+}
+.calendar-item.inactive:hover {
+  background: transparent;
+}
+/* Bottom bar time chip — selected = solid blue + white text + blue glow */
+.time-chip-selected {
+  background: var(--color-brand-blue);
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4), 0 0 14px 4px rgba(45, 102, 246, 0.6);
+}
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-brand-blue);
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.1); }
+}
+/* Header live-scan: red dot pulses */
+.live-scan-pulse {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+/* Drop cards — Just opened up (stylish: shadow, rounded corners) */
+.drop-card {
+  background: white;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-card);
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  transition: box-shadow 0.25s ease, border-color 0.2s ease, transform 0.2s ease;
+  position: relative;
+  min-height: 6.5rem;
+  box-shadow: var(--shadow-card-elevated);
+}
+.drop-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: rgba(45, 102, 246, 0.15);
+}
+.drop-card .drop-card-img {
+  width: 5rem;
+  height: 5rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: #f1f5f9;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.drop-card .drop-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+.drop-card:hover .drop-card-img img {
+  transform: scale(1.05);
+}
+.drop-card .drop-card-reserve {
+  border-radius: 6px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+.drop-card .drop-card-reserve:hover {
+  transform: translateY(-1px);
+}
+/* Just opened (≤2 min ago): blue highlight + pulse */
+.drop-card-just-opened {
+  border-color: rgba(45, 102, 246, 0.45);
+  animation: drop-card-just-opened-pulse 2.5s ease-in-out infinite;
+}
+.drop-card-just-opened:hover {
+  border-color: rgba(45, 102, 246, 0.65);
+}
+.drop-card-opened-label {
+  color: var(--color-brand-blue);
+  font-weight: 600;
+}
+@keyframes drop-card-just-opened-pulse {
+  0%, 100% { box-shadow: var(--shadow-card-elevated), 0 0 0 0 rgba(45, 102, 246, 0.25); }
+  50% { box-shadow: var(--shadow-card-elevated), 0 0 0 6px rgba(45, 102, 246, 0); }
+}
+/* Inventory cards — Everything else (stylish: shadow, rounded) */
+.inventory-card {
+  background: white;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-card);
+  padding: 1rem 1.25rem;
+  min-height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  transition: box-shadow 0.25s ease, border-color 0.2s ease;
+  cursor: pointer;
+  box-shadow: var(--shadow-card-elevated);
+}
+.inventory-card:hover {
+  border-color: rgba(45, 102, 246, 0.25);
+  box-shadow: var(--shadow-card-hover);
+}
+.inventory-card:hover h4 {
+  color: var(--color-brand-blue);
+}
+.inventory-card:hover .inventory-card-icon {
+  color: var(--color-brand-blue);
+}
+
+/* Mission Schedule: standalone day cards */
+.calendar-card-standalone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 5rem;
+  min-width: 5rem;
+  height: 5rem;
+  padding: 10px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: white;
+  transition: border-color 0.15s, background 0.15s;
+  cursor: pointer;
+  position: relative;
+}
+.calendar-card-standalone .day-label,
+.calendar-card-standalone .date-num,
+.calendar-card-standalone .month-label {
+  color: #334155;
+}
+.calendar-card-standalone:hover {
+  border-color: #cbd5e1;
+  background: #fafafa;
+}
+.calendar-card-standalone.active {
+  border: 2px solid var(--color-electric-blue);
+  background: white;
+  box-shadow: none;
+  padding: 9px 7px;
+}
+.calendar-card-standalone.active .day-label,
+.calendar-card-standalone.active .date-num,
+.calendar-card-standalone.active .month-label {
+  color: var(--color-electric-blue);
+}
+.calendar-card-standalone .day-label {
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+.calendar-card-standalone .date-num {
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1.2;
+}
+.calendar-card-standalone .month-label {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+.scout-card {
+  background: white;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  border-radius: 0.5rem;
+  padding: 0.875rem 1rem;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+/* My Watchlist cards (reference style) */
+.watchlist-card {
+  background: white;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s;
+}
+.watchlist-add-btn {
+  width: 100%;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.75rem;
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.watchlist-add-btn:hover {
+  border-color: var(--color-electric-blue);
+  background: rgba(59, 130, 246, 0.04);
+}
+.watchlist-add-btn:hover span,
+.watchlist-add-btn:hover .text-\[var\(--color-text-muted\)\] {
+  color: var(--color-electric-blue);
+}
+.scout-card:hover {
+  border-color: color-mix(in srgb, var(--color-electric-blue) 20%, transparent);
+}
+.scout-card.active {
+  border-color: color-mix(in srgb, var(--color-electric-blue) 30%, transparent);
+  background: white;
+}
+.drop-card-premium {
+  background: white;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  transition: all 0.15s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.drop-card-premium:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+.inventory-card {
+  background: white;
+  border: 1px solid #f1f5f9;
+  border-radius: var(--radius-card);
+  padding: 1rem 1.25rem;
+  min-height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  transition: box-shadow 0.25s ease, border-color 0.2s ease;
+  box-shadow: var(--shadow-card-elevated);
+}
+.inventory-card:hover {
+  border-color: color-mix(in srgb, var(--color-electric-blue) 20%, transparent);
+  box-shadow: var(--shadow-card-hover);
+}
+.scout-card-light {
+  background: white;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  transition: all 0.15s;
+  box-shadow: var(--shadow-soft);
+}
+.scout-card-light:hover {
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);
+}
+.scout-card-light.active {
+  ring: 2px solid color-mix(in srgb, var(--color-electric-blue) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-electric-blue) 25%, transparent);
+}
+.drop-card-live {
+  background: white;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: all 0.15s;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+.drop-card-live:hover {
+  border-color: color-mix(in srgb, var(--color-electric-blue) 30%, transparent);
+}
+.inventory-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border-light);
+  background: white;
+  border-radius: 0.5rem;
+  transition: all 0.15s;
+}
+.inventory-row:hover {
+  background: var(--color-slate-bg);
+}
+.primary-btn {
+  background: var(--color-electric-blue);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: all 0.15s;
+}
+.primary-btn:hover {
+  background: #1d4ed8;
+}
+.primary-btn:active {
+  transform: scale(0.98);
+}
+.book-btn-compact {
+  padding: 0.375rem 0.75rem;
+  font-size: 10px;
+  font-weight: 700;
+  background: white;
+  color: var(--color-electric-blue);
+  border: 1px solid var(--color-electric-blue);
+  border-radius: 0.375rem;
+  transition: all 0.15s;
+}
+.book-btn-compact:hover {
+  background: var(--color-electric-blue);
+  color: white;
+}
+.badge-live {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid #fecaca;
+}
+.badge-new {
+  background: var(--color-electric-blue);
+  color: white;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.agent-guidance-bubble {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--color-slate-bg);
+  border: 1px solid var(--color-border-light);
+  border-radius: 1rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
+  font-style: italic;
+}
+
+/* Scouting “train” marquee: horizontal scroll with gradient edges */
+@keyframes scouting-train {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.scouting-train-track {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: max-content;
+  animation: scouting-train 28s linear infinite;
+}
+.scouting-train-car {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: var(--color-base-100);
+}
+.scouting-train-connector {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* Scout animation next to "We're scouting for this day" — gentle scan left/right */
+@keyframes scouting-scan {
+  0%, 100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+.scouting-heading-icon {
+  animation: scouting-scan 2.5s ease-in-out infinite;
+}
+
+/* Futuristic Live Animations */
+@keyframes animate-pulse-slow {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7);
+  }
+  50% {
+    opacity: 0.95;
+    box-shadow: 0 0 0 10px rgba(6, 182, 212, 0);
+  }
+}
+
+.animate-pulse-slow {
+  animation: animate-pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Primary (dark red) pulse for accents */
+@keyframes border-pulse-red {
+  0%, 100% {
+    border-color: rgba(153, 27, 27, 0.7);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 0 12px -4px rgba(153, 27, 27, 0.12);
+  }
+  50% {
+    border-color: rgb(185 28 28);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 0 20px -4px rgba(153, 27, 27, 0.2);
+  }
+}
+
+.animate-border-pulse-red {
+  animation: border-pulse-red 2.5s ease-in-out infinite;
+}
+
+/* Live scan line — gradient beam with glow, moves like a radar sweep */
+@keyframes scan-train {
+  0% { transform: translateX(-100%); opacity: 0.9; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateX(150vw); opacity: 0.9; }
+}
+
+@keyframes scan-glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.animate-scan-train {
+  animation: scan-train 2.2s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+
+.animate-scan-glow {
+  animation: scan-glow-pulse 1.5s ease-in-out infinite;
+}
+
+/* Live Feed band — thin red scan line (radar), continuous */
+@keyframes live-feed-scan-line {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100vw); }
+}
+
+.animate-live-feed-scan {
+  animation: live-feed-scan-line 7s linear infinite;
+}
+
+/* Gradient background pattern for main bg */
+.futuristic-bg {
+  background-image: 
+    radial-gradient(circle at 20% 50%, rgba(6, 182, 212, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.03) 0%, transparent 50%);
+}
+
+/* Glassmorphism utility */
+.glass {
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Neon glow effects */
+.neon-cyan {
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.5), 0 0 20px rgba(6, 182, 212, 0.3);
+}
+
+.neon-pink {
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.5), 0 0 20px rgba(236, 72, 153, 0.3);
+}
+
+/* Terminal cursor blink */
+@keyframes cursor-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: cursor-blink 1s step-end infinite;
+}
+
+/* Stagger fade-in animation for grids */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Continuous scanning line animation */
+@keyframes scan-line {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.animate-scan-line {
+  animation: scan-line 2s ease-in-out infinite;
+  width: 50%;
+}
+
+/* Scanning wave across calendar */
+@keyframes scan-wave {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(300%);
+    opacity: 0.3;
+  }
+}
+
+.animate-scan-wave {
+  animation: scan-wave 3s ease-in-out infinite;
 }

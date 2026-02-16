@@ -1,6 +1,8 @@
 # Backend architecture
 
-This document describes how the backend is structured and how a request flows from HTTP to the Resy API. Use it to understand the codebase before scaling (new agents, tools, or features).
+This document describes how the backend is structured and how a request flows from HTTP to the Resy API. **No chat or agent** — watches, discovery, and Resy only.
+
+For the OOP/SOLID design principles we follow (DRY, SRP, DI, Open Closed, etc.), see **[DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)**.
 
 ---
 
@@ -12,61 +14,49 @@ This document describes how the backend is structured and how a request flows fr
        ▼
   main.py (FastAPI app)
        │
-       ▼
-  api/routes/ (chat.py, resy.py)   ← thin: parse body, get db, call service/orchestrator
+       ├── /chat/*          → api/routes/watches.py   (watches, availability, booking logs, admin)
+       ├── /chat/watches/*  → api/routes/discovery.py (feed, just-opened, health, debug)  [same prefix]
+       └── /resy/*          → api/routes/resy.py     (legacy watch list)
        │
        ▼
-  orchestrator/orchestrator.py     ← routes by message to an agent
+  api/routes: thin — parse body, get db, call service
        │
        ▼
-  agents/resy_agent.py             ← Pydantic AI Agent + toolsets
-       │
-       ▼
-  toolsets/resy/tools.py          ← tools the agent can call (search, watch, notify, …)
-       │
-       ▼
-  services/                        ← business logic + external APIs
-       ├── resy/                    (Resy HTTP client)
-       ├── chat_session_service
-       ├── venue_snapshot_service
-       ├── venue_watch_service
-       ├── venue_notify_service
-       └── …
-       │
-       ▼
-  models/ + db/session.py          ← SQLAlchemy models, DB session
+  services / models + db
 ```
 
-- **Routes** do not contain business logic. They validate input, get a DB session, call the orchestrator or a service, and return HTTP.
-- **Orchestrator** is the single entry point for “chat”: it picks an agent by name and runs it (sync or stream).
-- **Agents** are Pydantic AI agents: system prompt, model, and tools. They do not touch the DB directly; they use **deps** (e.g. `ResyDeps`: `db`, `session_id`, `last_venue_search`).
-- **Tools** are the only place the agent touches the app: they receive `RunContext[ResyDeps]`, call **services**, and optionally set `deps` fields (e.g. `last_venue_search` for the stream).
-- **Services** hold all business logic and external calls (Resy API, DB reads/writes). Tools are thin over services.
+- **Routes** do not contain business logic. They validate input, get a DB session, call a service, and return HTTP.
+- **Routes are split by domain**: **watches** (list watches, availability, watch CRUD, booking logs, admin), **discovery** (feed, just-opened, discovery-health, db-debug, discovery-debug), **resy** (legacy watch list).
+- **Services** hold all business logic and external I/O (Resy API, discovery buckets, DB reads/writes).
 
 ---
 
-## 2. Directory layout and responsibilities
+## 2. Directory layout (clean backend structure)
 
 ```
 backend/
 ├── app/
-│   ├── main.py                 # FastAPI app, router mount, scheduler, health
-│   ├── config.py               # Settings (DB, OpenAI, Resy keys)
+│   ├── main.py                    # FastAPI app, CORS, router mount, scheduler, /health
+│   ├── config.py                  # Settings (DB, OpenAI, Resy)
 │   │
 │   ├── api/
-│   │   └── routes/
-│   │       ├── chat.py         # POST /chat, POST /chat/stream, GET /chat/venues, sessions, messages, watches, …
-│   │       └── resy.py         # /resy/watch (legacy watch list)
+│   │   └── routes/                # HTTP layer — one module per domain
+│   │       ├── watches.py         # GET /watches, /watches/availability, watch CRUD, /booking-errors, /logs, /admin/clear-db
+│   │       ├── discovery.py       # GET /watches/feed, /just-opened, /discovery-health, /db-debug, /discovery-debug
+│   │       └── resy.py            # GET/POST /resy/watch (legacy watch list)
 │   │
 │   ├── core/
-│   │   └── errors.py           # agent_error_to_http, HTTP rules for agent failures
+│   │   ├── constants.py           # Scheduler job IDs, discovery interval
+│   │   └── errors.py              # HTTP error helpers
 │   │
 │   ├── db/
-│   │   ├── base.py             # SQLAlchemy Base
-│   │   └── session.py         # engine, SessionLocal, get_db()
+│   │   ├── base.py                # SQLAlchemy Base
+│   │   └── session.py             # engine, SessionLocal, get_db()
 │   │
-│   ├── models/                 # SQLAlchemy ORM (one file per table)
-│   │   ├── chat_session.py
+│   ├── models/                    # SQLAlchemy ORM (one file per table)
+│   │   ├── chat_session.py        # (kept for DB clear; no chat UI)
+│   │   ├── discovery_bucket.py
+│   │   ├── drop_event.py
 │   │   ├── venue_watch.py
 │   │   ├── venue_watch_notification.py
 │   │   ├── venue_search_snapshot.py
@@ -75,66 +65,56 @@ backend/
 │   │   ├── booking_attempt.py
 │   │   └── watch_list.py
 │   │
-│   ├── orchestrator/
-│   │   ├── orchestrator.py     # run(), run_stream(); routes message → agent
-│   │   └── registry.py         # agent name → (agent, deps_factory); registers "resy"
-│   │
-│   ├── agents/
-│   │   ├── deps.py             # ResyDeps(db, session_id, last_venue_search)
-│   │   ├── resy_agent.py       # Agent with instructions + resy_toolset
-│   │   └── resy_agent_instructions.md
-│   │
-│   ├── toolsets/
-│   │   └── resy/
-│   │       ├── __init__.py     # resy_toolset (FunctionToolset)
-│   │       └── tools.py        # search_venues_with_availability, start_watch, start_venue_notify, …
-│   │
-│   ├── services/               # Business logic + external I/O
-│   │   ├── chat_session_service.py    # get_messages, save_messages, save_last_venue_search, get_last_venue_search
-│   │   ├── venue_snapshot_service.py  # Snapshot by criteria (names only); check_for_new_venues, check_specific_venues_availability, save_broad_search_snapshot
-│   │   ├── venue_watch_service.py     # start_watch, run_watch_checks (specific-venue + new-venue), notifications
-│   │   ├── venue_notify_service.py    # notify-when-available (Resy notify), get_my_watches
+│   ├── services/                  # Business logic + external I/O
+│   │   ├── discovery/             # 14-day drops pipeline (bucket + slot_id + drop_events)
+│   │   │   ├── __init__.py        # get_just_opened, get_discovery_debug, get_last_scan_info, fast_checks, heartbeat
+│   │   │   ├── buckets.py         # bucket_id, slot_id, fetch, baseline, poll, get_feed, get_just_opened_from_buckets, health
+│   │   │   └── scan.py            # set/get_discovery_job_heartbeat, get_discovery_fast_checks
+│   │   ├── resy/                  # Resy API
+│   │   │   ├── __init__.py        # search_with_availability
+│   │   │   ├── client.py          # ResyClient HTTP
+│   │   │   └── config.py          # ResyConfig from env
+│   │   ├── chat_session_service.py
+│   │   ├── venue_snapshot_service.py
+│   │   ├── venue_watch_service.py
+│   │   ├── venue_notify_service.py
+│   │   ├── watch_list_service.py
 │   │   ├── tool_call_log_service.py
-│   │   ├── resy_auto_book_service.py  # booking attempt + Resy book flow
-│   │   ├── watch_list_service.py      # legacy hourly watch list
-│   │   ├── resy_client.py             # thin wrapper (optional)
-│   │   └── resy/                      # Resy API
-│   │       ├── __init__.py            # search_with_availability (high-level)
-│   │       ├── client.py              # HTTP (ResyClient)
-│   │       └── config.py              # ResyConfig from env
+│   │   ├── resy_auto_book_service.py
+│   │   ├── admin_service.py       # clear_resy_db (drop_events, discovery_buckets, …)
+│   │   └── resy_client.py         # thin re-export
 │   │
-│   ├── scheduler/              # Background jobs (APScheduler in main.py)
-│   │   ├── venue_watch_job.py  # every 1 min → run_watch_checks
-│   │   ├── venue_notify_job.py # every 1 min → venue notify checks
-│   │   └── hourly_resy.py      # every 1 hour → watch list check
+│   ├── scheduler/                 # Background jobs (APScheduler in main.py)
+│   │   ├── discovery_bucket_job.py # every 30s → poll 28 buckets, emit drops (skip if running); daily sliding window (prune + baseline new day)
+│   │   ├── venue_watch_job.py     # every 1 min → run_watch_checks
+│   │   ├── venue_notify_job.py    # every 1 min → run_venue_notify_checks
+│   │   └── hourly_resy.py         # every 1 hour → watch list check
 │   │
-│   ├── data/                   # Static/curated data (no DB)
+│   ├── data/                      # Static/curated data (no DB)
 │   │   ├── infatuation_hard_to_get.py
 │   │   └── nyc_hotspots.py
 │   │
-│   └── schemas/                # (Pydantic request/response; currently minimal, some in routes)
+│   ├── schemas/                   # Pydantic request/response (minimal; some in routes)
+│   └── static/
+│       └── chat_test.html
 │
-├── alembic/                    # Migrations (versions/ 001–017)
+├── alembic/                       # Migrations
 ├── docs/
-│   ├── ARCHITECTURE.md         # this file
+│   ├── ARCHITECTURE.md            # this file
+│   ├── DISCOVERY.md
+│   ├── DISCOVERY_BLUEPRINT.md
 │   └── RESY_BOOK.md
 └── scripts/
 ```
 
 ---
 
-## 3. Chat and stream flow (detail)
+## 3. Venue / watch / notify (no chat)
 
-1. **Client** sends `POST /chat/stream` with `{ message, session_id? }`.
-2. **chat.py** gets `db` via `get_db()`, resolves `session_id` (or creates one), loads `message_history = get_messages(db, session_id)`.
-3. **orchestrator.run_stream** is called with `(message, db, message_history=..., session_id=...)`.
-4. **Orchestrator** calls `_route(message)` → `"resy"`, then `registry.get("resy")` → `(agent, deps_factory)`. It builds `deps = deps_factory(db, session_id)` and runs `agent.run_stream_events(message, deps=deps, message_history=...)`.
-5. **Agent** (Pydantic AI) may call tools; each tool receives `ctx: RunContext[ResyDeps]` (so `ctx.deps` is the same `ResyDeps` instance). Tools call **services** and may set `ctx.deps.last_venue_search`.
-6. **Orchestrator** maps agent events to a simple protocol:
-   - `PartStartEvent` / `PartDeltaEvent` (text) → `("text", content)`
-   - `AgentRunResultEvent` → if `deps.last_venue_search` set → `("venues", list)`, then `("result", result)`.
-7. **chat.py** turns these into SSE: `data: {"content": "..."}`, `data: {"venues": [...]}`, `data: {"done": true, "session_id": "..."}`. On `("result", ...)` it calls `save_messages(db, session_id, payload.all_messages_json())`.
-8. **DB**: Messages and (when the tool ran) `last_venue_search` are persisted per session; the frontend can also GET `/chat/venues?session_id=...` to get the last search for the sidebar.
+- **venue_snapshot_service**: Names per criteria for diffing; used by **check_for_new_venues** and **check_specific_venues_availability**.
+- **venue_watch_service**: Interval watches; scheduler runs `run_watch_checks` every minute.
+- **venue_notify_service**: Resy notify-when-available plus `get_my_watches` for the UI.
+- **chat_session** table is still cleared by admin; no chat UI.
 
 ---
 
@@ -168,7 +148,6 @@ Each job creates its own DB session (e.g. `SessionLocal()` in the job module), r
 
 ## 6. External dependencies
 
-- **OpenAI**: Used by the agent (model). Key in `config.settings.openai_api_key`.
 - **Resy**: All Resy HTTP is in **services/resy/** (`client.py` + `__init__.py`). Keys in `config.settings.resy_api_key`, `resy_auth_token`.
 - **DB**: PostgreSQL. URL in `config.settings.database_url`. Migrations: `alembic upgrade head`.
 
@@ -176,23 +155,33 @@ Each job creates its own DB session (e.g. `SessionLocal()` in the job module), r
 
 ## 7. How to extend
 
-- **New agent**: Add an agent in `agents/`, register it in `orchestrator/registry.py`, and (if needed) change `_route()` in `orchestrator.py` to return its name for certain messages.
-- **New tool**: Add a function in `toolsets/resy/tools.py` (or a new toolset), add it to the toolset’s list, and implement it by calling **services** and optionally setting `ctx.deps` fields.
-- **New API route**: Add a route in `api/routes/chat.py` or `resy.py`; keep the handler thin (parse, get_db, call service/orchestrator, return).
+- **New API route**: Add a route in `api/routes/watches.py`, `discovery.py`, or `resy.py` (by domain); keep the handler thin (parse, get_db, call service, return).
 - **New background job**: Add a function in `scheduler/`, then in **main.py** `lifespan` add `_scheduler.add_job(...)`.
 
 ---
 
-## 8. Summary
+## 8. Monitoring discovery (next run + health)
+
+To see **when the next discovery check runs** and that everything is healthy, use one of these:
+
+| Endpoint | What you get |
+|----------|----------------|
+| **GET /chat/watches/discovery-health** | **next_scan_at** (UTC ISO of next 2‑min bucket run), **fast_checks** (job_alive, feed_updating), **bucket_health** (28 buckets with last_scan_at). Best single place to monitor. |
+| **GET /chat/watches/just-opened** | **next_scan_at** + just-opened drops and last_scan_at. |
+| **GET /chat/watches/db-debug** | **next_scan_at**, job_heartbeat, discovery_buckets summary, fast_checks, and hints. |
+
+- **next_scan_at**: When the discovery bucket job is scheduled to run next (every 30 seconds).
+- **job_alive**: True if the job has written a heartbeat within the last few minutes.
+- **feed_updating**: True if the most recent bucket scan is recent (feed is being updated).
+- **bucket_health**: Per-bucket last_scan_at so you can see all 28 buckets are being scanned.
+
+---
+
+## 9. Summary
 
 | Layer        | Role |
 |-------------|------|
 | **api/routes** | HTTP in/out; no business logic. |
-| **orchestrator** | Single entry for chat; routes to one agent; normalizes agent events to a simple stream. |
-| **agents**   | Pydantic AI agent (prompt, model, tools); no DB, only deps. |
-| **toolsets** | Tools the agent calls; thin over **services**; may set `deps` for the stream. |
-| **services** | All business logic and I/O (DB, Resy, snapshot, watch, notify). |
+| **services** | All business logic and I/O (DB, Resy, discovery, watch, notify). |
 | **models**   | SQLAlchemy tables. |
 | **scheduler** | Periodic jobs that call services with their own DB session. |
-
-Keeping this layering consistent will make it easier to scale (e.g. add another agent or another external API) without duplicating logic or mixing HTTP, orchestration, and business logic.

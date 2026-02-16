@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.services.resy.config import ResyConfig, VENUE_SEARCH_TEST_BOUNDING_BOX
+from app.services.resy.config import ResyConfig, get_venue_search_bounding_box
 
 
 class ResyClient:
@@ -105,7 +105,7 @@ class ResyClient:
                 "slot_filter": slot_filter,
                 "types": ["venue"],
                 "order_by": "availability",
-                "geo": {"bounding_box": VENUE_SEARCH_TEST_BOUNDING_BOX},
+                "geo": {"bounding_box": get_venue_search_bounding_box()},
                 "query": query,
             }
             if venue_filter:

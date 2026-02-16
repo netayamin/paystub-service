@@ -42,6 +42,34 @@ cd backend && poetry install && poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload --port 8000
 ```
 
+## Development (backend + frontend)
+
+Use **two terminals** so you can see the backend running and its logs:
+
+**Terminal 1 — Backend** (you’ll see “BACKEND READY” when it’s up):
+
+```bash
+make dev-backend
+```
+
+**Terminal 2 — Frontend** (then open http://localhost:5173):
+
+```bash
+cd frontend && npm run dev
+```
+
+Or run both in one terminal (mixed logs): `make dev-all`.
+
+## Database: clear and rebuild
+
+To wipe all data and recreate the schema from migrations (no valuable data kept):
+
+```bash
+make db-reset   # requires: make db-up first so Postgres is running
+```
+
+Then restart the backend; discovery will run a fresh initial snapshot on startup.
+
 ## Endpoints
 
 - **POST /chat** — Chat with the Resy agent (body: `{"message": "...", "session_id": "optional"}`).  

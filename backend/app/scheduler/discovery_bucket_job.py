@@ -1,0 +1,144 @@
+"""
+Queue + re-enqueue: each bucket has its own cooldown. Tick every DISCOVERY_TICK_SECONDS;
+dispatch up to DISCOVERY_MAX_CONCURRENT_BUCKETS "ready" buckets. When a bucket finishes
+it re-enters the queue (next_run_after = now + cooldown). Bucket 1 can keep updating
+while bucket 27 is slow.
+"""
+import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
+
+from app.core.constants import (
+    DISCOVERY_BUCKET_COOLDOWN_SECONDS,
+    DISCOVERY_MAX_CONCURRENT_BUCKETS,
+)
+from app.db.session import SessionLocal
+from app.services.discovery.buckets import (
+    all_bucket_ids,
+    ensure_buckets,
+    prune_old_buckets,
+    run_baseline_for_bucket,
+    window_start_date,
+)
+from app.services.discovery.buckets import _poll_one_bucket
+from app.services.discovery.scan import set_discovery_job_heartbeat
+
+logger = logging.getLogger(__name__)
+
+# Per-bucket next-run time; when a bucket completes we set next_run_after = now + cooldown
+_bucket_next_run: dict[str, datetime] = {}
+_in_flight: set[str] = set()
+_lock = threading.Lock()
+_executor: ThreadPoolExecutor | None = None
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    if _executor is None:
+        _executor = ThreadPoolExecutor(
+            max_workers=DISCOVERY_MAX_CONCURRENT_BUCKETS,
+            thread_name_prefix="discovery_bucket",
+        )
+    return _executor
+
+
+def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str) -> None:
+    """Poll one bucket in its own session; on finish re-enqueue (set next_run_after) and update heartbeat."""
+    try:
+        _poll_one_bucket(bid, date_str, time_slot)
+        set_discovery_job_heartbeat(last_bucket_completed_at=datetime.now(timezone.utc))
+    except Exception as e:
+        logger.exception("Bucket %s failed: %s", bid, e)
+    finally:
+        with _lock:
+            _in_flight.discard(bid)
+            _bucket_next_run[bid] = datetime.now(timezone.utc) + timedelta(
+                seconds=DISCOVERY_BUCKET_COOLDOWN_SECONDS
+            )
+            set_discovery_job_heartbeat(in_flight_count=len(_in_flight))
+
+
+def run_discovery_bucket_job() -> None:
+    """
+    One tick: prune/ensure buckets, then dispatch up to DISCOVERY_MAX_CONCURRENT_BUCKETS
+    buckets that are ready (cooldown elapsed, not already in flight). Does not wait for
+    them; they run in the shared executor and re-enqueue themselves when done.
+    """
+    today = window_start_date()
+    db = SessionLocal()
+    try:
+        prune_old_buckets(db, today)
+        ensure_buckets(db, today)
+        # Baseline any bucket that has no baseline yet (first time we see it)
+        from app.models.discovery_bucket import DiscoveryBucket
+
+        need_baseline = db.query(DiscoveryBucket).filter(
+            DiscoveryBucket.baseline_slot_ids_json.is_(None)
+        ).all()
+        for row in need_baseline:
+            run_baseline_for_bucket(db, row.bucket_id, row.date_str, row.time_slot)
+    finally:
+        db.close()
+
+    buckets = list(all_bucket_ids(today))
+    now = datetime.now(timezone.utc)
+    min_dt = datetime.min.replace(tzinfo=timezone.utc)
+
+    with _lock:
+        # Drop state for buckets no longer in window
+        current_bids = {b[0] for b in buckets}
+        for bid in list(_bucket_next_run):
+            if bid not in current_bids:
+                del _bucket_next_run[bid]
+        # New buckets are immediately ready
+        for bid, _d, _t in buckets:
+            if bid not in _bucket_next_run:
+                _bucket_next_run[bid] = min_dt
+
+        ready = [
+            (bid, date_str, time_slot)
+            for bid, date_str, time_slot in buckets
+            if bid not in _in_flight and _bucket_next_run.get(bid, min_dt) <= now
+        ]
+        to_run = ready[:DISCOVERY_MAX_CONCURRENT_BUCKETS]
+
+        if not to_run:
+            set_discovery_job_heartbeat(in_flight_count=len(_in_flight))
+            return
+
+        for bid, date_str, time_slot in to_run:
+            _in_flight.add(bid)
+
+        set_discovery_job_heartbeat(
+            started=now,
+            in_flight_count=len(_in_flight),
+        )
+
+    executor = _get_executor()
+    for bid, date_str, time_slot in to_run:
+        executor.submit(_run_bucket_then_reenqueue, bid, date_str, time_slot)
+
+    logger.debug("Discovery tick: dispatched %s buckets", len(to_run))
+
+
+def run_sliding_window_job() -> None:
+    """Daily: aggregate events into venue_metrics/market_metrics, then prune buckets and drop_events; ensure 28 buckets (adds 2 for new day), run baseline for the 2 new ones."""
+    from app.services.aggregation import aggregate_before_prune
+    from app.services.discovery.buckets import prune_old_drop_events
+
+    today = window_start_date()
+    db = SessionLocal()
+    try:
+        aggregate_before_prune(db, today)
+        prune_old_buckets(db, today)
+        prune_old_drop_events(db, today)
+        ensure_buckets(db, today)
+        new_day = today + timedelta(days=13)
+        new_day_str = new_day.isoformat()
+        for time_slot in ["15:00", "19:00"]:
+            bid = f"{new_day_str}_{time_slot}"
+            run_baseline_for_bucket(db, bid, new_day_str, time_slot)
+        logger.info("Discovery sliding window: pruned old buckets, ensured 28, baselined new day %s", new_day_str)
+    finally:
+        db.close()

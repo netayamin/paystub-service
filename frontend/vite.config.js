@@ -12,6 +12,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: true, // allow ngrok and other tunnel hosts when testing on phone
     proxy: {
       "/chat": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/resy": { target: "http://127.0.0.1:8000", changeOrigin: true },
