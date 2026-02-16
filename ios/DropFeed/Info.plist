@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>API_BASE_URL</key>
-	<string>https://b622-2600-4041-7977-d400-c4e8-592d-3eae-9dea.ngrok-free.app</string>
+	<string>http://13.59.156.190:8000</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
