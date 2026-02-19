@@ -658,6 +658,33 @@ def _parse_time_to_minutes(value: str | None) -> int | None:
     return None
 
 
+def _time_str_to_minutes_for_filter(t: str) -> int | None:
+    """Parse time from 'HH:MM', 'HH:MM:SS', or 'YYYY-MM-DD HH:MM:SS' to minutes since midnight."""
+    if not t or not isinstance(t, str):
+        return None
+    s = t.strip()
+    if " " in s:
+        s = s.split(" ", 1)[1]  # "2026-02-19 17:00:00" -> "17:00:00"
+    return _parse_time_to_minutes(s[:5] if len(s) >= 5 else s)  # "17:00:00" -> "17:00"
+
+
+def _filter_availability_times_to_range(
+    times: list[str],
+    after_min: int,
+    before_min: int,
+) -> list[str]:
+    """Keep only time strings that fall in [after_min, before_min] (inclusive)."""
+    out = []
+    for t in times or []:
+        mins = _time_str_to_minutes_for_filter(t.strip() if isinstance(t, str) else None)
+        if mins is None:
+            continue
+        if mins < after_min or mins > before_min:
+            continue
+        out.append(t)
+    return out
+
+
 def _parse_time_range(value: str | None) -> tuple[int | None, int | None]:
     """Parse time_range 'HH:MM-HH:MM' or 'HH:MM - HH:MM' into (time_after_min, time_before_min). Returns (None, None) if invalid."""
     if not value or not value.strip():
@@ -669,8 +696,11 @@ def _parse_time_range(value: str | None) -> tuple[int | None, int | None]:
             start, _, end = raw.partition(sep)
             start_min = _parse_time_to_minutes(start.strip())
             end_min = _parse_time_to_minutes(end.strip())
-            if start_min is not None and end_min is not None and start_min < end_min:
-                return (start_min, end_min)
+            if start_min is not None and end_min is not None:
+                if start_min < end_min:
+                    return (start_min, end_min)
+                if start_min > end_min:
+                    return (end_min, start_min)  # accept reversed range instead of returning (None, None) and unbounded results
             return (None, None)
     return (None, None)
 
@@ -725,6 +755,22 @@ async def list_just_opened(
             time_before_min=time_before_min,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
+        # So feed only shows slots in the requested range (e.g. 8–9pm not 5pm)
+        if time_after_min is not None and time_before_min is not None:
+            for day in just_opened:
+                for v in day.get("venues") or []:
+                    times = v.get("availability_times")
+                    if times:
+                        filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
+                        if filtered:
+                            v["availability_times"] = filtered
+            for day in still_open:
+                for v in day.get("venues") or []:
+                    times = v.get("availability_times")
+                    if times:
+                        filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
+                        if filtered:
+                            v["availability_times"] = filtered
         # Tag NYC hotspot venues for special notifications
         for day in just_opened:
             for v in day.get("venues") or []:

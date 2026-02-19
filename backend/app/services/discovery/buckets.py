@@ -71,6 +71,8 @@ PER_PAGE = 200
 STALE_BUCKET_HOURS = 4
 # Cap drop_events loaded for still-open view to avoid unbounded memory and DB load (scalability)
 STILL_OPEN_EVENTS_LIMIT = 10_000
+# Cap venues per date in just-opened and still-open responses so we never return an unbounded list
+MAX_VENUES_PER_DATE = 500
 
 
 def _is_bucket_fresh(scanned_at: datetime | None) -> bool:
@@ -1031,6 +1033,10 @@ def get_just_opened_from_buckets(
         if not _venue_in_time_range(payload, time_after_min, time_before_min):
             continue
         by_date[date_str]["venues"].append(payload)
+    for date_str in by_date:
+        venues = by_date[date_str]["venues"]
+        if len(venues) > MAX_VENUES_PER_DATE:
+            by_date[date_str]["venues"] = venues[:MAX_VENUES_PER_DATE]
     # scanned_at: max from discovery_buckets per date (one query for all dates)
     date_strs = list(by_date.keys())
     if date_strs:
@@ -1169,6 +1175,10 @@ def get_still_open_from_buckets(
                     by_date[date_str] = {"date_str": date_str, "venues": [], "scanned_at": None}
                 by_date[date_str]["venues"].append(payload)
 
+    for date_str in by_date:
+        venues = by_date[date_str]["venues"]
+        if len(venues) > MAX_VENUES_PER_DATE:
+            by_date[date_str]["venues"] = venues[:MAX_VENUES_PER_DATE]
     for date_str in list(by_date.keys()):
         row = db.query(DiscoveryBucket).filter(DiscoveryBucket.date_str == date_str).order_by(DiscoveryBucket.scanned_at.desc().nullslast()).first()
         if row and row.scanned_at:

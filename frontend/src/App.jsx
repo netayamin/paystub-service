@@ -20,6 +20,19 @@ import {
 // In dev, same origin (Vite proxies /chat and /resy). In production, set VITE_API_URL to your backend URL (e.g. https://your-app.railway.app).
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
+/** Parse "HH:MM" to minutes since midnight for comparison. */
+function timeToMins(t) {
+  if (!t) return 0;
+  const [h, m] = String(t).split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+function minsToTime(m) {
+  const mins = Math.round(Number(m)) || 0;
+  const h = Math.floor(mins / 60);
+  const min = mins % 60;
+  return `${h}:${String(min).padStart(2, "0")}`;
+}
+
 /** Curated list of notoriously hard-to-book, high-demand NYC restaurants */
 const HOT_RESTAURANTS = new Set([
   // Italian
@@ -302,6 +315,9 @@ export default function App() {
   const [selectedDates, setSelectedDates] = useState(new Set([todayStr]));
   const [selectedTimes, setSelectedTimes] = useState(new Set(["all"]));
   const [selectedPartySizes, setSelectedPartySizes] = useState(new Set([2, 3, 4, 5]));
+  /** Dinner time range (backend time_range param). Default 6pm–8pm. */
+  const [timeRangeStart, setTimeRangeStart] = useState("18:00");
+  const [timeRangeEnd, setTimeRangeEnd] = useState("20:00");
 
   const selectedDateStr = selectedDates.size > 0 ? Array.from(selectedDates)[0] : todayStr;
   const isViewingToday = selectedDateStr === todayStr;
@@ -366,27 +382,30 @@ export default function App() {
       if (selectedDates.size > 0) {
         params.set("dates", Array.from(selectedDates).join(","));
       }
-      // Time range: only venues with at least one slot in the window (so Early dinner = 6pm–8pm, not 9pm)
+      // Time filter: presets or custom dinner range (backend accepts time_range e.g. 18:00-21:00 or time_after/time_before)
       if (!selectedTimes.has("all") && selectedTimes.size > 0) {
         const ranges = [];
         if (selectedTimes.has("lunch")) ranges.push({ after: "11:00", before: "15:00" });
         if (selectedTimes.has("3pm")) ranges.push({ after: "15:00", before: "18:00" });
-        if (selectedTimes.has("7pm")) ranges.push({ after: "18:00", before: "20:00" }); // Early dinner 6pm–8pm
-        if (selectedTimes.has("dinner")) ranges.push({ after: "20:00", before: "24:00" }); // Late dinner 8pm+
+        if (selectedTimes.has("dinner")) {
+          let start = timeRangeStart || "18:00";
+          let end = timeRangeEnd || "20:00";
+          if (timeToMins(end) <= timeToMins(start)) {
+            [start, end] = [end, start]; // ensure start < end so backend applies filter (else returns unfiltered = huge list)
+          }
+          ranges.push({ after: start, before: end });
+        }
         if (ranges.length === 1) {
-          params.set("time_after", ranges[0].after);
-          params.set("time_before", ranges[0].before);
+          params.set("time_range", `${ranges[0].after}-${ranges[0].before}`);
         } else if (ranges.length > 1) {
-          // Multiple time filters: use earliest start and latest end so backend returns all, then we could filter client-side; or send first range only. Prefer single range for API simplicity; multi-select sends widest range.
           const minAfter = ranges.reduce((a, r) => (r.after < a ? r.after : a), ranges[0].after);
           const maxBefore = ranges.reduce((a, r) => (r.before > a ? r.before : a), ranges[0].before);
           params.set("time_after", minAfter);
           params.set("time_before", maxBefore);
         }
-        // Bucket hint so backend can restrict to relevant buckets
         const slots = [];
         if (selectedTimes.has("lunch") || selectedTimes.has("3pm")) slots.push("15:00");
-        if (selectedTimes.has("7pm") || selectedTimes.has("dinner")) slots.push("19:00");
+        if (selectedTimes.has("dinner")) slots.push("19:00");
         if (slots.length) params.set("time_slots", slots.join(","));
       }
       if (selectedPartySizes.size > 0 && selectedPartySizes.size < 4) {
@@ -517,7 +536,7 @@ export default function App() {
       const msg = e?.name === "AbortError" ? "Backend timed out. Is it running?" : "Couldn't reach backend. Start it with: make dev-backend";
       setJustOpenedError(msg);
     }
-  }, [selectedTimes, selectedPartySizes, selectedDates]);
+  }, [selectedTimes, selectedPartySizes, selectedDates, timeRangeStart, timeRangeEnd]);
 
 
   useEffect(() => {
@@ -638,11 +657,18 @@ export default function App() {
         if (isPM && hour !== 12) hour += 12;
         if (isAM && hour === 12) hour = 0;
         
-        // Check against selected time filters (inclusive ranges)
-        if (selectedTimes.has("lunch") && hour >= 11 && hour < 15) return true;  // 11am-2:59pm
-        if (selectedTimes.has("3pm") && hour >= 15 && hour < 18) return true;  // 3pm-5:59pm
-        if (selectedTimes.has("7pm") && hour >= 18 && hour < 20) return true;  // 6pm-7:59pm
-        if (selectedTimes.has("dinner") && hour >= 20 && hour < 24) return true;  // 8pm-11:59pm
+        // Check against selected time filters (dinner uses configurable time range)
+        if (selectedTimes.has("lunch") && hour >= 11 && hour < 15) return true;
+        if (selectedTimes.has("3pm") && hour >= 15 && hour < 18) return true;
+        if (selectedTimes.has("dinner")) {
+          const [startH, startM] = timeRangeStart.split(":").map(Number);
+          const [endH, endM] = timeRangeEnd.split(":").map(Number);
+          const minStart = startH * 60 + (startM || 0);
+          const minEnd = endH * 60 + (endM || 0);
+          const dropMins = hour * 60 + (parseInt(match[2], 10) || 0);
+          if (minEnd > minStart && dropMins >= minStart && dropMins < minEnd) return true;
+          if (minEnd <= minStart && (dropMins >= minStart || dropMins < minEnd)) return true; // overnight
+        }
         
         return false;
       });
@@ -658,7 +684,7 @@ export default function App() {
     }
 
     return filtered;
-  }, [apiFeed, newDropsAll, selectedTimes, selectedPartySizes]);
+  }, [apiFeed, newDropsAll, selectedTimes, selectedPartySizes, timeRangeStart, timeRangeEnd]);
 
   // Detect new drops and show notifications/banner (use all-dates list so notifications appear for any date)
   const dropsForNotifications = notificationDropsAllDates.length > 0 ? notificationDropsAllDates : newDropsAll;
@@ -1359,10 +1385,20 @@ export default function App() {
                   { key: "all", label: "All" },
                   { key: "lunch", label: "Lunch" },
                   { key: "3pm", label: "Afternoon" },
-                  { key: "7pm", label: "Early dinner" },
-                  { key: "dinner", label: "Late dinner" },
+                  { key: "dinner", label: "Dinner" },
                 ];
-                const timeLabel = selectedTimes.size >= 5 ? "All" : TIME_OPTS.filter(o => selectedTimes.has(o.key)).map(o => o.label).join(", ") || "All";
+                const fmtTime = (t) => {
+                  const [h, m] = t.split(":").map(Number);
+                  if (h === 0) return "12:" + String(m || 0).padStart(2, "0") + " AM";
+                  if (h < 12) return h + ":" + String(m || 0).padStart(2, "0") + " AM";
+                  if (h === 12) return "12:" + String(m || 0).padStart(2, "0") + " PM";
+                  return (h - 12) + ":" + String(m || 0).padStart(2, "0") + " PM";
+                };
+                const timeLabel = selectedTimes.has("all") || selectedTimes.size === 0
+                  ? "All"
+                  : selectedTimes.has("dinner") && selectedTimes.size === 1
+                    ? `Dinner (${fmtTime(timeRangeStart)} – ${fmtTime(timeRangeEnd)})`
+                    : TIME_OPTS.filter(o => selectedTimes.has(o.key)).map(o => o.label).join(", ") || "All";
                 const guestList = Array.from(selectedPartySizes).sort((a, b) => a - b);
                 const guestLabel = guestList.length === 0 ? "Guests" : guestList.length === 1 ? `${guestList[0]} guests` : `${guestList.join(", ")} guests`;
                 const dateLabel = selectedDateStr ? `${formatDayShort(selectedDateStr)} ${formatMonthDay(selectedDateStr)}` : "Date";
@@ -1378,7 +1414,7 @@ export default function App() {
                           <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="min-w-[140px]">
+                      <DropdownMenuContent align="start" className="min-w-[200px]">
                         {TIME_OPTS.map((opt) => (
                           <DropdownMenuCheckboxItem
                             key={opt.key}
@@ -1388,6 +1424,90 @@ export default function App() {
                             {opt.label}
                           </DropdownMenuCheckboxItem>
                         ))}
+                        {(() => {
+                          const SLIDER_MIN = 17 * 60;   // 5pm
+                          const SLIDER_MAX = 24 * 60;   // midnight
+                          const STEP = 30;
+                          const startMins = Math.max(SLIDER_MIN, Math.min(SLIDER_MAX - STEP, timeToMins(timeRangeStart)));
+                          const endMins = Math.max(SLIDER_MIN + STEP, Math.min(SLIDER_MAX, timeToMins(timeRangeEnd)));
+                          return (
+                            <div className="px-2 py-2 border-t border-slate-100 mt-1 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                              <span className="text-[11px] font-medium text-slate-500">Time range</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {[
+                                  { start: "18:00", end: "20:00", label: "6–8 PM" },
+                                  { start: "18:00", end: "21:00", label: "6–9 PM" },
+                                  { start: "19:00", end: "21:00", label: "7–9 PM" },
+                                  { start: "19:00", end: "22:00", label: "7–10 PM" },
+                                ].map(({ start, end, label }) => (
+                                  <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => { setTimeRangeStart(start); setTimeRangeEnd(end); }}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                      timeRangeStart === start && timeRangeEnd === end
+                                        ? "bg-red-100 text-red-800 border border-red-200"
+                                        : "bg-slate-100 text-slate-700 border border-transparent hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] text-slate-500">From</span>
+                                  <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(startMins))}</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={SLIDER_MIN}
+                                  max={SLIDER_MAX - STEP}
+                                  step={STEP}
+                                  value={startMins}
+                                  onChange={e => {
+                                    const v = Number(e.target.value);
+                                    setTimeRangeStart(minsToTime(v));
+                                    if (timeToMins(timeRangeEnd) <= v) setTimeRangeEnd(minsToTime(Math.min(SLIDER_MAX, v + STEP)));
+                                  }}
+                                  className="w-full h-2 accent-red-600"
+                                />
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] text-slate-500">To</span>
+                                  <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(endMins))}</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={SLIDER_MIN + STEP}
+                                  max={SLIDER_MAX}
+                                  step={STEP}
+                                  value={endMins}
+                                  onChange={e => {
+                                    const v = Number(e.target.value);
+                                    setTimeRangeEnd(minsToTime(v));
+                                    if (timeToMins(timeRangeStart) >= v) setTimeRangeStart(minsToTime(Math.max(SLIDER_MIN, v - STEP)));
+                                  }}
+                                  className="w-full h-2 accent-red-600"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="time"
+                                  value={timeRangeStart}
+                                  onChange={e => setTimeRangeStart(e.target.value)}
+                                  className="flex-1 min-w-0 text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                />
+                                <span className="text-slate-400 text-xs">to</span>
+                                <input
+                                  type="time"
+                                  value={timeRangeEnd}
+                                  onChange={e => setTimeRangeEnd(e.target.value)}
+                                  className="flex-1 min-w-0 text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </DropdownMenuContent>
                     </DropdownMenu>
                     <DropdownMenu>
