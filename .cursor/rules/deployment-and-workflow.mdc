@@ -1,0 +1,32 @@
+---
+description: Explain deployment steps and suggest workflow improvements
+alwaysApply: true
+---
+
+# Deployment and workflow guidance
+
+The user is not deeply familiar with deployment and DevOps. When working on deploy, CI/CD, or infrastructure:
+
+## Explain when relevant
+
+- **Briefly explain** what a command or step does (e.g. "this rebuilds the backend image so EC2 runs the new code").
+- **Explain errors** in plain terms and what fix does (e.g. "buildx version error means we use plain `docker build` instead of compose build").
+- **Clarify flow** when giving multi-step instructions (e.g. "run this on your Mac" vs "run this on EC2 after SSH").
+
+Keep explanations short and actionable; avoid long lectures unless the user asks for depth.
+
+## Suggest improvements
+
+When you see chances to improve the workflow, suggest them and implement if the user agrees (or if they asked for suggestions). Examples:
+
+- **Deploy reliability**: e.g. use plain `docker build` when compose build fails on the server, add version to `/health` to verify what's running.
+- **CI/CD**: e.g. make GitHub Actions use the same working deploy steps as the manual script, pass `GIT_SHA` into the image for traceability.
+- **Docs**: add or update a short section in `docs/` (e.g. DEPLOY_AWS.md) when we change how deploy works, so the user has a single place to read.
+- **Safety**: e.g. run migrations before `up`, use `--force-recreate` when the image must change, keep `poetry.lock` in sync for reproducible builds.
+
+Don't over-engineer; prefer small, clear improvements over big rewrites.
+
+## When giving commands
+
+- Say **where** to run them (local, EC2 after SSH, or in GitHub Actions).
+- If something might fail (e.g. buildx, lock file), mention the fallback or fix in the same response.

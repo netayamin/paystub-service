@@ -11,6 +11,16 @@ Run the **backend in Docker** on a single EC2 instance and use **Amazon RDS for 
 
 ---
 
+## How deploy works (quick reference)
+
+- **What “deploy” does:** Updates the code on EC2, rebuilds the backend Docker image, runs DB migrations, and restarts the backend container so the API serves the latest version.
+- **Two ways to deploy:**
+  1. **From your Mac:** `EC2_KEY=/path/to/your.pem ./scripts/deploy-to-ec2.sh` — SSHs into EC2 and runs the deploy steps there.
+  2. **GitHub Actions:** Push to `main` (or run “Deploy to AWS” from the Actions tab). The workflow SSHs to EC2 and runs the same steps. Requires repo secrets: `EC2_HOST`, `EC2_SSH_KEY`.
+- **Check what’s running:** `GET http://YOUR_EC2_IP:8000/health` returns `{"status":"ok","version":"abc123"}` — the version is the git short commit so you can confirm the deploy.
+
+---
+
 ## Architecture
 
 - **EC2**: runs only the backend container (uvicorn). Use t3.micro or t3.small.
