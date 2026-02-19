@@ -154,6 +154,19 @@ def root():
     return {"message": "Resy API", "docs": "/docs", "health": "/health"}
 
 
+def _health_version() -> str:
+    """Version for /health: APP_VERSION or GIT_SHA env, else package version."""
+    for env in ("APP_VERSION", "GIT_SHA"):
+        v = os.getenv(env, "").strip()
+        if v:
+            return v
+    try:
+        from importlib.metadata import version
+        return version("paystub-service")
+    except Exception:
+        return "0.1.0"
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": _health_version()}

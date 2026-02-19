@@ -10,6 +10,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     env_file: ./backend/.env
     # DATABASE_URL comes from backend/.env (e.g. postgresql://user:pass@your-rds.region.rds.amazonaws.com:5432/paystub)
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000

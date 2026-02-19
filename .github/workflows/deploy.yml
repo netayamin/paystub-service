@@ -23,5 +23,14 @@ jobs:
           script: |
             cd ~/paystub-service
             git pull origin main
-            bash scripts/ec2-pull-and-restart.sh
+            GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+            if command -v docker-compose >/dev/null 2>&1; then
+              DC="sudo docker-compose -f docker-compose.prod.yml"
+            else
+              DC="sudo docker compose -f docker-compose.prod.yml"
+            fi
+            DOCKER_BUILDKIT=0 sudo -E GIT_SHA="$GIT_SHA" $DC build --no-cache backend
+            $DC run --rm backend alembic upgrade head || true
+            $DC up -d
+            $DC ps
             echo "Deploy done."

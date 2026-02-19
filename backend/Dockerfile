@@ -1,5 +1,9 @@
 # Backend for paystub-service (FastAPI + discovery). Run with docker-compose next to Postgres.
+# Optional: --build-arg GIT_SHA=$(git rev-parse --short HEAD) so /health shows the commit.
 FROM python:3.11-slim
+
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 
 WORKDIR /app
 

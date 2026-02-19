@@ -26,6 +26,7 @@ ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "ec2-user@${EC2_HOST}" << 'REM
   fi
   cd ~/paystub-service
   git pull origin main
+  export GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
   # Build backend with --no-cache so code changes (e.g. discovery time filtering) are not skipped by layer cache
   if command -v docker-compose >/dev/null 2>&1; then
     DOCKER_BUILDKIT=0 sudo docker-compose -f docker-compose.prod.yml build --no-cache backend
