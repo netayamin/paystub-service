@@ -1,5 +1,6 @@
 # Deploy to EC2 on every push to main.
 # Add repo secrets: EC2_HOST, EC2_SSH_KEY (see docs/DEPLOY_AWS.md).
+# Uses same steps as manual update: plain docker build (no compose build), then compose up.
 
 name: Deploy to AWS
 
@@ -19,18 +20,20 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 10m
+          command_timeout: 15m
+          script_stderr: true
           script: |
-            cd ~/paystub-service
+            set -e
+            cd ~/paystub-service || { echo "Missing ~/paystub-service"; exit 1; }
+            if command -v docker-compose >/dev/null 2>&1; then DC="sudo docker-compose -f docker-compose.prod.yml"; else DC="sudo docker compose -f docker-compose.prod.yml"; fi
+            echo "==> git pull..."
             git pull origin main
             GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+            echo "==> docker build (GIT_SHA=$GIT_SHA)..."
             sudo docker build --build-arg GIT_SHA="$GIT_SHA" --no-cache -t paystub-service-backend ./backend
-            if command -v docker-compose >/dev/null 2>&1; then
-              DC="sudo docker-compose -f docker-compose.prod.yml"
-            else
-              DC="sudo docker compose -f docker-compose.prod.yml"
-            fi
+            echo "==> migrations..."
             $DC run --rm backend alembic upgrade head || true
+            echo "==> up -d --force-recreate backend..."
             $DC up -d --force-recreate backend
             $DC ps
             echo "Deploy done."
