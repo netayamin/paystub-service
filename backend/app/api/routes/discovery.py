@@ -755,22 +755,32 @@ async def list_just_opened(
             time_before_min=time_before_min,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
-        # So feed only shows slots in the requested range (e.g. 8–9pm not 5pm)
+        # Only show venues with at least one slot in the requested range; trim each venue's times to that range
         if time_after_min is not None and time_before_min is not None:
             for day in just_opened:
+                kept = []
                 for v in day.get("venues") or []:
                     times = v.get("availability_times")
-                    if times:
-                        filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
-                        if filtered:
-                            v["availability_times"] = filtered
+                    if not times:
+                        kept.append(v)
+                        continue
+                    filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
+                    if filtered:
+                        v["availability_times"] = filtered
+                        kept.append(v)
+                day["venues"] = kept
             for day in still_open:
+                kept = []
                 for v in day.get("venues") or []:
                     times = v.get("availability_times")
-                    if times:
-                        filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
-                        if filtered:
-                            v["availability_times"] = filtered
+                    if not times:
+                        kept.append(v)
+                        continue
+                    filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
+                    if filtered:
+                        v["availability_times"] = filtered
+                        kept.append(v)
+                day["venues"] = kept
         # Tag NYC hotspot venues for special notifications
         for day in just_opened:
             for v in day.get("venues") or []:
@@ -854,6 +864,19 @@ async def list_still_open(
             time_before_min=time_before_min,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
+        if time_after_min is not None and time_before_min is not None:
+            for day in still_open:
+                kept = []
+                for v in day.get("venues") or []:
+                    times = v.get("availability_times")
+                    if not times:
+                        kept.append(v)
+                        continue
+                    filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
+                    if filtered:
+                        v["availability_times"] = filtered
+                        kept.append(v)
+                day["venues"] = kept
         return {
             "still_open": still_open,
             **info,

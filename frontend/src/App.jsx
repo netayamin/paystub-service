@@ -313,9 +313,9 @@ export default function App() {
 
   // Filter states
   const [selectedDates, setSelectedDates] = useState(new Set([todayStr]));
-  const [selectedTimes, setSelectedTimes] = useState(new Set(["all"]));
+  /** Time: "all" | "lunch" | "afternoon" | "6-8" | "6-9" | "7-9" | "7-10" | "custom" */
+  const [selectedTimePreset, setSelectedTimePreset] = useState("all");
   const [selectedPartySizes, setSelectedPartySizes] = useState(new Set([2, 3, 4, 5]));
-  /** Dinner time range (backend time_range param). Default 6pm–8pm. */
   const [timeRangeStart, setTimeRangeStart] = useState("18:00");
   const [timeRangeEnd, setTimeRangeEnd] = useState("20:00");
 
@@ -382,31 +382,12 @@ export default function App() {
       if (selectedDates.size > 0) {
         params.set("dates", Array.from(selectedDates).join(","));
       }
-      // Time filter: pass time_range (or time_after/time_before) so backend filters. Only when user has selected a time other than "All" (e.g. Dinner).
-      if (!selectedTimes.has("all") && selectedTimes.size > 0) {
-        const ranges = [];
-        if (selectedTimes.has("lunch")) ranges.push({ after: "11:00", before: "15:00" });
-        if (selectedTimes.has("3pm")) ranges.push({ after: "15:00", before: "18:00" });
-        if (selectedTimes.has("dinner")) {
-          let start = timeRangeStart || "18:00";
-          let end = timeRangeEnd || "20:00";
-          if (timeToMins(end) <= timeToMins(start)) {
-            [start, end] = [end, start]; // ensure start < end so backend applies filter (else returns unfiltered = huge list)
-          }
-          ranges.push({ after: start, before: end });
-        }
-        if (ranges.length === 1) {
-          params.set("time_range", `${ranges[0].after}-${ranges[0].before}`);
-        } else if (ranges.length > 1) {
-          const minAfter = ranges.reduce((a, r) => (r.after < a ? r.after : a), ranges[0].after);
-          const maxBefore = ranges.reduce((a, r) => (r.before > a ? r.before : a), ranges[0].before);
-          params.set("time_after", minAfter);
-          params.set("time_before", maxBefore);
-        }
-        const slots = [];
-        if (selectedTimes.has("lunch") || selectedTimes.has("3pm")) slots.push("15:00");
-        if (selectedTimes.has("dinner")) slots.push("19:00");
-        if (slots.length) params.set("time_slots", slots.join(","));
+      // Time filter: pass only time_range; backend returns restaurants with slots in that range
+      if (selectedTimePreset !== "all") {
+        let start = timeRangeStart || "18:00";
+        let end = timeRangeEnd || "20:00";
+        if (timeToMins(end) <= timeToMins(start)) [start, end] = [end, start];
+        params.set("time_range", `${start}-${end}`);
       }
       if (selectedPartySizes.size > 0 && selectedPartySizes.size < 4) {
         params.set("party_sizes", Array.from(selectedPartySizes).sort((a, b) => a - b).join(","));
@@ -536,7 +517,7 @@ export default function App() {
       const msg = e?.name === "AbortError" ? "Backend timed out. Is it running?" : "Couldn't reach backend. Start it with: make dev-backend";
       setJustOpenedError(msg);
     }
-  }, [selectedTimes, selectedPartySizes, selectedDates, timeRangeStart, timeRangeEnd]);
+  }, [selectedTimePreset, selectedPartySizes, selectedDates, timeRangeStart, timeRangeEnd]);
 
 
   useEffect(() => {
@@ -639,37 +620,24 @@ export default function App() {
     if (apiFeed && Array.isArray(apiFeed.ranked_board)) return apiFeed.ranked_board;
     let filtered = newDropsAll;
 
-    // Time filter - if "all" is selected, show everything
-    if (!selectedTimes.has("all")) {
+    if (selectedTimePreset !== "all") {
       filtered = filtered.filter(d => {
-        if (!d.time) return selectedTimes.has("all"); // If no time, only show if "all" is selected
-        
-        // Parse the hour from the time string (e.g., "7:30pm" -> 19, "2:15pm" -> 14)
+        if (!d.time) return false;
         const timeStr = d.time.trim();
         const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/);
         if (!match) return false;
-        
         let hour = parseInt(match[1], 10);
-        const isPM = match[3] && match[3].toLowerCase() === 'pm';
-        const isAM = match[3] && match[3].toLowerCase() === 'am';
-        
-        // Convert to 24-hour format
+        const isPM = match[3] && match[3].toLowerCase() === "pm";
+        const isAM = match[3] && match[3].toLowerCase() === "am";
         if (isPM && hour !== 12) hour += 12;
         if (isAM && hour === 12) hour = 0;
-        
-        // Check against selected time filters (dinner uses configurable time range)
-        if (selectedTimes.has("lunch") && hour >= 11 && hour < 15) return true;
-        if (selectedTimes.has("3pm") && hour >= 15 && hour < 18) return true;
-        if (selectedTimes.has("dinner")) {
-          const [startH, startM] = timeRangeStart.split(":").map(Number);
-          const [endH, endM] = timeRangeEnd.split(":").map(Number);
-          const minStart = startH * 60 + (startM || 0);
-          const minEnd = endH * 60 + (endM || 0);
-          const dropMins = hour * 60 + (parseInt(match[2], 10) || 0);
-          if (minEnd > minStart && dropMins >= minStart && dropMins < minEnd) return true;
-          if (minEnd <= minStart && (dropMins >= minStart || dropMins < minEnd)) return true; // overnight
-        }
-        
+        const [startH, startM] = timeRangeStart.split(":").map(Number);
+        const [endH, endM] = timeRangeEnd.split(":").map(Number);
+        const minStart = startH * 60 + (startM || 0);
+        const minEnd = endH * 60 + (endM || 0);
+        const dropMins = hour * 60 + (parseInt(match[2], 10) || 0);
+        if (minEnd > minStart && dropMins >= minStart && dropMins < minEnd) return true;
+        if (minEnd <= minStart && (dropMins >= minStart || dropMins < minEnd)) return true;
         return false;
       });
     }
@@ -684,7 +652,7 @@ export default function App() {
     }
 
     return filtered;
-  }, [apiFeed, newDropsAll, selectedTimes, selectedPartySizes, timeRangeStart, timeRangeEnd]);
+  }, [apiFeed, newDropsAll, selectedTimePreset, selectedPartySizes, timeRangeStart, timeRangeEnd]);
 
   // Detect new drops and show notifications/banner (use all-dates list so notifications appear for any date)
   const dropsForNotifications = notificationDropsAllDates.length > 0 ? notificationDropsAllDates : newDropsAll;
@@ -1137,23 +1105,6 @@ export default function App() {
     });
   };
 
-  const toggleTime = (key) => {
-    setSelectedTimes(prev => {
-      const next = new Set(prev);
-      if (key === "all") {
-        return new Set(["all"]);
-      }
-      next.delete("all");
-      if (next.has(key)) {
-        next.delete(key);
-        if (next.size === 0) return new Set(["all"]);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
   const togglePartySize = (size) => {
     setSelectedPartySizes(prev => {
       const next = new Set(prev);
@@ -1381,12 +1332,6 @@ export default function App() {
             {/* One compact filter row: pill dropdowns */}
             <div className="sticky top-0 z-10 shrink-0 border-b border-slate-200 bg-white px-6 sm:px-8 md:px-10 py-2 flex flex-wrap items-center gap-2">
               {(() => {
-                const TIME_OPTS = [
-                  { key: "all", label: "All" },
-                  { key: "lunch", label: "Lunch" },
-                  { key: "3pm", label: "Afternoon" },
-                  { key: "dinner", label: "Dinner" },
-                ];
                 const fmtTime = (t) => {
                   const [h, m] = t.split(":").map(Number);
                   if (h === 0) return "12:" + String(m || 0).padStart(2, "0") + " AM";
@@ -1394,14 +1339,28 @@ export default function App() {
                   if (h === 12) return "12:" + String(m || 0).padStart(2, "0") + " PM";
                   return (h - 12) + ":" + String(m || 0).padStart(2, "0") + " PM";
                 };
-                const timeLabel = selectedTimes.has("all") || selectedTimes.size === 0
+                const TIME_PRESETS = [
+                  { id: "all", label: "All" },
+                  { id: "lunch", label: "Lunch", start: "11:00", end: "15:00" },
+                  { id: "afternoon", label: "Afternoon", start: "15:00", end: "18:00" },
+                  { id: "6-8", label: "6–8 PM", start: "18:00", end: "20:00" },
+                  { id: "6-9", label: "6–9 PM", start: "18:00", end: "21:00" },
+                  { id: "7-9", label: "7–9 PM", start: "19:00", end: "21:00" },
+                  { id: "7-10", label: "7–10 PM", start: "19:00", end: "22:00" },
+                ];
+                const timeLabel = selectedTimePreset === "all"
                   ? "All"
-                  : selectedTimes.has("dinner") && selectedTimes.size === 1
-                    ? `Dinner (${fmtTime(timeRangeStart)} – ${fmtTime(timeRangeEnd)})`
-                    : TIME_OPTS.filter(o => selectedTimes.has(o.key)).map(o => o.label).join(", ") || "All";
+                  : selectedTimePreset === "custom"
+                    ? `${fmtTime(timeRangeStart)} – ${fmtTime(timeRangeEnd)}`
+                    : TIME_PRESETS.find(p => p.id === selectedTimePreset)?.label || "All";
                 const guestList = Array.from(selectedPartySizes).sort((a, b) => a - b);
                 const guestLabel = guestList.length === 0 ? "Guests" : guestList.length === 1 ? `${guestList[0]} guests` : `${guestList.join(", ")} guests`;
                 const dateLabel = selectedDateStr ? `${formatDayShort(selectedDateStr)} ${formatMonthDay(selectedDateStr)}` : "Date";
+                const SLIDER_MIN = 17 * 60;
+                const SLIDER_MAX = 24 * 60;
+                const STEP = 30;
+                const startMins = Math.max(SLIDER_MIN, Math.min(SLIDER_MAX - STEP, timeToMins(timeRangeStart)));
+                const endMins = Math.max(SLIDER_MIN + STEP, Math.min(SLIDER_MAX, timeToMins(timeRangeEnd)));
                 return (
                   <>
                     <DropdownMenu>
@@ -1414,100 +1373,68 @@ export default function App() {
                           <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="min-w-[200px]">
-                        {TIME_OPTS.map((opt) => (
-                          <DropdownMenuCheckboxItem
-                            key={opt.key}
-                            checked={selectedTimes.has(opt.key)}
-                            onCheckedChange={() => toggleTime(opt.key)}
-                          >
-                            {opt.label}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                        {(() => {
-                          const SLIDER_MIN = 17 * 60;   // 5pm
-                          const SLIDER_MAX = 24 * 60;   // midnight
-                          const STEP = 30;
-                          const startMins = Math.max(SLIDER_MIN, Math.min(SLIDER_MAX - STEP, timeToMins(timeRangeStart)));
-                          const endMins = Math.max(SLIDER_MIN + STEP, Math.min(SLIDER_MAX, timeToMins(timeRangeEnd)));
-                          return (
-                            <div className="px-2 py-2 border-t border-slate-100 mt-1 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                              <span className="text-[11px] font-medium text-slate-500">Time range</span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {[
-                                  { start: "18:00", end: "20:00", label: "6–8 PM" },
-                                  { start: "18:00", end: "21:00", label: "6–9 PM" },
-                                  { start: "19:00", end: "21:00", label: "7–9 PM" },
-                                  { start: "19:00", end: "22:00", label: "7–10 PM" },
-                                ].map(({ start, end, label }) => (
-                                  <button
-                                    key={label}
-                                    type="button"
-                                    onClick={() => { setTimeRangeStart(start); setTimeRangeEnd(end); }}
-                                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                      timeRangeStart === start && timeRangeEnd === end
-                                        ? "bg-red-100 text-red-800 border border-red-200"
-                                        : "bg-slate-100 text-slate-700 border border-transparent hover:bg-slate-200"
-                                    }`}
-                                  >
-                                    {label}
-                                  </button>
-                                ))}
-                              </div>
-                              <div className="flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[11px] text-slate-500">From</span>
-                                  <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(startMins))}</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={SLIDER_MIN}
-                                  max={SLIDER_MAX - STEP}
-                                  step={STEP}
-                                  value={startMins}
-                                  onChange={e => {
-                                    const v = Number(e.target.value);
-                                    setTimeRangeStart(minsToTime(v));
-                                    if (timeToMins(timeRangeEnd) <= v) setTimeRangeEnd(minsToTime(Math.min(SLIDER_MAX, v + STEP)));
-                                  }}
-                                  className="w-full h-2 accent-red-600"
-                                />
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[11px] text-slate-500">To</span>
-                                  <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(endMins))}</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={SLIDER_MIN + STEP}
-                                  max={SLIDER_MAX}
-                                  step={STEP}
-                                  value={endMins}
-                                  onChange={e => {
-                                    const v = Number(e.target.value);
-                                    setTimeRangeEnd(minsToTime(v));
-                                    if (timeToMins(timeRangeStart) >= v) setTimeRangeStart(minsToTime(Math.max(SLIDER_MIN, v - STEP)));
-                                  }}
-                                  className="w-full h-2 accent-red-600"
-                                />
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="time"
-                                  value={timeRangeStart}
-                                  onChange={e => setTimeRangeStart(e.target.value)}
-                                  className="flex-1 min-w-0 text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
-                                />
-                                <span className="text-slate-400 text-xs">to</span>
-                                <input
-                                  type="time"
-                                  value={timeRangeEnd}
-                                  onChange={e => setTimeRangeEnd(e.target.value)}
-                                  className="flex-1 min-w-0 text-xs border border-slate-200 rounded px-2 py-1.5 bg-white"
-                                />
-                              </div>
+                      <DropdownMenuContent align="start" className="min-w-[220px]">
+                        <div className="px-2 py-2 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                          <span className="text-[11px] font-medium text-slate-500">Time range</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {TIME_PRESETS.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTimePreset(p.id);
+                                  if (p.start) setTimeRangeStart(p.start);
+                                  if (p.end) setTimeRangeEnd(p.end);
+                                }}
+                                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                  selectedTimePreset === p.id
+                                    ? "bg-red-100 text-red-800 border border-red-200"
+                                    : "bg-slate-100 text-slate-700 border border-transparent hover:bg-slate-200"
+                                }`}
+                              >
+                                {p.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-slate-500">From</span>
+                              <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(startMins))}</span>
                             </div>
-                          );
-                        })()}
+                            <input
+                              type="range"
+                              min={SLIDER_MIN}
+                              max={SLIDER_MAX - STEP}
+                              step={STEP}
+                              value={startMins}
+                              onChange={e => {
+                                const v = Number(e.target.value);
+                                setSelectedTimePreset("custom");
+                                setTimeRangeStart(minsToTime(v));
+                                if (timeToMins(timeRangeEnd) <= v) setTimeRangeEnd(minsToTime(Math.min(SLIDER_MAX, v + STEP)));
+                              }}
+                              className="w-full h-2 accent-red-600"
+                            />
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-slate-500">To</span>
+                              <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(endMins))}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={SLIDER_MIN + STEP}
+                              max={SLIDER_MAX}
+                              step={STEP}
+                              value={endMins}
+                              onChange={e => {
+                                const v = Number(e.target.value);
+                                setSelectedTimePreset("custom");
+                                setTimeRangeEnd(minsToTime(v));
+                                if (timeToMins(timeRangeStart) >= v) setTimeRangeStart(minsToTime(Math.max(SLIDER_MIN, v - STEP)));
+                              }}
+                              className="w-full h-2 accent-red-600"
+                            />
+                          </div>
+                        </div>
                       </DropdownMenuContent>
                     </DropdownMenu>
                     <DropdownMenu>
