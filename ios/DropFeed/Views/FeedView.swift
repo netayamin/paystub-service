@@ -41,7 +41,12 @@ struct FeedView: View {
                 removal: .opacity
             ))
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
-            .refreshable { await vm.refresh() }
+            .refreshable {
+                // Run in detached task so pull-to-refresh completes even if SwiftUI cancels the refreshable task
+                _ = await Task.detached(priority: .userInitiated) { @MainActor in
+                    await vm.refresh()
+                }.value
+            }
             .task {
                 await vm.refresh()
                 vm.startPolling()

@@ -91,6 +91,8 @@ final class FeedViewModel: ObservableObject {
             } else {
                 lastScanAt = nil
             }
+        } catch is CancellationError {
+            // Pull-to-refresh or navigation cancelled the task; don't show "cancelled" to the user
         } catch {
             self.error = error.localizedDescription
         }

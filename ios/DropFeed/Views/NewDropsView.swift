@@ -67,7 +67,9 @@ struct NewDropsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.surface, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .refreshable { await load() }
+            .refreshable {
+                _ = await Task.detached(priority: .userInitiated) { @MainActor in await load() }.value
+            }
             .task { await load() }
         }
     }
@@ -89,6 +91,8 @@ struct NewDropsView: View {
             }
             drops = newDrops
             badgeCount = drops.count
+        } catch is CancellationError {
+            // Pull-to-refresh cancelled; don't show "cancelled" to the user
         } catch let e as APIError {
             error = e.localizedDescription
             badgeCount = 0
