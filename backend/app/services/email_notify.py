@@ -1,11 +1,12 @@
 """
-Send new-drop notifications by email via Resend (no Apple Developer account needed).
-Set NOTIFY_EMAIL and RESEND_API_KEY in .env. From address: NOTIFY_FROM or Resend default.
+Send new-drop notifications by email via SMTP (Google Gmail or other).
+Set NOTIFY_EMAIL, SMTP_USER, SMTP_PASSWORD in .env. Use a Gmail App Password (not your normal password).
 """
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Any
-
-import httpx
 
 from app.config import settings
 
@@ -13,9 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def _from_address() -> str:
-    return (settings.notify_from or "").strip() or "Drop Feed <onboarding@resend.dev>"
-
-RESEND_API = "https://api.resend.com/emails"
+    if (settings.notify_from or "").strip():
+        return settings.notify_from.strip()
+    user = (settings.smtp_user or "").strip()
+    if user:
+        return f"Drop Feed <{user}>"
+    return "Drop Feed <noreply@localhost>"
 
 
 def send_new_drops_email(
@@ -25,15 +29,16 @@ def send_new_drops_email(
     from_email: str | None = None,
 ) -> bool:
     """
-    Send a single digest email listing new drops. Each drop can have venue_name, slot_date, slot_time.
+    Send a single digest email listing new drops via SMTP. Each drop can have venue_name, slot_date, slot_time.
     Returns True if sent, False if skipped or failed.
     """
     to_email = (to_email or "").strip()
     if not to_email or not drops:
         return False
-    api_key = (settings.resend_api_key or "").strip()
-    if not api_key:
-        logger.debug("RESEND_API_KEY not set; skipping email notify")
+    user = (settings.smtp_user or "").strip()
+    password = (settings.smtp_password or "").strip()
+    if not user or not password:
+        logger.debug("SMTP_USER or SMTP_PASSWORD not set; skipping email notify")
         return False
     from_addr = (from_email or "").strip() or _from_address()
     lines = ["New tables just opened:", ""]
@@ -48,25 +53,20 @@ def send_new_drops_email(
             line += f" — {date} {time}".strip()
         lines.append(line)
     body = "\n".join(lines)
-    html = f"<pre style='font-family:sans-serif'>{body}</pre>"
-    payload = {
-        "from": from_addr,
-        "to": [to_email],
-        "subject": f"Drop Feed: {len(drops)} new table{'s' if len(drops) != 1 else ''}",
-        "html": html,
-    }
+    subject = f"Drop Feed: {len(drops)} new table{'s' if len(drops) != 1 else ''}"
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = to_email
+    msg.attach(MIMEText(body, "plain"))
+    msg.attach(MIMEText(f"<pre style='font-family:sans-serif'>{body}</pre>", "html"))
     try:
-        r = httpx.post(
-            RESEND_API,
-            json=payload,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=10.0,
-        )
-        if r.is_success:
-            logger.info("Email sent to %s for %s new drops", to_email, len(drops))
-            return True
-        logger.warning("Resend API error: %s %s", r.status_code, r.text[:200])
-        return False
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
+            server.starttls()
+            server.login(user, password)
+            server.sendmail(user, [to_email], msg.as_string())
+        logger.info("Email sent to %s for %s new drops", to_email, len(drops))
+        return True
     except Exception as e:
         logger.exception("Failed to send new-drops email: %s", e)
         return False
