@@ -658,6 +658,23 @@ def _parse_time_to_minutes(value: str | None) -> int | None:
     return None
 
 
+def _parse_time_range(value: str | None) -> tuple[int | None, int | None]:
+    """Parse time_range 'HH:MM-HH:MM' or 'HH:MM - HH:MM' into (time_after_min, time_before_min). Returns (None, None) if invalid."""
+    if not value or not value.strip():
+        return (None, None)
+    raw = value.strip()
+    # Allow hyphen or " - " between start and end
+    for sep in (" - ", "-"):
+        if sep in raw:
+            start, _, end = raw.partition(sep)
+            start_min = _parse_time_to_minutes(start.strip())
+            end_min = _parse_time_to_minutes(end.strip())
+            if start_min is not None and end_min is not None and start_min < end_min:
+                return (start_min, end_min)
+            return (None, None)
+    return (None, None)
+
+
 @router.get("/watches/just-opened")
 async def list_just_opened(
     request: Request,
@@ -668,9 +685,10 @@ async def list_just_opened(
     party_sizes: str | None = None,
     time_after: str | None = None,
     time_before: str | None = None,
+    time_range: str | None = None,
     debug: str | None = None,
 ):
-    """Just opened (drops that opened in the last N minutes only; N = JUST_OPENED_WITHIN_MINUTES) + still open. Optional: dates, time_slots, party_sizes, time_after, time_before."""
+    """Just opened + still open. Optional: dates, time_slots, party_sizes; time filter via time_after+time_before OR time_range (e.g. 18:00-21:00)."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     try:
@@ -680,8 +698,12 @@ async def list_just_opened(
             date_filter = [s.strip() for s in dates.split(",") if s.strip()]
         time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         party_size_list = _parse_ints(party_sizes)
-        time_after_min = _parse_time_to_minutes(time_after)
-        time_before_min = _parse_time_to_minutes(time_before)
+        range_after, range_before = _parse_time_range(time_range)
+        if range_after is not None and range_before is not None:
+            time_after_min, time_before_min = range_after, range_before
+        else:
+            time_after_min = _parse_time_to_minutes(time_after)
+            time_before_min = _parse_time_to_minutes(time_before)
         info = get_last_scan_info_buckets(db, today)
         just_opened = get_just_opened_from_buckets(
             db,
@@ -759,8 +781,9 @@ async def list_still_open(
     party_sizes: str | None = None,
     time_after: str | None = None,
     time_before: str | None = None,
+    time_range: str | None = None,
 ):
-    """Still open only (opened more than JUST_OPENED_WITHIN_MINUTES ago and still available). Same query params as just-opened."""
+    """Still open only. Same query params as just-opened; time filter via time_after+time_before OR time_range (e.g. 18:00-21:00)."""
     try:
         today = window_start_date()
         date_filter = None
@@ -768,8 +791,12 @@ async def list_still_open(
             date_filter = [s.strip() for s in dates.split(",") if s.strip()]
         time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         party_size_list = _parse_ints(party_sizes)
-        time_after_min = _parse_time_to_minutes(time_after)
-        time_before_min = _parse_time_to_minutes(time_before)
+        range_after, range_before = _parse_time_range(time_range)
+        if range_after is not None and range_before is not None:
+            time_after_min, time_before_min = range_after, range_before
+        else:
+            time_after_min = _parse_time_to_minutes(time_after)
+            time_before_min = _parse_time_to_minutes(time_before)
         info = get_last_scan_info_buckets(db, today)
         still_open = get_still_open_from_buckets(
             db,

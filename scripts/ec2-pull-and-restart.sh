@@ -16,4 +16,4 @@ $DOCKER_COMPOSE -f docker-compose.prod.yml run --rm backend alembic upgrade head
 echo "==> Restarting Docker (no build)..."
 $DOCKER_COMPOSE -f docker-compose.prod.yml up -d
 $DOCKER_COMPOSE -f docker-compose.prod.yml ps
-echo "Done. Remember to set NOTIFICATION_EMAIL and SMTP_APP_PASSWORD in backend/.env for email alerts."
+echo "Done."
