@@ -24,6 +24,33 @@ We maintain a **rolling 14-day window** of availability snapshots. The **origina
 3. **Hot drops (comparison)**  
    For each date, **just opened** = venues in `venues_json` whose name is **not** in the **original** snapshot (`previous_venues_json`). `hot_drops_json` stores `[{ "name", "detected_at" }]` so we keep first-seen time; we only show venues still in current.
 
+## Light profile (small instances, e.g. t3.micro)
+
+Discovery is configurable via **environment variables** so the same code can run with less load on a 1 GB instance. Set these in `backend/.env` (or EC2) to reduce memory and API usage:
+
+| Env var | Default | Light suggestion | Effect |
+|--------|---------|-------------------|--------|
+| `DISCOVERY_WINDOW_DAYS` | 14 | 7 | Fewer buckets (7 days × slots). |
+| `DISCOVERY_TIME_SLOTS` | 15:00,19:00 | 19:00 | Only prime-time slot → half the buckets. |
+| `DISCOVERY_PARTY_SIZES` | 2,4 | 2 | One party size → half the Resy calls per bucket. |
+| `DISCOVERY_MAX_CONCURRENT_BUCKETS` | 8 | 2 | Fewer buckets in flight → lower memory spike. |
+| `DISCOVERY_BUCKET_COOLDOWN_SECONDS` | 30 | 45 | Slightly less frequent re-poll per bucket. |
+| `DISCOVERY_RESY_PER_PAGE` | 100 | 50 | Fewer venues per Resy request. |
+| `DISCOVERY_RESY_MAX_PAGES` | 5 | 2 | Cap Resy results per search (e.g. 100 venues max per party size). |
+
+**Example light `.env` block** (paste into `backend/.env` on EC2 or local):
+
+```env
+DISCOVERY_WINDOW_DAYS=7
+DISCOVERY_TIME_SLOTS=19:00
+DISCOVERY_PARTY_SIZES=2
+DISCOVERY_MAX_CONCURRENT_BUCKETS=2
+DISCOVERY_RESY_PER_PAGE=50
+DISCOVERY_RESY_MAX_PAGES=2
+```
+
+Omit any variable to keep the default. On a larger instance (e.g. t3.small), use defaults or increase concurrency/results for fuller coverage.
+
 ## Data model and scale (bucket + drop_events)
 
 - **We do not store a “venues” table.** We store:
@@ -32,6 +59,7 @@ We maintain a **rolling 14-day window** of availability snapshots. The **origina
 - **“How many venues saved?”** = distinct `venue_id` in `drop_events`. Exposed in `GET /chat/watches/db-debug` as `db.unique_venues_in_drop_events`.
 - **Scalability**: (1) **Buckets** — fixed 28 rows; JSON size per row is ~hundreds of slot_ids (fine). (2) **drop_events** — **unbounded**: every poll that sees a new slot inserts a row; there is no retention/cleanup. Over weeks this can reach tens of thousands of rows. Just-opened and still-open APIs use `limit_events` (500–5000) so reads stay bounded; writes and table size grow until you reset or add retention (e.g. delete events older than N days).
 - **Retention**: `drop_events` are pruned every run: we delete rows for dates before today (we only care about today and future). Same for `discovery_buckets`. No unbounded growth.
+- **Target scale:** For a CQRS-style design (projection + event log, soft state, sessions, retention), see [SCALABLE_DISCOVERY_ARCHITECTURE.md](SCALABLE_DISCOVERY_ARCHITECTURE.md).
 
 ## Code layout
 

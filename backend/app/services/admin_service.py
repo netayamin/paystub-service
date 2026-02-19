@@ -1,6 +1,6 @@
 """
 Admin: clear discovery tables. Scheduler state is in-memory; restart backend for a fully fresh scheduler.
-Current DB tables (only these exist): discovery_buckets, drop_events, venues, feed_cache (see app.db.tables).
+Tables: discovery_buckets, drop_events, slot_availability, availability_sessions (see app.db.tables).
 """
 import logging
 
@@ -8,8 +8,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.tables import DISCOVERY_TABLE_NAMES
+from app.models.availability_session import AvailabilitySession
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
+from app.models.slot_availability import SlotAvailability
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,8 @@ def clear_resy_db(db: Session) -> dict[str, int]:
     """
     deleted: dict[str, int] = {}
     deleted["drop_events"] = db.query(DropEvent).delete()
+    deleted["slot_availability"] = db.query(SlotAvailability).delete()
+    deleted["availability_sessions"] = db.query(AvailabilitySession).delete()
     deleted["discovery_buckets"] = db.query(DiscoveryBucket).delete()
     db.commit()
     return deleted
@@ -47,7 +51,12 @@ def reset_discovery_buckets(db: Session) -> dict[str, int]:
         db.rollback()
         logger.warning("reset_discovery_buckets: TRUNCATE failed (%s), using DELETE", e)
         deleted["drop_events"] = db.query(DropEvent).delete()
+        deleted["slot_availability"] = db.query(SlotAvailability).delete()
+        deleted["availability_sessions"] = db.query(AvailabilitySession).delete()
         deleted["discovery_buckets"] = db.query(DiscoveryBucket).delete()
         db.commit()
-        logger.info("reset_discovery_buckets: done (DELETE) drop_events=%s discovery_buckets=%s", deleted["drop_events"], deleted["discovery_buckets"])
+        logger.info(
+            "reset_discovery_buckets: done (DELETE) drop_events=%s slot_availability=%s availability_sessions=%s discovery_buckets=%s",
+            deleted["drop_events"], deleted["slot_availability"], deleted["availability_sessions"], deleted["discovery_buckets"],
+        )
     return deleted

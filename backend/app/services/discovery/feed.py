@@ -201,7 +201,7 @@ def build_feed(
                 continue
             key = _venue_key(v)
             date_str = day.get("date_str") or ""
-            resy_url = v.get("resy_url")
+            resy_url = v.get("resy_url") or v.get("book_url")
             payload = dict(v)
             payload["date_str"] = date_str
             payload["_from_just_opened"] = True
@@ -220,7 +220,7 @@ def build_feed(
                 continue
             key = _venue_key(v)
             date_str = day.get("date_str") or ""
-            resy_url = v.get("resy_url")
+            resy_url = v.get("resy_url") or v.get("book_url")
             payload = dict(v)
             payload["date_str"] = date_str
             payload["_from_just_opened"] = False

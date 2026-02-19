@@ -70,6 +70,27 @@ make db-reset   # requires: make db-up first so Postgres is running
 
 Then restart the backend; discovery will run a fresh initial snapshot on startup.
 
+## Database: migrate local to AWS
+
+**Schema only** (empty RDS or EC2 DB, apply migrations):
+
+1. Set `DATABASE_URL` in `backend/.env` to your DB URL (RDS or `postgresql://paystub:paystub@EC2_IP:5432/paystub` if EC2 exposes 5432).
+2. Run: `make migrate`
+
+**Schema + data — EC2 (recommended, no port exposure):**  
+Copy your local DB into the Postgres container on EC2:
+
+1. Local Postgres running: `make db-up`
+2. Run: `make sync-db-to-ec2`  
+   This dumps your local DB and prints exact steps: **scp** the dump to EC2, then **SSH** and run the **docker compose cp** + **pg_restore** commands it shows. Finally restart the backend on EC2.
+
+**Schema + data — direct (RDS or EC2 with 5432 open):**
+
+1. Keep local Postgres running (`make db-up`).
+2. If using EC2: temporarily add `ports: - "5432:5432"` under the `db` service in `docker-compose.prod.yml` on EC2, open port 5432 in the EC2 security group, and restart: `docker compose -f docker-compose.prod.yml up -d`.
+3. Run: `REMOTE_DATABASE_URL='postgresql://paystub:paystub@EC2_OR_RDS_HOST:5432/paystub' make db-to-aws`
+4. Remove the `ports` line and close 5432 in the security group when done.
+
 ## Endpoints
 
 - **POST /chat** — Chat with the Resy agent (body: `{"message": "...", "session_id": "optional"}`).  

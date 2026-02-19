@@ -15,6 +15,8 @@ from app.core.constants import (
 )
 from app.db.session import SessionLocal
 from app.services.discovery.buckets import (
+    TIME_SLOTS,
+    WINDOW_DAYS,
     all_bucket_ids,
     ensure_buckets,
     prune_old_buckets,
@@ -123,22 +125,36 @@ def run_discovery_bucket_job() -> None:
 
 
 def run_sliding_window_job() -> None:
-    """Daily: aggregate events into venue_metrics/market_metrics, then prune buckets and drop_events; ensure 28 buckets (adds 2 for new day), run baseline for the 2 new ones."""
-    from app.services.aggregation import aggregate_before_prune
-    from app.services.discovery.buckets import prune_old_drop_events
+    """
+    Daily: remove all CLOSED from drop_events, prune old buckets and drop_events, ensure 28 buckets, baseline the 2 new day slots.
+    Aggregation is done on close only (in run_poll_for_bucket): when a drop closes we write to
+    venue_metrics/market_metrics and remove it from drop_events. No daily batch aggregate.
+    """
+    from app.services.discovery.buckets import (
+        delete_closed_drop_events,
+        prune_old_drop_events,
+        prune_old_slot_availability,
+        prune_old_sessions,
+    )
 
     today = window_start_date()
     db = SessionLocal()
     try:
-        aggregate_before_prune(db, today)
+        delete_closed_drop_events(db)
         prune_old_buckets(db, today)
         prune_old_drop_events(db, today)
+        prune_old_slot_availability(db, today)
+        prune_old_sessions(db, today)
         ensure_buckets(db, today)
-        new_day = today + timedelta(days=13)
+        new_day = today + timedelta(days=WINDOW_DAYS - 1)
         new_day_str = new_day.isoformat()
-        for time_slot in ["15:00", "19:00"]:
+        for time_slot in TIME_SLOTS:
             bid = f"{new_day_str}_{time_slot}"
             run_baseline_for_bucket(db, bid, new_day_str, time_slot)
-        logger.info("Discovery sliding window: pruned old buckets, ensured 28, baselined new day %s", new_day_str)
+        logger.info(
+            "Discovery sliding window: pruned old buckets, ensured %s buckets, baselined new day %s",
+            len(all_bucket_ids(today)),
+            new_day_str,
+        )
     finally:
         db.close()

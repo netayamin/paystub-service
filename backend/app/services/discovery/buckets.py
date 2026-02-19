@@ -14,13 +14,22 @@ Discovery blueprint: per-bucket state and drop formula.
 import hashlib
 import json
 import logging
+import uuid
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
-from sqlalchemy import func
+from sqlalchemy import func, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core.discovery_config import (
+    DISCOVERY_MAX_CONCURRENT_BUCKETS,
+    DISCOVERY_PARTY_SIZES,
+    DISCOVERY_TIME_SLOTS,
+    DISCOVERY_WINDOW_DAYS,
+)
 from app.db.session import SessionLocal
 
 
@@ -31,18 +40,30 @@ def window_start_date() -> date:
         return date.today() + timedelta(days=1)
     return date.today()
 
+from app.models.availability_session import AvailabilitySession
 from app.models.discovery_bucket import DiscoveryBucket
-from app.models.drop_event import DropEvent, EVENT_TYPE_CLOSED, EVENT_TYPE_NEW_DROP
+from app.models.drop_event import DropEvent
+from app.models.slot_availability import SlotAvailability
 from app.models.venue import Venue
-from app.services.resy import search_with_availability
+from app.services.aggregation import aggregate_closed_events_into_metrics
+from app.services.providers import get_provider
 
 logger = logging.getLogger(__name__)
 
-WINDOW_DAYS = 14
-# Anchor times for availability (3pm and 7pm). Resy time_filter: we expand to ±2h to avoid 7x API calls (±3h would = rate limits).
-TIME_SLOTS = ["15:00", "19:00"]  # 3pm and 7pm
-TIME_WINDOW_HOURS = 2  # ±2h: 15:00 → ~1pm–5pm, 19:00 → ~5pm–9pm (7 calls each with ±3h would hit Resy rate limits)
-PARTY_SIZES = [2, 4]
+# In-memory only: closed-event data for aggregation (we never persist CLOSED rows to drop_events)
+# session_id: when set, aggregate marks session as aggregated (idempotency).
+ClosedEventData = namedtuple(
+    "ClosedEventData",
+    ["venue_id", "venue_name", "drop_duration_seconds", "slot_date", "bucket_id", "session_id"],
+    defaults=(None,),
+)
+
+# From discovery_config (env-driven); aliased for in-file use.
+WINDOW_DAYS = DISCOVERY_WINDOW_DAYS
+TIME_SLOTS = DISCOVERY_TIME_SLOTS
+PARTY_SIZES = DISCOVERY_PARTY_SIZES
+
+TIME_WINDOW_HOURS = 2  # ±2h: 15:00 → ~1pm–5pm, 19:00 → ~5pm–9pm
 FETCH_TIMEOUT_SECONDS = 15
 MAX_PAGES = 2
 PER_PAGE = 200
@@ -69,12 +90,11 @@ def bucket_id(date_str: str, time_slot: str) -> str:
 
 def slot_id(venue_id: str, actual_time: str, provider: str = "resy") -> str:
     """
-    Stable slot key for fast diff: one id per venue + actual reservation time.
-    actual_time = slot start from API (e.g. "2026-02-18 20:30:00"). Baseline stores
-    "restaurant + time" not just "venue in bucket".
+    Stable slot key for fast diff: one id per provider + venue + actual time.
+    Delegates to providers.types.slot_id for consistency with provider output.
     """
-    raw = f"{provider}|{venue_id or ''}|{actual_time or ''}"
-    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+    from app.services.providers.types import slot_id as make_slot_id
+    return make_slot_id(provider, venue_id or "", actual_time or "")
 
 
 def all_bucket_ids(today: date) -> list[tuple[str, str, str]]:
@@ -88,58 +108,28 @@ def all_bucket_ids(today: date) -> list[tuple[str, str, str]]:
     return out
 
 
-def fetch_for_bucket(date_str: str, time_slot: str, party_sizes: list[int]) -> list[dict]:
+def fetch_for_bucket(
+    date_str: str,
+    time_slot: str,
+    party_sizes: list[int],
+    provider: str = "resy",
+) -> list[dict]:
     """
-    Fetch current availability for one bucket. Returns one row per (venue, actual_time):
-    { "slot_id", "venue_id", "venue_name", "payload" }. slot_id = hash(venue_id, actual_time)
-    so baseline/prev/curr are sets of concrete reservation slots, not just "venue in bucket".
-    time_slot is an anchor (15:00 or 19:00); Resy returns slots with start times; we expand
-    each venue into one row per availability_times entry.
+    Fetch current availability for one bucket via the given provider.
+    Returns one row per (venue, actual_time): { "slot_id", "venue_id", "venue_name", "payload" }.
+    All providers (Resy, OpenTable, etc.) return the same normalized shape.
     """
     try:
-        day = date.fromisoformat(date_str)
-    except ValueError:
+        prov = get_provider(provider)
+    except KeyError:
+        logger.warning("Unknown provider %s, skipping bucket %s", provider, bucket_id(date_str, time_slot))
         return []
-    by_slot: dict[str, dict] = {}
-    for party_size in party_sizes:
-        result = search_with_availability(
-            day,
-            party_size,
-            query="",
-            time_filter=time_slot,
-            time_window_hours=TIME_WINDOW_HOURS,
-            per_page=PER_PAGE,
-            max_pages=MAX_PAGES,
-        )
-        if result.get("error"):
-            logger.warning("Bucket %s party_size=%s: %s", bucket_id(date_str, time_slot), party_size, result.get("error"))
-            continue
-        for v in result.get("venues") or []:
-            vid = str(v.get("venue_id") or v.get("name") or "")
-            name = (v.get("name") or "").strip()
-            times = v.get("availability_times") or []
-            for actual_time in times:
-                if not actual_time or not isinstance(actual_time, str):
-                    continue
-                sid = slot_id(vid, actual_time.strip())
-                if sid not in by_slot:
-                    payload = dict(v)
-                    payload["availability_times"] = [actual_time]
-                    payload["party_sizes_available"] = list(
-                        set(payload.get("party_sizes_available") or []) | {party_size}
-                    )
-                    by_slot[sid] = {
-                        "slot_id": sid,
-                        "venue_id": vid,
-                        "venue_name": name,
-                        "payload": payload,
-                    }
-                else:
-                    existing = by_slot[sid]["payload"]
-                    existing["party_sizes_available"] = sorted(
-                        set(existing.get("party_sizes_available") or []) | {party_size}
-                    )
-    return list(by_slot.values())
+    try:
+        results = prov.search_availability(date_str, time_slot, party_sizes)
+    except Exception as e:
+        logger.warning("Provider %s search failed bucket=%s: %s", provider, bucket_id(date_str, time_slot), e)
+        return []
+    return [r.to_row() for r in results]
 
 
 def _parse_slot_ids_json(js: str | None) -> set[str]:
@@ -194,9 +184,15 @@ def _upsert_venue(db: Session, venue_id: str | None, venue_name: str | None) -> 
         db.add(Venue(venue_id=vid, venue_name=name))
 
 
-def run_baseline_for_bucket(db: Session, bid: str, date_str: str, time_slot: str) -> int:
-    """Fetch current state for bucket and set baseline = prev = curr. Replaces any previous baseline (overwrites in place). Returns slot count."""
-    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES)
+def run_baseline_for_bucket(
+    db: Session, bid: str, date_str: str, time_slot: str, provider: str = "resy"
+) -> int:
+    """
+    Fetch current state for bucket and set baseline = prev = curr. Replaces any previous baseline.
+    Does NOT write to slot_availability or availability_sessions (no sessions/metrics from baseline).
+    Returns slot count.
+    """
+    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider)
     slot_ids = [r["slot_id"] for r in rows]
     now = datetime.now(timezone.utc)
     row = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id == bid).first()
@@ -249,16 +245,33 @@ def refresh_baselines_for_all_buckets(
     }
 
 
-def run_poll_for_bucket(db: Session, bid: str, date_str: str, time_slot: str) -> tuple[int, int, dict]:
+def _advisory_lock_key(bucket_id: str) -> int:
+    """Deterministic bigint for PostgreSQL advisory lock (one bucket = one in-flight poll)."""
+    h = hashlib.sha256(bucket_id.encode()).digest()[:8]
+    return int.from_bytes(h, "big") % (2**63)
+
+
+def run_poll_for_bucket(
+    db: Session, bid: str, date_str: str, time_slot: str, provider: str = "resy"
+) -> tuple[int, int, dict]:
     """
-    Poll one bucket: fetch curr, compute drops = (curr - prev) ∩ (curr - baseline), emit drop_events, update prev.
-    Readiness = baseline initialized (baseline_slot_ids_json is not None), even if empty.
-    Single commit for all writes; dedupe by querying existing keys before insert.
+    Poll one bucket: fetch curr (network, outside tx), then in a short write tx: lease bucket,
+    compute diff, apply projection + sessions, commit. Apply only if our run is newer (last-writer-wins).
     Returns (drops_emitted, current_slot_count, invariant_stats).
     """
-    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES)
+    # Network I/O first (no DB transaction)
+    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider)
     curr_set = {r["slot_id"] for r in rows}
+
     bucket_row = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id == bid).first()
+    # Per-bucket lease: only one writer at a time (critical for 30s + thread pool / multi-instance)
+    lock_key = _advisory_lock_key(bid)
+    acquired = db.execute(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": lock_key}).scalar()
+    if not acquired:
+        logger.warning("Bucket %s: could not acquire advisory lock, skipping (another worker has it)", bid)
+        db.rollback()
+        return 0, len(curr_set), {"skipped": True, "reason": "lock"}
+
     now = datetime.now(timezone.utc)
     B = P = C = 0
     baseline_set: set[str] = set()
@@ -296,23 +309,18 @@ def run_poll_for_bucket(db: Session, bid: str, date_str: str, time_slot: str) ->
     if prev_echo > 0:
         logger.error("INVARIANT VIOLATION bucket=%s: prev_echo=%s (emitted ∩ prev must be 0)", bid, prev_echo)
 
-    opened_at_minute = now.strftime("%Y-%m-%dT%H:%M")
+    run_id = str(uuid.uuid4())
     time_bucket_val = _time_bucket_from_slot(time_slot)
-    dedupe_keys = [f"{bid}|{sid}|{opened_at_minute}" for sid in drops]
-    existing_keys = set()
-    if dedupe_keys:
-        existing = db.query(DropEvent.dedupe_key).filter(DropEvent.dedupe_key.in_(dedupe_keys)).all()
-        existing_keys = {r[0] for r in existing}
+    closed_slots = prev_set - curr_set
     by_slot = {r["slot_id"]: r for r in rows}
-    to_insert = []
+
+    # --- Projection + sessions (scalable: soft state, no deletes) ---
+    emitted = 0
     for sid in drops:
-        if f"{bid}|{sid}|{opened_at_minute}" in existing_keys:
-            continue
         r = by_slot.get(sid)
         payload = r.get("payload") if r else None
         slot_date_val, slot_time_val = _slot_date_time_from_payload(payload, date_str)
-        neighborhood_val = None
-        price_range_val = None
+        neighborhood_val = price_range_val = None
         if isinstance(payload, dict):
             loc = payload.get("location")
             nh = payload.get("neighborhood") or (loc.get("neighborhood") if isinstance(loc, dict) else None)
@@ -321,96 +329,166 @@ def run_poll_for_bucket(db: Session, bid: str, date_str: str, time_slot: str) ->
             pr = payload.get("price_range")
             if pr is not None:
                 price_range_val = str(pr)[:32] or None
-        to_insert.append(
-            DropEvent(
+        stmt = pg_insert(SlotAvailability).values(
+            bucket_id=bid,
+            slot_id=sid,
+            state="open",
+            opened_at=now,
+            last_seen_at=now,
+            venue_id=r.get("venue_id") if r else None,
+            venue_name=r.get("venue_name") if r else None,
+            payload_json=json.dumps(r["payload"]) if r else None,
+            run_id=run_id,
+            updated_at=now,
+            time_bucket=time_bucket_val,
+            slot_date=slot_date_val,
+            slot_time=slot_time_val,
+            provider=provider,
+            neighborhood=neighborhood_val,
+            price_range=price_range_val,
+        ).on_conflict_do_update(
+            index_elements=["bucket_id", "slot_id"],
+            set_={
+                "state": "open",
+                "opened_at": now,
+                "last_seen_at": now,
+                "venue_id": r.get("venue_id") if r else None,
+                "venue_name": r.get("venue_name") if r else None,
+                "payload_json": json.dumps(r["payload"]) if r else None,
+                "run_id": run_id,
+                "updated_at": now,
+                "time_bucket": time_bucket_val,
+                "slot_date": slot_date_val,
+                "slot_time": slot_time_val,
+                "provider": provider,
+                "neighborhood": neighborhood_val,
+                "price_range": price_range_val,
+                "closed_at": None,
+            },
+            where=text("slot_availability.updated_at < excluded.updated_at"),
+        )
+        db.execute(stmt)
+        emitted += 1
+        # At most one open session per (bucket_id, slot_id): only insert if none exists (idempotent)
+        existing_open = (
+            db.query(AvailabilitySession)
+            .filter(
+                AvailabilitySession.bucket_id == bid,
+                AvailabilitySession.slot_id == sid,
+                AvailabilitySession.closed_at.is_(None),
+            )
+            .first()
+        )
+        if not existing_open:
+            db.add(AvailabilitySession(
                 bucket_id=bid,
                 slot_id=sid,
                 opened_at=now,
                 venue_id=r.get("venue_id") if r else None,
                 venue_name=r.get("venue_name") if r else None,
-                payload_json=json.dumps(r["payload"]) if r else None,
-                dedupe_key=f"{bid}|{sid}|{opened_at_minute}",
-                event_type=EVENT_TYPE_NEW_DROP,
-                time_bucket=time_bucket_val,
                 slot_date=slot_date_val,
-                slot_time=slot_time_val,
-                provider="resy",
-                neighborhood=neighborhood_val,
-                price_range=price_range_val,
-            )
-        )
-    emitted = 0
-    if to_insert:
-        try:
-            db.add_all(to_insert)
-            emitted = len(to_insert)
-        except Exception as e:
-            db.rollback()
-            logger.warning("DropEvent batch insert failed bucket=%s count=%s: %s", bid, len(to_insert), e)
-
-    # CLOSED events: slots that were in prev but are gone now → store closed_at and drop_duration_seconds
-    closed_slots = prev_set - curr_set
-    closed_at_minute = now.strftime("%Y-%m-%dT%H:%M")
-    closed_dedupe_keys = [f"closed|{bid}|{sid}|{closed_at_minute}" for sid in closed_slots]
-    existing_closed_keys = set()
-    if closed_dedupe_keys:
-        existing_closed = db.query(DropEvent.dedupe_key).filter(DropEvent.dedupe_key.in_(closed_dedupe_keys)).all()
-        existing_closed_keys = {r[0] for r in existing_closed}
-    to_insert_closed = []
+                provider=provider,
+            ))
+    to_aggregate: list[ClosedEventData] = []
     for sid in closed_slots:
-        if f"closed|{bid}|{sid}|{closed_at_minute}" in existing_closed_keys:
+        row = db.query(SlotAvailability).filter(
+            SlotAvailability.bucket_id == bid,
+            SlotAvailability.slot_id == sid,
+        ).first()
+        if not row or not row.opened_at:
             continue
-        last_drop = (
-            db.query(DropEvent)
-            .filter(
-                DropEvent.bucket_id == bid,
-                DropEvent.slot_id == sid,
-                DropEvent.event_type == EVENT_TYPE_NEW_DROP,
-            )
-            .order_by(DropEvent.opened_at.desc())
-            .limit(1)
-            .first()
-        )
-        if not last_drop or not last_drop.opened_at:
-            continue
-        opened_at_dt = last_drop.opened_at
-        if opened_at_dt.tzinfo is None:
-            opened_at_dt = opened_at_dt.replace(tzinfo=timezone.utc)
+        opened_at_dt = row.opened_at.replace(tzinfo=timezone.utc) if row.opened_at.tzinfo is None else row.opened_at
         duration_seconds = int((now - opened_at_dt).total_seconds())
         if duration_seconds < 0:
             continue
-        to_insert_closed.append(
-            DropEvent(
+        db.execute(
+            pg_insert(SlotAvailability).values(
                 bucket_id=bid,
                 slot_id=sid,
-                opened_at=last_drop.opened_at,
-                venue_id=last_drop.venue_id,
-                venue_name=last_drop.venue_name,
-                payload_json=None,
-                dedupe_key=f"closed|{bid}|{sid}|{closed_at_minute}",
-                event_type=EVENT_TYPE_CLOSED,
+                state="closed",
+                opened_at=row.opened_at,
                 closed_at=now,
-                drop_duration_seconds=duration_seconds,
-                time_bucket=last_drop.time_bucket or time_bucket_val,
-                slot_date=last_drop.slot_date or date_str,
-                slot_time=last_drop.slot_time,
-                provider=last_drop.provider or "resy",
+                last_seen_at=now,
+                venue_id=row.venue_id,
+                venue_name=row.venue_name,
+                payload_json=row.payload_json,
+                run_id=run_id,
+                updated_at=now,
+                time_bucket=row.time_bucket or time_bucket_val,
+                slot_date=row.slot_date or date_str,
+                slot_time=row.slot_time,
+                provider=row.provider or provider,
+                neighborhood=row.neighborhood,
+                price_range=row.price_range,
+            ).on_conflict_do_update(
+                index_elements=["bucket_id", "slot_id"],
+                set_={
+                    "state": "closed",
+                    "closed_at": now,
+                    "last_seen_at": now,
+                    "run_id": run_id,
+                    "updated_at": now,
+                },
+                where=text("slot_availability.updated_at < excluded.updated_at"),
             )
         )
-    if to_insert_closed:
-        try:
-            db.add_all(to_insert_closed)
-        except Exception as e:
-            db.rollback()
-            logger.warning("DropEvent CLOSED batch insert failed bucket=%s count=%s: %s", bid, len(to_insert_closed), e)
+        open_session = (
+            db.query(AvailabilitySession)
+            .filter(
+                AvailabilitySession.bucket_id == bid,
+                AvailabilitySession.slot_id == sid,
+                AvailabilitySession.closed_at.is_(None),
+            )
+            .order_by(AvailabilitySession.opened_at.desc())
+            .first()
+        )
+        if open_session:
+            open_session.closed_at = now
+            open_session.duration_seconds = duration_seconds
+            to_aggregate.append(ClosedEventData(
+                venue_id=row.venue_id,
+                venue_name=row.venue_name,
+                drop_duration_seconds=duration_seconds,
+                slot_date=row.slot_date or date_str,
+                bucket_id=bid,
+                session_id=open_session.id,
+            ))
+
+    # Reconcile projection: mark as closed any slot not in curr_set (soft state)
+    if curr_set is not None:
+        q = db.query(SlotAvailability).filter(
+            SlotAvailability.bucket_id == bid,
+            SlotAvailability.state == "open",
+            SlotAvailability.slot_id.notin_(list(curr_set)),
+        )
+        for row in q.all():
+            row.state = "closed"
+            row.closed_at = row.closed_at or now
+            row.run_id = run_id
+            row.updated_at = now
+            open_sess = (
+                db.query(AvailabilitySession)
+                .filter(
+                    AvailabilitySession.bucket_id == bid,
+                    AvailabilitySession.slot_id == row.slot_id,
+                    AvailabilitySession.closed_at.is_(None),
+                )
+                .first()
+            )
+            if open_sess and open_sess.opened_at:
+                open_sess.closed_at = now
+                open_sess.duration_seconds = int((now - (open_sess.opened_at.replace(tzinfo=timezone.utc) if open_sess.opened_at.tzinfo is None else open_sess.opened_at)).total_seconds())
+                to_aggregate.append(ClosedEventData(
+                    venue_id=row.venue_id,
+                    venue_name=row.venue_name,
+                    drop_duration_seconds=open_sess.duration_seconds,
+                    slot_date=row.slot_date or date_str,
+                    bucket_id=bid,
+                    session_id=open_sess.id,
+                ))
 
     bucket_row.prev_slot_ids_json = json.dumps(sorted(curr_set))
     bucket_row.scanned_at = now
-    try:
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logger.warning("Poll bucket %s commit failed: %s", bid, e)
 
     stats = {
         "B": B,
@@ -421,13 +499,26 @@ def run_poll_for_bucket(db: Session, bid: str, date_str: str, time_slot: str) ->
         "drops_computed": len(drops),
         "baseline_ready": True,
         "emitted": emitted,
-        "closed_emitted": len(to_insert_closed),
+        "closed_emitted": len(to_aggregate),
         "baseline_echo": baseline_echo,
         "prev_echo": prev_echo,
     }
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning("Poll bucket %s commit failed: %s", bid, e)
+        return emitted, len(curr_set), stats
+
+    if to_aggregate:
+        try:
+            aggregate_closed_events_into_metrics(db, to_aggregate)
+        except Exception as e:
+            logger.warning("Aggregate closed events failed bucket=%s: %s", bid, e)
+
     logger.info(
         "bucket=%s B=%s P=%s C=%s | opened_vs_prev=%s opened_vs_baseline=%s | drops=%s emitted=%s closed=%s baseline_echo=%s prev_echo=%s",
-        bid, B, P, C, len(opened_vs_prev), len(opened_vs_baseline), len(drops), emitted, len(to_insert_closed), baseline_echo, prev_echo,
+        bid, B, P, C, len(opened_vs_prev), len(opened_vs_baseline), len(drops), emitted, len(to_aggregate), baseline_echo, prev_echo,
     )
     return emitted, len(curr_set), stats
 
@@ -461,19 +552,43 @@ def prune_old_buckets(db: Session, today: date) -> int:
     return n
 
 
+def delete_closed_drop_events(db: Session, batch_size: int = 50_000) -> int:
+    """
+    No-op: we no longer persist CLOSED rows to drop_events. Kept for API compatibility (daily job).
+    """
+    return 0
+
+
 def prune_old_drop_events(db: Session, today: date) -> int:
-    """
-    Remove drop_events for dates before today. We only care about today and future reservations;
-    past days are cleared. bucket_id format: YYYY-MM-DD_HH:MM.
-    Returns count deleted.
-    """
+    """Legacy: prune drop_events by bucket_id. Kept for compatibility; primary projection is slot_availability."""
     today_str = today.isoformat()
-    # First bucket of today is e.g. 2026-02-13_15:00; anything < that is past
     cutoff = f"{today_str}_15:00"
     n = db.query(DropEvent).filter(DropEvent.bucket_id < cutoff).delete(synchronize_session=False)
     db.commit()
     if n:
         logger.info("Pruned %s drop_events (date < %s)", n, today_str)
+    return n
+
+
+def prune_old_slot_availability(db: Session, today: date) -> int:
+    """Remove projection rows for dates before today (retention). bucket_id format: YYYY-MM-DD_HH:MM."""
+    today_str = today.isoformat()
+    cutoff = f"{today_str}_15:00"
+    n = db.query(SlotAvailability).filter(SlotAvailability.bucket_id < cutoff).delete(synchronize_session=False)
+    db.commit()
+    if n:
+        logger.info("Pruned %s slot_availability (date < %s)", n, today_str)
+    return n
+
+
+def prune_old_sessions(db: Session, today: date) -> int:
+    """Remove closed sessions for buckets before today (retention). Sessions table has bucket_id on each row... Actually AvailabilitySession doesn't have bucket_id in the migration - let me check. It does have bucket_id. So we can delete sessions where bucket_id < cutoff."""
+    today_str = today.isoformat()
+    cutoff = f"{today_str}_15:00"
+    n = db.query(AvailabilitySession).filter(AvailabilitySession.bucket_id < cutoff).delete(synchronize_session=False)
+    db.commit()
+    if n:
+        logger.info("Pruned %s availability_sessions (date < %s)", n, today_str)
     return n
 
 
@@ -507,7 +622,7 @@ def run_poll_all_buckets(db: Session, today: date) -> dict:
     buckets_baseline_ready = 0
     errors: list[tuple[str, str, str]] = []
 
-    max_workers = min(28, len(buckets), 8)  # cap to avoid DB pool exhaustion and Resy rate limits
+    max_workers = min(len(buckets), DISCOVERY_MAX_CONCURRENT_BUCKETS)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_bucket = {
             executor.submit(_poll_one_bucket, bid, date_str, time_slot): (bid, date_str, time_slot)
@@ -582,18 +697,14 @@ def run_poll_all_buckets(db: Session, today: date) -> dict:
 
 
 def get_feed(db: Session, since: datetime | None = None, limit: int = 100) -> list[dict]:
-    """Return drop_events for feed (NEW_DROP only: slot opened). If since is set, only events opened_at > since."""
-    q = (
-        db.query(DropEvent)
-        .filter(DropEvent.event_type == EVENT_TYPE_NEW_DROP)
-        .order_by(DropEvent.opened_at.desc())
-    )
+    """Return projection (slot_availability) for feed: currently open drops. If since set, only opened_at > since."""
+    q = db.query(SlotAvailability).filter(SlotAvailability.state == "open").order_by(SlotAvailability.opened_at.desc())
     if since is not None:
-        q = q.filter(DropEvent.opened_at > since)
+        q = q.filter(SlotAvailability.opened_at > since)
     rows = q.limit(limit).all()
     return [
         {
-            "id": r.id,
+            "id": f"{r.bucket_id}|{r.slot_id}",
             "bucket_id": r.bucket_id,
             "slot_id": r.slot_id,
             "opened_at": r.opened_at.isoformat() if r.opened_at else None,
@@ -827,12 +938,14 @@ def get_just_opened_from_buckets(
     time_after_min: int | None = None,
     time_before_min: int | None = None,
     opened_within_minutes: int | None = None,
+    opened_since: datetime | None = None,
 ) -> list[dict]:
     """
     Return same shape as legacy get_hot_drops for /just-opened: list of { date_str, venues, scanned_at }.
     Filters: date_filter, time_slots (bucket), party_sizes, and time range (minutes since midnight).
     time_after_min/time_before_min: only include venues with at least one slot in [after, before).
     opened_within_minutes: if set (e.g. 5), only include drop_events where opened_at >= now - N minutes.
+    opened_since: if set (UTC datetime), only include drop_events where opened_at > opened_since (for polling "only new").
     in a previous scan but is no longer available (e.g. someone booked it), it is excluded.
     """
     today = window_start_date()
@@ -846,15 +959,15 @@ def get_just_opened_from_buckets(
         else:
             curr_by_bucket[row.bucket_id] = _parse_slot_ids_json(row.prev_slot_ids_json)
 
-    q = (
-        db.query(DropEvent)
-        .filter(DropEvent.event_type == EVENT_TYPE_NEW_DROP)
-        .order_by(DropEvent.opened_at.desc())
-    )
-    if opened_within_minutes is not None and opened_within_minutes > 0:
+    q = db.query(SlotAvailability).filter(SlotAvailability.state == "open").order_by(SlotAvailability.opened_at.desc())
+    if opened_since is not None:
+        if opened_since.tzinfo is None:
+            opened_since = opened_since.replace(tzinfo=timezone.utc)
+        q = q.filter(SlotAvailability.opened_at > opened_since)
+        effective_limit = limit_events
+    elif opened_within_minutes is not None and opened_within_minutes > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=opened_within_minutes)
-        q = q.filter(DropEvent.opened_at >= cutoff)
-        # Time window already bounds the set; use a high cap so we don't truncate "all" in that window
+        q = q.filter(SlotAvailability.opened_at >= cutoff)
         effective_limit = max(limit_events, 5000)
     else:
         effective_limit = limit_events
@@ -951,16 +1064,13 @@ def get_still_open_from_buckets(
 
     if use_drop_events:
         q = (
-            db.query(DropEvent)
-            .filter(
-                DropEvent.bucket_id.in_(bucket_ids),
-                DropEvent.event_type == EVENT_TYPE_NEW_DROP,
-            )
-            .order_by(DropEvent.opened_at.desc())
+            db.query(SlotAvailability)
+            .filter(SlotAvailability.bucket_id.in_(bucket_ids), SlotAvailability.state == "open")
+            .order_by(SlotAvailability.opened_at.desc())
         )
         if exclude_opened_within_minutes is not None and exclude_opened_within_minutes > 0:
             cutoff = datetime.now(timezone.utc) - timedelta(minutes=exclude_opened_within_minutes)
-            q = q.filter(DropEvent.opened_at < cutoff)
+            q = q.filter(SlotAvailability.opened_at < cutoff)
         events = q.limit(STILL_OPEN_EVENTS_LIMIT).all()
         seen_slot_by_bucket: dict[str, set[str]] = {}
         seen_venue_key_per_date: dict[str, set[str]] = {}
@@ -1060,23 +1170,28 @@ def get_last_scan_info_buckets(db: Session, today: date) -> dict:
 
 def get_feed_item_debug(
     db: Session,
-    event_id: int | None = None,
+    event_id: int | str | None = None,
     slot_id: str | None = None,
     bucket_id: str | None = None,
     fetch_curr: bool = False,
 ) -> dict | None:
     """
-    Why is this in the feed? For a drop event (by event_id or slot_id+bucket_id), return membership in
-    baseline/prev/curr and a reason. Pro debug: proves whether item was correctly emitted (not baseline echo).
+    Why is this in the feed? For a drop (by event_id "bucket_id|slot_id" or slot_id+bucket_id), return
+    membership in baseline/prev/curr and a reason.
     """
     event = None
     if event_id is not None:
-        event = db.query(DropEvent).filter(DropEvent.id == event_id).first()
-    elif slot_id and bucket_id:
+        eid = str(event_id).strip()
+        if "|" in eid:
+            parts = eid.split("|", 1)
+            bucket_id = parts[0]
+            slot_id = parts[1] if len(parts) > 1 else None
+        elif isinstance(event_id, int) or (eid.isdigit() and eid):
+            event = db.query(DropEvent).filter(DropEvent.id == int(event_id if isinstance(event_id, int) else eid)).first()
+    if event is None and slot_id and bucket_id:
         event = (
-            db.query(DropEvent)
-            .filter(DropEvent.slot_id == slot_id, DropEvent.bucket_id == bucket_id)
-            .order_by(DropEvent.opened_at.desc())
+            db.query(SlotAvailability)
+            .filter(SlotAvailability.slot_id == slot_id, SlotAvailability.bucket_id == bucket_id)
             .first()
         )
     if not event:
@@ -1087,11 +1202,13 @@ def get_feed_item_debug(
     in_baseline = event.slot_id in baseline_set
     in_prev = event.slot_id in prev_set
     in_curr: bool | None = None
-    if fetch_curr and bucket_row and "_" in event.bucket_id:
-        parts = event.bucket_id.split("_", 1)
+    if fetch_curr and bucket_row and "_" in getattr(event, "bucket_id", ""):
+        bid = getattr(event, "bucket_id", "")
+        parts = bid.split("_", 1)
         date_str = parts[0]
         time_slot = parts[1] if len(parts) > 1 else "19:00"
-        rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES)
+        prov = (getattr(event, "provider", None) or "resy").strip() or "resy"
+        rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=prov)
         curr_set = {r["slot_id"] for r in rows}
         in_curr = event.slot_id in curr_set
     # Reason: if currently in baseline/prev that's a signal (baseline = should not have been emitted)
@@ -1101,16 +1218,19 @@ def get_feed_item_debug(
         reason = "in prev now (slot was opened vs prev and new vs baseline when emitted; may have stayed open)"
     else:
         reason = "opened_vs_prev_and_new_vs_baseline (not in baseline or prev now)"
+    event_id_out = getattr(event, "id", None)
+    if event_id_out is None:
+        event_id_out = f"{event.bucket_id}|{event.slot_id}"
     return {
-        "event_id": event.id,
+        "event_id": event_id_out,
         "slot_id": event.slot_id,
         "bucket_id": event.bucket_id,
-        "venue_name": event.venue_name,
-        "venue_id": event.venue_id,
+        "venue_name": getattr(event, "venue_name", None),
+        "venue_id": getattr(event, "venue_id", None),
         "in_baseline": in_baseline,
         "in_prev": in_prev,
         "in_curr": in_curr,
-        "emitted_at": event.opened_at.isoformat() if event.opened_at else None,
+        "emitted_at": (event.opened_at.isoformat() if event.opened_at else None) if hasattr(event, "opened_at") else None,
         "reason": reason,
         "baseline_count": len(baseline_set),
         "prev_count": len(prev_set),
@@ -1122,19 +1242,21 @@ def get_discovery_debug_buckets(db: Session, today: date | None = None) -> dict:
     if today is None:
         today = window_start_date()
     bucket_health = get_bucket_health(db, today)
-    # Recent drops sample: name + minutes_ago
+    # Recent drops sample: name + minutes_ago (from projection)
     recent = (
-        db.query(DropEvent)
-        .order_by(DropEvent.opened_at.desc())
+        db.query(SlotAvailability)
+        .filter(SlotAvailability.state == "open")
+        .order_by(SlotAvailability.opened_at.desc())
         .limit(15)
         .all()
     )
     now = datetime.now(timezone.utc)
     hot_drops_sample = []
     for r in recent:
-        opened = r.opened_at.replace(tzinfo=timezone.utc) if r.opened_at and not r.opened_at.tzinfo else r.opened_at
+        opened = getattr(r, "opened_at", None)
+        opened = opened.replace(tzinfo=timezone.utc) if opened and not getattr(opened, "tzinfo", None) else opened
         mins = int((now - opened).total_seconds() / 60) if opened else None
-        hot_drops_sample.append({"name": r.venue_name or r.venue_id or "?", "minutes_ago": mins})
+        hot_drops_sample.append({"name": getattr(r, "venue_name", None) or getattr(r, "venue_id", None) or "?", "minutes_ago": mins})
     info = get_last_scan_info_buckets(db, today)
     return {
         "bucket_health": bucket_health,

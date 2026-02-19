@@ -2,7 +2,7 @@
 
 This document describes how the backend is structured and how a request flows from HTTP to the Resy API. **No chat or agent** — watches, discovery, and Resy only.
 
-For the OOP/SOLID design principles we follow (DRY, SRP, DI, Open Closed, etc.), see **[DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)**.
+For the OOP/SOLID design principles we follow (DRY, SRP, DI, Open Closed, etc.), see **[DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)**. For production hardening (concurrency, idempotency, retention, outbox), see **[PRODUCTION_HARDENING.md](PRODUCTION_HARDENING.md)**.
 
 ---
 

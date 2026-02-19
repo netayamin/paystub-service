@@ -36,6 +36,14 @@ events = q.all()  # NO LIMIT — can load 50k+ rows and full payload_json
 
 **Recommendation:** Keep the cap; consider lowering 5k to 2k–3k if memory or latency becomes an issue. Document the constant.
 
+### 1.3 `GET /chat/watches/new-drops` — scalable with `since` + composite index
+
+**Where:** `app/api/routes/discovery.py` → `new_drops`; `app/services/discovery/buckets.py` → `get_just_opened_from_buckets`.
+
+**Improvements:**
+- **`since` query param (ISO datetime):** When the frontend sends the previous response’s `at` as `since`, the backend returns only events with `opened_at > since`. Each poll then gets only new drops (smaller payload, no re-sending the same list), so notifications stay “latest” and don’t repeat.
+- **Composite index:** `ix_drop_events_event_type_opened_at` on `(event_type, opened_at DESC)` makes the new-drops query efficient as `drop_events` grows (migration 032).
+
 ---
 
 ## 2. N+1 / repeated queries (medium impact)

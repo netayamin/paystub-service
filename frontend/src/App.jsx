@@ -8,6 +8,7 @@ import {
   ExternalLink,
   ChevronDown,
   X,
+  Bell,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -339,9 +340,14 @@ export default function App() {
   const muteToastsUntilRef = useRef(0);
   const [toasts, setToasts] = useState([]);
   const lastToastDropIdsRef = useRef(new Set());
-  const newDropsSeenIdsRef = useRef(new Set()); // IDs we already showed a toast for (from GET /chat/watches/new-drops)
+  const newDropsSeenIdsRef = useRef(new Set()); // dedupe toasts within same poll
+  const lastNewDropsAtRef = useRef(null); // last response "at" (ISO) — passed as since so backend returns only new drops
   const toastTimeoutsRef = useRef({});
   const alertDismissTimeoutRef = useRef(null);
+  /** Notifications: session-only. Only "new drops the moment they happen" — no backlog from storage. */
+  const [notifications, setNotifications] = useState([]);
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
+  const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
   /** Side update rail: ephemeral "Venue — time just opened" items, expire after 25s */
   const [sideUpdates, setSideUpdates] = useState([]);
   const sideUpdateTimeoutsRef = useRef({});
@@ -443,29 +449,22 @@ export default function App() {
         } catch (_) {
           setNotificationDropsAllDates([]);
         }
-        // New-drops endpoint: drive top-right toasts from all buckets (single source of truth)
+        // New-drops: backend returns only drops detected after last poll when since= is sent
         try {
-          const newDropsRes = await fetch(`${API_BASE}/chat/watches/new-drops?within_minutes=15&_t=${Date.now()}`);
+          const sinceParam = lastNewDropsAtRef.current ? `&since=${encodeURIComponent(lastNewDropsAtRef.current)}` : "";
+          const newDropsRes = await fetch(`${API_BASE}/chat/watches/new-drops?within_minutes=15${sinceParam}&_t=${Date.now()}`);
           const newDropsData = await newDropsRes.json().catch(() => ({}));
-          if (newDropsRes.ok && Array.isArray(newDropsData.drops) && newDropsData.drops.length > 0 && Date.now() >= muteToastsUntilRef.current) {
+          if (newDropsRes.ok && newDropsData.at) lastNewDropsAtRef.current = newDropsData.at;
+          // Only add to notifications when we sent since= (real-time "new since last poll"); first poll we just set baseline, add 0
+          const isFirstPoll = !sinceParam;
+          const MAX_NEW_PER_POLL = 25;
+          const rawDrops = isFirstPoll ? [] : (Array.isArray(newDropsData.drops) ? newDropsData.drops.slice(0, MAX_NEW_PER_POLL) : []);
+          if (newDropsRes.ok && rawDrops.length > 0 && Date.now() >= muteToastsUntilRef.current) {
+            const dropsToConsider = rawDrops;
             const TOAST_TTL_MS = 7000;
-            const NOTIFY_FRESH_SECONDS = 90;
             const seen = newDropsSeenIdsRef.current;
             const MAX_SEEN = 300;
-            const nowMs = Date.now();
-            let dropsToConsider = newDropsData.drops;
-            if (seen.size === 0) {
-              // First load: only toast for drops that appeared in the last NOTIFY_FRESH_SECONDS; mark the rest as seen
-              const fresh = newDropsData.drops.filter((d) => {
-                const at = d.detected_at;
-                if (!at) return false;
-                const ms = new Date(at).getTime();
-                return !Number.isNaN(ms) && nowMs - ms <= NOTIFY_FRESH_SECONDS * 1000;
-              });
-              const freshIds = new Set(fresh.map((d) => d.id));
-              newDropsData.drops.forEach((d) => { if (!freshIds.has(d.id)) seen.add(d.id); });
-              dropsToConsider = fresh;
-            }
+            const newNotificationItems = [];
             setToasts((prev) => {
               const next = [...prev];
               const prevIds = new Set(prev.map((t) => t.drop.id));
@@ -474,10 +473,22 @@ export default function App() {
                 const drop = {
                   ...d,
                   resyUrl: d.resy_url ?? d.resyUrl ?? (d.slots?.[0]?.resyUrl) ?? "#",
+                  is_hotspot: !!d.is_hotspot,
                 };
                 if (d.slots?.[0] && !drop.slots[0].resyUrl) drop.slots[0].resyUrl = drop.resyUrl;
                 const id = `toast-${d.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                 next.push({ id, drop });
+                newNotificationItems.push({ id, drop, read: false, createdAt: Date.now() });
+                // Special notify for NYC hotspots: browser notification when a hotspot becomes available
+                if (drop.is_hotspot && typeof Notification !== "undefined" && Notification.permission === "granted") {
+                  try {
+                    new Notification("Hot spot available", {
+                      body: `${drop.name || "Restaurant"} — new slot`,
+                      icon: "/profile.png",
+                      tag: `hotspot-${d.id}`,
+                    });
+                  } catch (_) { /* ignore */ }
+                }
                 prevIds.add(d.id);
                 seen.add(d.id);
                 const timeoutId = setTimeout(() => {
@@ -492,6 +503,9 @@ export default function App() {
               }
               return next.slice(-8);
             });
+            if (newNotificationItems.length > 0) {
+              setNotifications((prev) => [...newNotificationItems, ...prev].slice(0, 50));
+            }
           }
         } catch (_) {
           // non-fatal
@@ -1147,6 +1161,21 @@ export default function App() {
     toastTimeoutsRef.current = {};
   };
 
+  const markNotificationRead = (id) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  };
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+  const dismissNotification = (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+  const onNotificationClick = (n) => {
+    markNotificationRead(n.id);
+    handleScrollToNewDrops();
+    setNotificationPanelOpen(false);
+  };
+
   return (
     <div className="flex flex-col h-screen text-[var(--color-text-main)] antialiased overflow-hidden font-sans font-light">
       {/* Header — logo + subtle live state | clean profile. No heavy toggles. */}
@@ -1157,7 +1186,121 @@ export default function App() {
           </div>
           <h1 className="text-[13px] sm:text-[15px] font-black tracking-tight text-slate-900 truncate">DROP FEED</h1>
         </div>
-        <div className="flex items-center shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <DropdownMenu open={notificationPanelOpen} onOpenChange={setNotificationPanelOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="relative p-2 rounded-full text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
+                title="Notifications"
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[320px] sm:w-[360px] max-h-[70vh] overflow-hidden flex flex-col p-0">
+              <div className="px-3 py-2 border-b border-slate-200 bg-slate-50">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-[13px] font-semibold text-slate-900">Notifications</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">New drops — click to view in feed, or mark as read</p>
+                  </div>
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={markAllNotificationsRead}
+                      className="shrink-0 text-[11px] font-medium text-slate-500 hover:text-slate-700"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                {typeof Notification !== "undefined" && notificationPermission !== "granted" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      Notification.requestPermission().then((p) => setNotificationPermission(p));
+                    }}
+                    className="mt-2 text-[11px] font-medium text-amber-600 hover:text-amber-700"
+                  >
+                    Enable desktop alerts for hotspots
+                  </button>
+                )}
+              </div>
+              <div className="overflow-y-auto flex-1 min-h-0">
+                {notifications.length === 0 ? (
+                  <p className="px-4 py-6 text-[12px] text-slate-500 text-center">No notifications yet. New drops will appear here.</p>
+                ) : (
+                  <ul className="py-1">
+                    {notifications.map((n) => {
+                      const timeStr = n.drop.time ? formatTimeForSlot(n.drop.time) : (n.drop.slots?.[0]?.time ? formatTimeForSlot(n.drop.slots[0].time) : null);
+                      const dateStr = n.drop.date_str ?? n.drop.slots?.[0]?.date_str;
+                      const dateLabel = dateStr ? `${formatDayShort(dateStr)} ${formatMonthDay(dateStr)}` : "";
+                      const resyUrl = n.drop.slots?.[0]?.resyUrl ?? n.drop.resyUrl ?? "#";
+                      const placeName = n.drop.name || "Restaurant";
+                      return (
+                        <li
+                          key={n.id}
+                          className={`group border-b border-slate-100 last:border-0 ${!n.read ? "bg-red-50/50" : "bg-white"}`}
+                        >
+                          <div className="px-3 py-2.5 flex items-start gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onNotificationClick(n)}
+                              className="flex-1 min-w-0 text-left"
+                            >
+                              <p className="text-[10px] font-medium uppercase tracking-wide">
+                                {n.drop.is_hotspot ? (
+                                  <span className="text-amber-600">Hot spot</span>
+                                ) : (
+                                  <span className="text-red-500">New drop</span>
+                                )}
+                              </p>
+                              <p className="text-[13px] font-semibold text-slate-900 truncate">{placeName}</p>
+                              <p className="text-[11px] text-slate-500">{[dateLabel, timeStr].filter(Boolean).join(" · ") || "New slot"}</p>
+                            </button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <a
+                                href={resyUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-semibold hover:bg-red-700 transition-colors"
+                              >
+                                Reserve
+                              </a>
+                              {!n.read && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); markNotificationRead(n.id); }}
+                                  className="px-2 py-1 rounded text-[10px] text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                                >
+                                  Mark read
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); dismissNotification(n.id); }}
+                                className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                aria-label="Dismiss"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button
             type="button"
             className="relative rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
@@ -1174,69 +1317,6 @@ export default function App() {
       </header>
 
       <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Floating toasts: signal bursts, not inbox — one line, top-right, auto-fade 7s, click = scroll */}
-        <div className="fixed top-[calc(3.5rem+0.5rem)] right-6 sm:right-8 md:right-10 z-50 flex flex-col gap-2 max-w-[320px] pointer-events-none">
-          <div className="pointer-events-auto flex flex-col gap-2">
-            <AnimatePresence mode="popLayout">
-              {toasts.map((t) => {
-                const timeStr = t.drop.time ? formatTimeForSlot(t.drop.time) : (t.drop.slots?.[0]?.time ? formatTimeForSlot(t.drop.slots[0].time) : null);
-                const dateStr = t.drop.date_str ?? t.drop.slots?.[0]?.date_str;
-                const dateLabel = dateStr ? `${formatDayShort(dateStr)} ${formatMonthDay(dateStr)}` : "";
-                const resyUrl = t.drop.slots?.[0]?.resyUrl ?? t.drop.resyUrl ?? "#";
-                const placeName = t.drop.name || "Restaurant";
-                const line = [placeName, dateLabel, timeStr].filter(Boolean).join(" · ") || `${placeName} — new slot available`;
-                return (
-                  <motion.div
-                    key={t.id}
-                    initial={{ opacity: 0, x: 24 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 12 }}
-                    transition={{ duration: 0.2 }}
-                    className="rounded-lg bg-slate-900/95 backdrop-blur-sm shadow-lg border border-white/5 px-3 py-2.5 flex flex-col gap-1 min-w-[200px]"
-                  >
-                    <p className="text-[10px] font-medium text-red-400/90 uppercase tracking-wide">New drop</p>
-                    <div className="flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={onToastClick}
-                        className="text-left text-[12px] text-slate-200 min-w-0 flex-1 leading-tight"
-                      >
-                        {line}
-                      </button>
-                    <a
-                      href={resyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="shrink-0 text-[11px] font-semibold text-red-400 hover:text-red-300 transition-colors"
-                    >
-                      Reserve
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => dismissToast(t.id)}
-                      className="shrink-0 p-0.5 rounded text-slate-500 hover:text-slate-300 transition-colors"
-                      aria-label="Dismiss"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-            {toasts.length > 0 && (
-              <button
-                type="button"
-                onClick={muteToasts10m}
-                className="text-[10px] text-slate-500 hover:text-slate-400 transition-colors self-end"
-              >
-                Mute 10m
-              </button>
-            )}
-          </div>
-        </div>
-
         {/* Side update rail: ephemeral ticker, not a feed — what just changed, disappears in ~25s */}
         <div className="fixed right-4 top-1/2 -translate-y-1/2 z-40 w-[200px] hidden md:flex flex-col gap-2 pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-2">

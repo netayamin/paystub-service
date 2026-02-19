@@ -29,7 +29,7 @@ if _maxim_api_key and _maxim_repo_id:
     _maxim_logger = _maxim.logger({"id": _maxim_repo_id})
     instrument_pydantic_ai(_maxim_logger, debug=os.getenv("MAXIM_DEBUG", "").lower() in ("1", "true", "yes"))
 
-from app.api.routes import discovery, resy
+from app.api.routes import discovery, notifications, resy
 from app.config import settings
 from app.core.constants import (
     DISCOVERY_BUCKET_JOB_ID,
@@ -125,6 +125,7 @@ if _maxim_logger is not None:
         return response
 
 app.include_router(discovery.router, prefix="/chat", tags=["discovery"])
+app.include_router(notifications.router, prefix="/chat", tags=["notifications"])
 app.include_router(resy.router, prefix="/resy", tags=["resy"])
 
 

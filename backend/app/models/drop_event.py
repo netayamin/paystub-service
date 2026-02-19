@@ -1,11 +1,8 @@
-"""Availability events: NEW_DROP (slot opened) and CLOSED (slot gone). Dedupe key prevents double-insert."""
+"""Open drops only: slot became available and is still available. Metrics store aggregates; we remove rows when a slot closes."""
 from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.db.base import Base
-
-EVENT_TYPE_NEW_DROP = "NEW_DROP"
-EVENT_TYPE_CLOSED = "CLOSED"
 
 
 class DropEvent(Base):
@@ -18,10 +15,8 @@ class DropEvent(Base):
     venue_id = Column(String(64), nullable=True)
     venue_name = Column(String(256), nullable=True)
     payload_json = Column(Text, nullable=True)  # full payload for rendering
-    dedupe_key = Column(String(128), nullable=False, unique=True)  # bucket_id|slot_id|opened_at_minute or closed|...
+    dedupe_key = Column(String(128), nullable=False, unique=True)  # bucket_id|slot_id|opened_at_minute
 
-    # Availability intelligence (Phase 1)
-    event_type = Column(String(20), nullable=False, default=EVENT_TYPE_NEW_DROP, index=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
     drop_duration_seconds = Column(Integer, nullable=True)
     time_bucket = Column(String(16), nullable=True)   # prime | off_peak

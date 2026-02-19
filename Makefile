@@ -1,4 +1,4 @@
-.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate
+.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics
 
 setup: install
 	cp backend/.env.example backend/.env
@@ -44,3 +44,22 @@ db-reset:
 
 migrate:
 	cd backend && poetry run alembic upgrade head
+
+# Run migrations then aggregate drop_events into venue_metrics, market_metrics, venue_rolling_metrics. Use this so drops show in metrics.
+migrate-metrics: migrate
+	cd backend && poetry run python scripts/run_aggregate_metrics.py
+
+# Migrate schema to remote DB: set DATABASE_URL in backend/.env to your AWS RDS URL, then run this.
+migrate-remote:
+	cd backend && poetry run alembic upgrade head
+
+# Copy local DB (schema + data) to remote. Set REMOTE_DATABASE_URL (RDS or EC2:5432 if exposed).
+# Example: REMOTE_DATABASE_URL='postgresql://user:pass@xxx.rds.amazonaws.com:5432/paystub' make db-to-aws
+db-to-aws:
+	@chmod +x scripts/migrate-db-to-aws.sh 2>/dev/null || true
+	./scripts/migrate-db-to-aws.sh
+
+# Dump local DB and print instructions to copy + restore on EC2 (no need to expose 5432 on EC2).
+sync-db-to-ec2:
+	@chmod +x scripts/sync-local-db-to-ec2.sh 2>/dev/null || true
+	./scripts/sync-local-db-to-ec2.sh

@@ -8,12 +8,12 @@ import logging
 import statistics
 from collections import defaultdict
 from datetime import date, datetime, timezone, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.models.drop_event import EVENT_TYPE_CLOSED, EVENT_TYPE_NEW_DROP, DropEvent
+from app.models.drop_event import DropEvent
 from app.models.market_metrics import MarketMetrics
 from app.models.venue_metrics import VenueMetrics
 from app.models.venue_rolling_metrics import VenueRollingMetrics
@@ -24,8 +24,157 @@ METRIC_TYPE_DAILY_TOTALS = "daily_totals"
 ROLLING_WINDOW_DAYS = 14
 
 
+class ClosedEventLike(Protocol):
+    """In-memory closed-event data (drop_events table no longer stores CLOSED rows)."""
+    venue_id: str | None
+    venue_name: str | None
+    drop_duration_seconds: int | None
+    slot_date: str | None
+    bucket_id: str | None
+    session_id: int | None  # when set, we only aggregate if session.aggregated_at IS NULL and set it after
+
+
+def aggregate_closed_events_into_metrics(db: Session, closed_events: list[ClosedEventLike]) -> None:
+    """
+    When a slot closes we write its contribution to venue_metrics and market_metrics.
+    Idempotent: events with session_id are only processed if that session has aggregated_at IS NULL;
+    after writing we set aggregated_at = now so the same close is never double-counted.
+    """
+    if not closed_events:
+        return
+
+    from app.models.availability_session import AvailabilitySession
+
+    now = datetime.now(timezone.utc)
+    session_ids = [e.session_id for e in closed_events if getattr(e, "session_id", None) is not None]
+    unaggregated_ids: set[int] = set()
+    if session_ids:
+        rows = (
+            db.query(AvailabilitySession.id)
+            .filter(AvailabilitySession.id.in_(session_ids), AvailabilitySession.aggregated_at.is_(None))
+            .all()
+        )
+        unaggregated_ids = {r[0] for r in rows}
+    # Include events without session_id (backward compat) or whose session is not yet aggregated
+    to_process = [
+        e for e in closed_events
+        if getattr(e, "session_id", None) is None or (e.session_id in unaggregated_ids)
+    ]
+    if not to_process:
+        return
+
+    # Group by (venue_id, window_date): list of (duration_seconds, venue_name)
+    by_venue_date: dict[tuple[str, date], list[tuple[int | None, str | None]]] = defaultdict(list)
+    for e in to_process:
+        vid = e.venue_id or "unknown"
+        wd = _window_date_from_closed_event(e)
+        by_venue_date[(vid, wd)].append((e.drop_duration_seconds, e.venue_name))
+
+    # Venue metrics: incremental upsert per (venue_id, window_date)
+    for (venue_id, window_date), items in by_venue_date.items():
+        durations = [d for d, _ in items if d is not None]
+        venue_name = next((n for _, n in items if n), None)
+        added_closed = len(items)
+        added_avg = float(statistics.mean(durations)) if durations else None
+
+        row = db.query(VenueMetrics).filter(
+            VenueMetrics.venue_id == venue_id,
+            VenueMetrics.window_date == window_date,
+        ).first()
+        if row:
+            old_closed = row.closed_count or 0
+            old_avg = row.avg_drop_duration_seconds
+            new_closed = old_closed + added_closed
+            new_drops = (row.new_drop_count or 0) + added_closed  # each CLOSED implies one NEW_DROP we're removing
+            if old_avg is not None and added_avg is not None and new_closed > 0:
+                new_avg = (old_avg * old_closed + added_avg * added_closed) / new_closed
+            else:
+                new_avg = added_avg if added_avg is not None else old_avg
+            row.closed_count = new_closed
+            row.new_drop_count = new_drops
+            row.avg_drop_duration_seconds = new_avg
+            row.scarcity_score = _scarcity_score(new_avg, new_drops, new_closed)
+            row.computed_at = datetime.now(timezone.utc)
+        else:
+            new_avg = added_avg
+            scarcity = _scarcity_score(new_avg, added_closed, added_closed)
+            db.add(VenueMetrics(
+                venue_id=venue_id,
+                venue_name=venue_name,
+                window_date=window_date,
+                new_drop_count=added_closed,
+                closed_count=added_closed,
+                prime_time_drops=0,
+                off_peak_drops=0,
+                avg_drop_duration_seconds=new_avg,
+                median_drop_duration_seconds=None,
+                scarcity_score=scarcity,
+                volatility_score=None,
+            ))
+    db.commit()
+
+    # Market metrics: incremental update daily_totals per window_date
+    by_date: dict[date, list[int | None]] = defaultdict(list)
+    for e in to_process:
+        wd = _window_date_from_closed_event(e)
+        by_date[wd].append(e.drop_duration_seconds)
+
+    for wd, durations in by_date.items():
+        row = db.query(MarketMetrics).filter(
+            MarketMetrics.window_date == wd,
+            MarketMetrics.metric_type == METRIC_TYPE_DAILY_TOTALS,
+        ).first()
+        added_closed = len(durations)
+        added_avg = float(statistics.mean([d for d in durations if d is not None])) if any(d is not None for d in durations) else None
+        try:
+            if row and row.value_json:
+                value = json.loads(row.value_json)
+            else:
+                value = {"total_new_drops": 0, "total_closed": 0, "avg_drop_duration_seconds": None, "event_count": 0, "weekday": wd.weekday(), "by_hour": {}}
+            old_closed = value.get("total_closed") or 0
+            old_avg = value.get("avg_drop_duration_seconds")
+            new_closed = old_closed + added_closed
+            if old_avg is not None and added_avg is not None and new_closed > 0:
+                new_avg = (old_avg * old_closed + added_avg * added_closed) / new_closed
+            else:
+                new_avg = added_avg if added_avg is not None else old_avg
+            value["total_closed"] = new_closed
+            value["avg_drop_duration_seconds"] = new_avg
+            value["event_count"] = (value.get("event_count") or 0) + added_closed
+            if row:
+                row.value_json = json.dumps(value)
+                row.computed_at = datetime.now(timezone.utc)
+            else:
+                db.add(MarketMetrics(window_date=wd, metric_type=METRIC_TYPE_DAILY_TOTALS, value_json=json.dumps(value)))
+        except (TypeError, json.JSONDecodeError):
+            logger.warning("aggregate_closed_events: skip market_metrics for %s", wd)
+    db.commit()
+
+    # Mark sessions as aggregated so the same close is never double-counted
+    if unaggregated_ids:
+        db.query(AvailabilitySession).filter(
+            AvailabilitySession.id.in_(unaggregated_ids),
+        ).update({AvailabilitySession.aggregated_at: now}, synchronize_session=False)
+        db.commit()
+
+
 def _window_date_from_event(e: DropEvent) -> date:
     """Derive reservation date from event: slot_date or bucket_id prefix."""
+    if e.slot_date:
+        try:
+            return datetime.strptime(e.slot_date, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            pass
+    if e.bucket_id and len(e.bucket_id) >= 10:
+        try:
+            return datetime.strptime(e.bucket_id[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            pass
+    return date.today()
+
+
+def _window_date_from_closed_event(e: ClosedEventLike) -> date:
+    """Window date for a closed event: slot_date or bucket_id prefix."""
     if e.slot_date:
         try:
             return datetime.strptime(e.slot_date, "%Y-%m-%d").date()
@@ -59,8 +208,9 @@ def _scarcity_score(avg_duration_seconds: float | None, new_drop_count: int, clo
 
 def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
     """
-    Aggregate all drop_events with bucket_id < today_15:00 into venue_metrics and
-    market_metrics. Call this *before* prune_old_drop_events. Returns counts written.
+    Aggregate drop_events with bucket_id < today_15:00 into venue_metrics and
+    market_metrics. Call this *before* prune_old_drop_events. Bounded query so
+    the job scales (no loading entire table). Returns counts written.
     """
     today_str = today.isoformat()
     cutoff = f"{today_str}_15:00"
@@ -84,8 +234,9 @@ def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
     # Build venue_metrics rows
     venue_rows: list[dict[str, Any]] = []
     for (venue_id, window_date), group in by_venue_date.items():
-        new_drops = sum(1 for e in group if e.event_type == EVENT_TYPE_NEW_DROP)
-        closed = sum(1 for e in group if e.event_type == EVENT_TYPE_CLOSED)
+        # drop_events no longer has event_type; all rows are open drops (closed events are aggregated on close and removed)
+        new_drops = len(group)
+        closed = 0
         prime = sum(1 for e in group if e.time_bucket == "prime")
         off_peak = sum(1 for e in group if e.time_bucket == "off_peak")
         durations = [e.drop_duration_seconds for e in group if e.drop_duration_seconds is not None]
@@ -135,8 +286,8 @@ def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
     market_count = 0
     for wd in window_dates:
         day_events = [e for e in events if _window_date_from_event(e) == wd]
-        new_d = sum(1 for e in day_events if e.event_type == EVENT_TYPE_NEW_DROP)
-        closed_d = sum(1 for e in day_events if e.event_type == EVENT_TYPE_CLOSED)
+        new_d = len(day_events)
+        closed_d = 0
         durations_d = [e.drop_duration_seconds for e in day_events if e.drop_duration_seconds is not None]
         avg_d = float(statistics.mean(durations_d)) if durations_d else None
         by_hour: dict[str, int] = defaultdict(int)

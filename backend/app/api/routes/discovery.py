@@ -3,25 +3,33 @@ Discovery API: feed, just-opened, health and debug endpoints.
 
 All routes are mounted under /chat so URLs stay /chat/watches/feed, /chat/watches/just-opened, etc.
 """
+import asyncio
 import json
 import logging
+import os
+import sys
 from datetime import date, datetime, timezone, timedelta
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.constants import DISCOVERY_BUCKET_JOB_ID, DISCOVERY_POLL_INTERVAL_SECONDS, JUST_OPENED_WITHIN_MINUTES
+from app.core.nyc_hotspots import is_hotspot
 from app.db.session import get_db
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
+from app.models.slot_availability import SlotAvailability
 from app.models.market_metrics import MarketMetrics
 from app.models.venue_metrics import VenueMetrics
 from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.admin_service import clear_resy_db, reset_discovery_buckets
 from app.services.resy import search_with_availability
+from app.services.resy.config import ResyConfig
 from app.services.discovery import get_discovery_debug, get_discovery_fast_checks, get_discovery_job_heartbeat, get_feed_item_debug
 from app.services.discovery.buckets import (
     all_bucket_ids,
+    delete_closed_drop_events,
     get_baseline_snapshot,
     get_bucket_health,
     get_calendar_counts,
@@ -33,6 +41,7 @@ from app.services.discovery.buckets import (
     refresh_baselines_for_all_buckets,
     window_start_date,
 )
+from app.services.providers import get_provider, list_providers
 from app.services.discovery.feed import build_feed
 
 router = APIRouter()
@@ -54,6 +63,12 @@ def _next_scan_iso(request: Request) -> str:
     except Exception:
         pass
     return (datetime.now(timezone.utc) + timedelta(seconds=DISCOVERY_POLL_INTERVAL_SECONDS)).isoformat()
+
+
+@router.get("/providers")
+async def list_availability_providers():
+    """List registered availability providers (resy, opentable, etc.). Same discovery pipeline; only fetch differs."""
+    return {"providers": list_providers()}
 
 
 @router.get("/watches/bucket-status")
@@ -111,6 +126,94 @@ async def discovery_health(request: Request, db: Session = Depends(get_db)):
         return {"error": str(e), "fast_checks": {}, "job_heartbeat": get_discovery_job_heartbeat(), "next_scan_at": _next_scan_iso(request), "log_hint": "Check backend logs."}
 
 
+@router.get("/watches/resy-test")
+async def resy_test():
+    """
+    Test Resy API from this host: one search_with_availability call (same as one discovery bucket).
+    Use to verify RESY_API_KEY and RESY_AUTH_TOKEN on EC2: curl http://EC2_IP:8000/chat/watches/resy-test
+    """
+    config = ResyConfig()
+    credentials_configured = config.is_configured()
+    # One bucket: today, 19:00, party_size=2 (same as discovery)
+    today = date.today()
+    result = search_with_availability(
+        today,
+        party_size=2,
+        query="",
+        time_filter="19:00",
+        time_window_hours=3,
+        per_page=100,
+        max_pages=1,
+    )
+    if result.get("error"):
+        return {
+            "credentials_configured": credentials_configured,
+            "resy_request": "one bucket (today, 19:00, party=2)",
+            "result": {"error": result["error"], "detail": result.get("detail")},
+            "hint": "Set RESY_API_KEY and RESY_AUTH_TOKEN in backend/.env on this host and restart backend.",
+        }
+    venues = result.get("venues") or []
+    names = [v.get("name") or "(no name)" for v in venues[:5]]
+    return {
+        "credentials_configured": credentials_configured,
+        "resy_request": "one bucket (today, 19:00, party=2)",
+        "result": {
+            "venue_count": len(venues),
+            "sample_venue_names": names,
+        },
+    }
+
+
+def _opentable_test_script_path() -> Path:
+    """Path to scripts/opentable_test_standalone.py (backend dir = app's parent's parent)."""
+    backend_dir = Path(__file__).resolve().parent.parent.parent
+    return backend_dir / "scripts" / "opentable_test_standalone.py"
+
+
+@router.get("/watches/opentable-test")
+async def opentable_test():
+    """
+    Test OpenTable MultiSearchResults. Runs the HTTP call in a subprocess so the
+    main server process is never blocked; /health and other endpoints stay responsive.
+    curl http://localhost:8000/chat/watches/opentable-test
+    """
+    script = _opentable_test_script_path()
+    if not script.exists():
+        logger.warning("opentable-test script not found: %s", script)
+        return {"ok": False, "error": "opentable_test_standalone.py not found", "hint": "Run from backend root."}
+
+    backend_dir = script.parent.parent
+    env = {**os.environ, "PYTHONPATH": str(backend_dir)}
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            str(script),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(backend_dir),
+            env=env,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=35.0)
+    except asyncio.TimeoutError:
+        logger.warning("opentable-test subprocess timed out after 35s")
+        return {"ok": False, "error": "Request timed out (35s)", "hint": "OpenTable may be slow or unreachable."}
+    except Exception as e:
+        logger.warning("opentable-test subprocess failed: %s", e, exc_info=True)
+        return {"ok": False, "error": str(e), "hint": "Could not run test script."}
+
+    out = (stdout or b"").decode("utf-8", errors="replace").strip()
+    if stderr:
+        logger.debug("opentable-test stderr: %s", stderr.decode("utf-8", errors="replace"))
+    if not out:
+        return {"ok": False, "error": "No output from test script", "hint": "Check server logs."}
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError as e:
+        logger.warning("opentable-test invalid JSON: %s", e)
+        return {"ok": False, "error": "Invalid response from test script", "raw": out[:200]}
+
+
 @router.get("/watches/db-debug")
 async def db_debug(request: Request, db: Session = Depends(get_db)):
     """Quick DB overview: raw counts, discovery_buckets + drop_events, last scan, job heartbeat, next_scan_at. Use for debugging logic."""
@@ -120,19 +223,21 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
         heartbeat = get_discovery_job_heartbeat()
         fast_checks = get_discovery_fast_checks(db)
         bucket_health = get_bucket_health(db, today)
-        # Raw counts so you can verify backend logic
-        drop_events_count = db.query(DropEvent).count()
+        # Raw counts (projection = slot_availability open state)
+        open_slots_count = db.query(SlotAvailability).filter(SlotAvailability.state == "open").count()
         discovery_buckets_count = db.query(DiscoveryBucket).count()
-        unique_venues_in_events = db.query(DropEvent.venue_id).filter(DropEvent.venue_id.isnot(None)).distinct().count()
+        unique_venues_open = db.query(SlotAvailability.venue_id).filter(
+            SlotAvailability.state == "open",
+            SlotAvailability.venue_id.isnot(None),
+        ).distinct().count()
         just_opened_list = get_just_opened_from_buckets(db, limit_events=500)
         just_opened_venue_count = sum(len(day.get("venues") or []) for day in just_opened_list)
-        # When we hit the cap, just_opened is truncated (500 most recent events)
-        just_opened_capped = just_opened_venue_count >= 500 or drop_events_count > 500
+        just_opened_capped = just_opened_venue_count >= 500 or open_slots_count > 500
         return {
             "db": {
-                "drop_events_count": drop_events_count,
+                "slot_availability_open_count": open_slots_count,
                 "discovery_buckets_count": discovery_buckets_count,
-                "unique_venues_in_drop_events": unique_venues_in_events,
+                "unique_venues_in_open_slots": unique_venues_open,
                 "just_opened_venue_count": just_opened_venue_count,
                 "just_opened_capped": just_opened_capped,
             },
@@ -152,6 +257,8 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
             "endpoints": {
                 "bucket_status": "GET /chat/watches/bucket-status",
                 "discovery_health": "GET /chat/watches/discovery-health",
+                "resy_test": "GET /chat/watches/resy-test (test Resy API from this host)",
+                "opentable_test": "GET /chat/watches/opentable-test (test OpenTable GQL from this host)",
                 "discovery_debug": "GET /chat/watches/discovery-debug",
                 "feed_item_debug": "GET /chat/watches/feed-item-debug?event_id=N or ?slot_id=&bucket_id=&fetch_curr=1",
                 "feed": "GET /chat/watches/feed?since=<ISO>",
@@ -161,6 +268,7 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
                 "reset_discovery_buckets": "POST /chat/watches/reset-discovery-buckets",
                 "baseline": "GET /chat/watches/baseline",
                 "calendar_counts": "GET /chat/watches/calendar-counts",
+                "providers": "GET /chat/providers (list availability providers: resy, opentable)",
             },
         }
     except Exception as e:
@@ -380,13 +488,13 @@ async def discovery_debug(db: Session = Depends(get_db)):
 @router.get("/watches/feed-item-debug")
 async def feed_item_debug(
     db: Session = Depends(get_db),
-    event_id: int | None = None,
+    event_id: int | str | None = None,
     slot_id: str | None = None,
     bucket_id: str | None = None,
     fetch_curr: bool = False,
 ):
     """
-    Why is this in the feed? Pass event_id=... or slot_id=...&bucket_id=... .
+    Why is this in the feed? Pass event_id=... (int or "bucket_id|slot_id") or slot_id=...&bucket_id=... .
     Returns in_baseline, in_prev, in_curr (if fetch_curr=1), emitted_at, reason.
     baseline_echo = item in baseline → should not have been emitted.
     """
@@ -436,19 +544,40 @@ def _first_time_from_venue(venue: dict) -> str:
     return t[:5] if len(t) >= 5 else t
 
 
+def _parse_since(since: str | None) -> datetime | None:
+    """Parse ISO8601 since param for new-drops; return None if missing/invalid."""
+    if not since or not since.strip():
+        return None
+    try:
+        # Support with or without Z / timezone
+        s = since.strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
 @router.get("/watches/new-drops")
 async def new_drops(
     db: Session = Depends(get_db),
     within_minutes: int | None = None,
+    since: str | None = None,
 ):
     """
-    New restaurants (just opened) across all buckets for top-right notifications.
-    Returns a flat list of drops with id, name, date_str, time, resy_url, detected_at so the frontend
-    can poll and show toasts when new ids appear. Poll every 10–15s.
+    New restaurants (just opened) across all buckets for notifications.
+    Returns only drops detected *after* `since` (ISO8601) so clients get "new the moment they happen".
+    If `since` is omitted, returns all in the time window (backward compatible).
+    Poll every 10–15s and pass the previous response's `at` as `since` for the next request.
     """
     minutes = within_minutes if within_minutes is not None else JUST_OPENED_WITHIN_MINUTES
     if minutes < 1 or minutes > 120:
         minutes = JUST_OPENED_WITHIN_MINUTES
+    since_dt = _parse_since(since)
+    # If client sent since= but we couldn't parse it, return no drops (avoid leaking full list)
+    if since is not None and since.strip() and since_dt is None:
+        return {"drops": [], "at": datetime.now(timezone.utc).isoformat()}
     try:
         just_opened = get_just_opened_from_buckets(
             db,
@@ -460,12 +589,24 @@ async def new_drops(
         for day in just_opened:
             date_str = day.get("date_str") or ""
             for v in day.get("venues") or []:
+                detected_at = v.get("detected_at")
+                if since_dt is not None:
+                    # Only return drops we can prove are new: must have detected_at and be after since
+                    if not detected_at:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(detected_at.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if dt <= since_dt:
+                            continue
+                    except (ValueError, TypeError):
+                        continue
                 name = (v.get("name") or "").strip() or "Venue"
                 name_slug = name.replace(" ", "-")
                 drop_id = f"just-opened-{date_str}-{name_slug}"
                 time_str = _first_time_from_venue(v)
                 resy_url = v.get("resy_url")
-                detected_at = v.get("detected_at")
                 slots = [{"date_str": date_str, "time": time_str, "resyUrl": resy_url}]
                 drops.append({
                     "id": drop_id,
@@ -476,6 +617,7 @@ async def new_drops(
                     "detected_at": detected_at,
                     "image_url": v.get("image_url"),
                     "slots": slots,
+                    "is_hotspot": is_hotspot(name),
                 })
         return {"drops": drops, "at": datetime.now(timezone.utc).isoformat()}
     except Exception as e:
@@ -561,6 +703,14 @@ async def list_just_opened(
             time_before_min=time_before_min,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
+        # Tag NYC hotspot venues for special notifications
+        for day in just_opened:
+            for v in day.get("venues") or []:
+                v["is_hotspot"] = is_hotspot(v.get("name"))
+        for day in still_open:
+            for v in day.get("venues") or []:
+                v["is_hotspot"] = is_hotspot(v.get("name"))
+
         feed = build_feed(just_opened, still_open)
         payload = {
             "just_opened": just_opened,
@@ -678,6 +828,17 @@ async def list_booking_errors(limit: int = 100):
 async def list_logs(limit: int = 100):
     """Recent tool call log entries (tables removed; returns empty)."""
     return {"entries": []}
+
+
+@router.post("/admin/delete-closed-events")
+async def admin_delete_closed_events(db: Session = Depends(get_db)):
+    """Delete all CLOSED rows from drop_events (run now instead of waiting for daily job)."""
+    try:
+        total = delete_closed_drop_events(db, batch_size=50_000)
+        return {"ok": True, "deleted": total, "message": f"Deleted {total} CLOSED drop_events."}
+    except Exception as e:
+        logger.exception("admin/delete-closed-events failed")
+        return {"ok": False, "error": str(e)}
 
 
 @router.post("/admin/clear-db")

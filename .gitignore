@@ -55,6 +55,7 @@ Thumbs.db
 # Temp and uploads
 uploads/
 tmp/
+.tmp/
 *.tmp
 *.log
 logs/
