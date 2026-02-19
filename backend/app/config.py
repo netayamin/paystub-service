@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # Resy: RESY_API_KEY and RESY_AUTH_TOKEN in .env (from browser)
     resy_api_key: str = ""
     resy_auth_token: str = ""
+    # Email notifications (new drops) when no APNs — NOTIFY_EMAIL + RESEND_API_KEY
+    notify_email: str = ""
+    resend_api_key: str = ""
+    notify_from: str = ""  # optional; e.g. "Drop Feed <alerts@yourdomain.com>". Omit to use Resend default.
 
     class Config:
         env_file = _env_path
