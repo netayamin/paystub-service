@@ -1,0 +1,15 @@
+---
+description: Commit and push when a feature or task is finished
+alwaysApply: true
+---
+
+# Commit and push when done
+
+When we finish building a feature or completing a task:
+
+1. **Decide when it's done** — You decide when the work is complete (feature implemented, tests/docs updated if needed, no known broken state).
+2. **Commit and push** — Stage all relevant changes, commit with a clear message, and push to the remote (e.g. `origin main`).
+
+Do this without being asked. The user prefers that completed work is committed and pushed as part of wrapping up.
+
+If the user explicitly says not to commit (e.g. "don't push yet"), skip the commit/push.
