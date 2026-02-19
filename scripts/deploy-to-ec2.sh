@@ -26,11 +26,14 @@ ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "ec2-user@${EC2_HOST}" << 'REM
   fi
   cd ~/paystub-service
   git pull origin main
+  # Build backend with --no-cache so code changes (e.g. discovery time filtering) are not skipped by layer cache
   if command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_BUILDKIT=0 sudo docker-compose -f docker-compose.prod.yml up -d --build
+    DOCKER_BUILDKIT=0 sudo docker-compose -f docker-compose.prod.yml build --no-cache backend
+    DOCKER_BUILDKIT=0 sudo docker-compose -f docker-compose.prod.yml up -d
     sudo docker-compose -f docker-compose.prod.yml ps
   else
-    DOCKER_BUILDKIT=0 sudo docker compose -f docker-compose.prod.yml up -d --build
+    DOCKER_BUILDKIT=0 sudo docker compose -f docker-compose.prod.yml build --no-cache backend
+    DOCKER_BUILDKIT=0 sudo docker compose -f docker-compose.prod.yml up -d
     sudo docker compose -f docker-compose.prod.yml ps
   fi
   echo "Deploy done. API: http://$(curl -s -m 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo EC2_IP):8000"
