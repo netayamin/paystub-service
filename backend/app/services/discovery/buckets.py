@@ -34,10 +34,7 @@ from app.db.session import SessionLocal
 
 
 def window_start_date() -> date:
-    """First day of the 14-day discovery window. After 11 PM server local time, use tomorrow so we drop today (odds anything opens are very low)."""
-    now = datetime.now()
-    if now.hour >= 23:
-        return date.today() + timedelta(days=1)
+    """First day of the 14-day discovery window. Always include today so users see results for today's date."""
     return date.today()
 
 from app.models.availability_session import AvailabilitySession
