@@ -369,6 +369,30 @@ def run_poll_for_bucket(
         )
         db.execute(stmt)
         emitted += 1
+        # Also write to drop_events so aggregation (venue_metrics, market_metrics) and any drop_events readers get data
+        dedupe_key = f"{bid}|{sid}|{now.strftime('%Y-%m-%dT%H:%M')}"
+        try:
+            db.execute(
+                pg_insert(DropEvent)
+                .values(
+                    bucket_id=bid,
+                    slot_id=sid,
+                    opened_at=now,
+                    venue_id=r.get("venue_id") if r else None,
+                    venue_name=r.get("venue_name") if r else None,
+                    payload_json=json.dumps(r["payload"]) if r else None,
+                    dedupe_key=dedupe_key,
+                    time_bucket=time_bucket_val,
+                    slot_date=slot_date_val,
+                    slot_time=slot_time_val,
+                    provider=provider,
+                    neighborhood=neighborhood_val,
+                    price_range=price_range_val,
+                )
+                .on_conflict_do_nothing(index_elements=["dedupe_key"])
+            )
+        except Exception as e:
+            logger.debug("DropEvent insert skip (duplicate or error): %s", e)
         # At most one open session per (bucket_id, slot_id): only insert if none exists (idempotent)
         existing_open = (
             db.query(AvailabilitySession)

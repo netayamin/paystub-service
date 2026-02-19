@@ -25,3 +25,4 @@ class DropEvent(Base):
     provider = Column(String(32), nullable=True, default="resy")
     neighborhood = Column(String(128), nullable=True)
     price_range = Column(String(32), nullable=True)
+    push_sent_at = Column(DateTime(timezone=True), nullable=True)

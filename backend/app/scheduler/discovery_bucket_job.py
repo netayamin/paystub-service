@@ -47,18 +47,20 @@ def _get_executor() -> ThreadPoolExecutor:
 
 def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str) -> None:
     """Poll one bucket in its own session; on finish re-enqueue (set next_run_after) and update heartbeat."""
+    now = datetime.now(timezone.utc)
     try:
         _poll_one_bucket(bid, date_str, time_slot)
-        set_discovery_job_heartbeat(last_bucket_completed_at=datetime.now(timezone.utc))
+        set_discovery_job_heartbeat(last_bucket_completed_at=now)
     except Exception as e:
         logger.exception("Bucket %s failed: %s", bid, e)
     finally:
         with _lock:
             _in_flight.discard(bid)
-            _bucket_next_run[bid] = datetime.now(timezone.utc) + timedelta(
-                seconds=DISCOVERY_BUCKET_COOLDOWN_SECONDS
-            )
-            set_discovery_job_heartbeat(in_flight_count=len(_in_flight))
+            _bucket_next_run[bid] = now + timedelta(seconds=DISCOVERY_BUCKET_COOLDOWN_SECONDS)
+            in_flight = len(_in_flight)
+            set_discovery_job_heartbeat(in_flight_count=in_flight)
+            if in_flight == 0:
+                set_discovery_job_heartbeat(finished=now, running=False)
 
 
 def run_discovery_bucket_job() -> None:
@@ -106,7 +108,10 @@ def run_discovery_bucket_job() -> None:
         to_run = ready[:DISCOVERY_MAX_CONCURRENT_BUCKETS]
 
         if not to_run:
-            set_discovery_job_heartbeat(in_flight_count=len(_in_flight))
+            in_flight = len(_in_flight)
+            set_discovery_job_heartbeat(in_flight_count=in_flight)
+            if in_flight == 0:
+                set_discovery_job_heartbeat(finished=now, running=False)
             return
 
         for bid, date_str, time_slot in to_run:

@@ -29,14 +29,17 @@ if _maxim_api_key and _maxim_repo_id:
     _maxim_logger = _maxim.logger({"id": _maxim_repo_id})
     instrument_pydantic_ai(_maxim_logger, debug=os.getenv("MAXIM_DEBUG", "").lower() in ("1", "true", "yes"))
 
-from app.api.routes import discovery, notifications, resy
+from app.api.routes import discovery, notifications, push, resy
 from app.config import settings
 from app.core.constants import (
     DISCOVERY_BUCKET_JOB_ID,
     DISCOVERY_POLL_INTERVAL_SECONDS,
     DISCOVERY_SLIDING_WINDOW_JOB_ID,
+    PUSH_INTERVAL_SECONDS,
+    PUSH_JOB_ID,
 )
 from app.scheduler.discovery_bucket_job import run_discovery_bucket_job, run_sliding_window_job
+from app.scheduler.push_job import run_push_for_new_drops_job
 from app.scheduler.hourly_resy import run_hourly_check
 
 if settings.openai_api_key:
@@ -65,6 +68,12 @@ async def lifespan(app: FastAPI):
         hour=7,
         minute=5,
         id=DISCOVERY_SLIDING_WINDOW_JOB_ID,
+    )
+    _scheduler.add_job(
+        run_push_for_new_drops_job,
+        "interval",
+        seconds=PUSH_INTERVAL_SECONDS,
+        id=PUSH_JOB_ID,
     )
     _scheduler.start()
     app.state.scheduler = _scheduler
@@ -126,6 +135,7 @@ if _maxim_logger is not None:
 
 app.include_router(discovery.router, prefix="/chat", tags=["discovery"])
 app.include_router(notifications.router, prefix="/chat", tags=["notifications"])
+app.include_router(push.router, prefix="/chat", tags=["push"])
 app.include_router(resy.router, prefix="/resy", tags=["resy"])
 
 

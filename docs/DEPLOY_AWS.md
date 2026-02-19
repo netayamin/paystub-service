@@ -130,6 +130,67 @@ Your API will be at **http://3.142.49.156:8000**. Use that as the base URL in th
 
 ---
 
+## Backend not running on EC2 (start / restart)
+
+If the API at `http://<EC2_IP>:8000` doesn’t respond or the backend isn’t running:
+
+1. **SSH into EC2** (use your key and public IP, e.g. `3.19.238.117` or your current instance):
+
+   ```bash
+   ssh -i /path/to/your-key.pem ec2-user@YOUR_EC2_PUBLIC_IP
+   ```
+
+2. **Go to the repo** (if you already cloned it):
+
+   ```bash
+   cd ~/paystub-service
+   ```
+
+   If the repo isn’t there, clone and bootstrap first:
+
+   ```bash
+   git clone https://github.com/netayamin/paystub-service.git && cd paystub-service && bash scripts/ec2-bootstrap.sh
+   ```
+
+3. **Ensure `backend/.env` has RDS and secrets** (DATABASE_URL, RESY_*, etc.). From your Mac you can copy it:
+
+   ```bash
+   scp -i /path/to/your-key.pem backend/.env ec2-user@YOUR_EC2_PUBLIC_IP:~/paystub-service/backend/.env
+   ```
+
+   Or on EC2: `nano backend/.env` and set `DATABASE_URL=postgresql://postgres:PASSWORD@database-2.xxxxx.rds.amazonaws.com:5432/postgres`.
+
+4. **Start or restart the backend** (from EC2, in `~/paystub-service`):
+
+   ```bash
+   sudo docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+   To only restart (no rebuild):
+
+   ```bash
+   sudo docker compose -f docker-compose.prod.yml restart backend
+   ```
+
+5. **Check it’s running**:
+
+   ```bash
+   sudo docker compose -f docker-compose.prod.yml ps
+   curl -s http://localhost:8000/health
+   ```
+
+   From your browser: `http://YOUR_EC2_PUBLIC_IP:8000/health`
+
+6. **If it exits or fails**, check logs:
+
+   ```bash
+   sudo docker compose -f docker-compose.prod.yml logs -f backend
+   ```
+
+   Common causes: wrong or missing `DATABASE_URL`, RDS security group not allowing EC2 (port 5432 from EC2’s security group), or out-of-memory on t3.micro (try t3.small).
+
+---
+
 ## Running migrations
 
 - **Schema migrations (Alembic)** — from your Mac if RDS is reachable, or on EC2 (lightweight):

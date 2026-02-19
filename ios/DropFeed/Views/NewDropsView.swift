@@ -6,6 +6,8 @@ struct NewDropsView: View {
     @State private var drops: [Drop] = []
     @State private var isLoading = false
     @State private var error: String?
+    /// IDs we've already shown a local notification for (testing without APNs).
+    @State private var notifiedDropIds: Set<String> = []
     
     var body: some View {
         NavigationStack {
@@ -75,7 +77,17 @@ struct NewDropsView: View {
         error = nil
         defer { isLoading = false }
         do {
-            drops = try await APIService.shared.fetchNewDrops(withinMinutes: 30)
+            let newDrops = try await APIService.shared.fetchNewDrops(withinMinutes: 30)
+            // Local notification for any drop we haven't notified for yet (no APNs needed for testing).
+            for drop in newDrops where !notifiedDropIds.contains(drop.id) {
+                LocalNotificationHelper.notifyNewDrop(
+                    venueName: drop.name,
+                    dateStr: drop.dateStr,
+                    timeStr: drop.slots.first?.time
+                )
+                notifiedDropIds.insert(drop.id)
+            }
+            drops = newDrops
             badgeCount = drops.count
         } catch let e as APIError {
             error = e.localizedDescription

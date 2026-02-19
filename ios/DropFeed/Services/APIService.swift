@@ -95,6 +95,17 @@ final class APIService {
             )
         }
     }
+
+    /// Register device for push notifications (new drops). Call after receiving token from APNs.
+    func registerPushToken(deviceToken: String) async {
+        guard let url = URL(string: "\(baseURL)/chat/push/register") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: String] = ["device_token": deviceToken, "platform": "ios"]
+        request.httpBody = try? JSONEncoder().encode(body)
+        let _ = try? await session.data(for: request)
+    }
 }
 
 struct NewDropsResponse: Codable {
