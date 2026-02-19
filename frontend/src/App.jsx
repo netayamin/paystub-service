@@ -382,7 +382,7 @@ export default function App() {
       if (selectedDates.size > 0) {
         params.set("dates", Array.from(selectedDates).join(","));
       }
-      // Time filter: presets or custom dinner range (backend accepts time_range e.g. 18:00-21:00 or time_after/time_before)
+      // Time filter: pass time_range (or time_after/time_before) so backend filters. Only when user has selected a time other than "All" (e.g. Dinner).
       if (!selectedTimes.has("all") && selectedTimes.size > 0) {
         const ranges = [];
         if (selectedTimes.has("lunch")) ranges.push({ after: "11:00", before: "15:00" });
