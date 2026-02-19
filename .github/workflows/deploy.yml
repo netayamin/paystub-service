@@ -21,5 +21,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 10m
           script: |
-            bash ~/paystub-service/scripts/ec2-pull-and-restart.sh
+            cd ~/paystub-service
+            git pull origin main
+            bash scripts/ec2-pull-and-restart.sh
             echo "Deploy done."
