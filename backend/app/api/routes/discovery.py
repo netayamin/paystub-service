@@ -685,6 +685,34 @@ def _filter_availability_times_to_range(
     return out
 
 
+def _filter_feed_cards_by_time_range(
+    cards: list[dict],
+    after_min: int,
+    before_min: int,
+) -> list[dict]:
+    """Filter each card's slots to the time range; drop cards with no slots left."""
+    result = []
+    for c in cards or []:
+        slots = c.get("slots") or []
+        kept_slots = []
+        for s in slots:
+            time_str = (s.get("time") or "").strip()
+            if not time_str or time_str == "—":
+                continue
+            mins = _parse_time_to_minutes(time_str[:5] if len(time_str) >= 5 else time_str)
+            if mins is None:
+                continue
+            if after_min <= mins <= before_min:
+                kept_slots.append(s)
+        if not kept_slots:
+            continue
+        card = dict(c)
+        card["slots"] = kept_slots
+        card["resyUrl"] = (kept_slots[0].get("resyUrl") if kept_slots else None) or None
+        result.append(card)
+    return result
+
+
 def _parse_time_range(value: str | None) -> tuple[int | None, int | None]:
     """Parse time_range 'HH:MM-HH:MM' or 'HH:MM - HH:MM' into (time_after_min, time_before_min). Returns (None, None) if invalid."""
     if not value or not value.strip():
@@ -734,6 +762,10 @@ async def list_just_opened(
         else:
             time_after_min = _parse_time_to_minutes(time_after)
             time_before_min = _parse_time_to_minutes(time_before)
+        # Expose time filter in response so you can verify local vs EC2 (Network tab → Headers)
+        if time_after_min is not None and time_before_min is not None:
+            response.headers["X-Time-Range-Active"] = "1"
+            response.headers["X-Time-Range-Min"] = f"{time_after_min}-{time_before_min}"
         info = get_last_scan_info_buckets(db, today)
         just_opened = get_just_opened_from_buckets(
             db,
@@ -790,12 +822,19 @@ async def list_just_opened(
                 v["is_hotspot"] = is_hotspot(v.get("name"))
 
         feed = build_feed(just_opened, still_open)
+        ranked_board = feed["ranked_board"]
+        top_opportunities = feed["top_opportunities"]
+        hot_right_now = feed["hot_right_now"]
+        if time_after_min is not None and time_before_min is not None:
+            ranked_board = _filter_feed_cards_by_time_range(ranked_board, time_after_min, time_before_min)
+            top_opportunities = _filter_feed_cards_by_time_range(top_opportunities, time_after_min, time_before_min)
+            hot_right_now = _filter_feed_cards_by_time_range(hot_right_now, time_after_min, time_before_min)
         payload = {
             "just_opened": just_opened,
             "still_open": still_open,
-            "ranked_board": feed["ranked_board"],
-            "top_opportunities": feed["top_opportunities"],
-            "hot_right_now": feed["hot_right_now"],
+            "ranked_board": ranked_board,
+            "top_opportunities": top_opportunities,
+            "hot_right_now": hot_right_now,
             **info,
             "next_scan_at": _next_scan_iso(request),
         }
@@ -815,6 +854,10 @@ async def list_just_opened(
             empty_baseline_buckets = [r.bucket_id for r in rows if _baseline_empty(r.baseline_slot_ids_json)]
             payload["_debug"] = {
                 "date_filter_sent": date_filter,
+                "time_range_sent": time_range,
+                "time_after_min": time_after_min,
+                "time_before_min": time_before_min,
+                "time_filter_active": time_after_min is not None and time_before_min is not None,
                 "just_opened_dates": list(just_opened_by_date.keys()),
                 "still_open_dates": list(still_open_by_date.keys()),
                 "just_opened_per_date": just_opened_by_date,
