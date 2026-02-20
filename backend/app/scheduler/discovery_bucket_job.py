@@ -68,20 +68,17 @@ def run_discovery_bucket_job() -> None:
     One tick: prune/ensure buckets, then dispatch up to DISCOVERY_MAX_CONCURRENT_BUCKETS
     buckets that are ready (cooldown elapsed, not already in flight). Does not wait for
     them; they run in the shared executor and re-enqueue themselves when done.
+
+    Baselines are set on first poll: run_poll_for_bucket treats baseline_slot_ids_json is None
+    as "first run" and sets baseline = prev = curr (no separate baseline step). So we never
+    do Resy calls in this thread — only cheap DB (prune, ensure_buckets) and dispatch.
     """
     today = window_start_date()
     db = SessionLocal()
     try:
         prune_old_buckets(db, today)
         ensure_buckets(db, today)
-        # Baseline any bucket that has no baseline yet (first time we see it)
-        from app.models.discovery_bucket import DiscoveryBucket
-
-        need_baseline = db.query(DiscoveryBucket).filter(
-            DiscoveryBucket.baseline_slot_ids_json.is_(None)
-        ).all()
-        for row in need_baseline:
-            run_baseline_for_bucket(db, row.bucket_id, row.date_str, row.time_slot)
+        # Do NOT run baselines here. Buckets with no baseline get it on first poll (in executor).
     finally:
         db.close()
 

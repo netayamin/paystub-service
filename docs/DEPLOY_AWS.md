@@ -4,10 +4,24 @@ Run the **backend in Docker** on a single EC2 instance and use **Amazon RDS for 
 
 **Your EC2 (this deployment):** `3.19.238.117` — API: **http://3.19.238.117:8000**
 
-**If http://3.142.49.156:8000/health does nothing (times out or blank):**
+**If http://YOUR_EC2_IP:8000/health does nothing (times out or blank):**
 
 1. **EC2 security group** — Inbound: add **Custom TCP, port 8000**, Source **0.0.0.0/0** (and keep **SSH 22**).
-2. **RDS security group** — Inbound: add **PostgreSQL, port 5432**, Source = **this EC2’s security group** (e.g. `sg-xxx` for the instance 3.142.49.156). Without this, the backend cannot connect to the database and requests hang or fail.
+2. **RDS security group** — Inbound: add **PostgreSQL, port 5432**, Source = **this EC2’s security group** (e.g. `sg-xxx` for the instance). Without this, the backend cannot connect to the database and requests hang or fail.
+
+**Backend doesn’t return a reply (timeout / no response):** Run these on EC2 to narrow it down:
+
+```bash
+cd ~/paystub-service
+sudo docker-compose -f docker-compose.prod.yml ps
+curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:8000/health
+sudo docker-compose -f docker-compose.prod.yml logs --tail 80 backend
+```
+
+- If **container is not running** or **Exited**: check logs for crashes (e.g. `DATABASE_URL`, RDS unreachable). Restart: `sudo docker-compose -f docker-compose.prod.yml up -d --force-recreate backend`.
+- If **curl to localhost:8000/health** returns `200` from EC2 but the app/iOS from outside gets no reply: **EC2 security group** — open **Custom TCP 8000** from `0.0.0.0/0`.
+- If **curl to localhost:8000/health** hangs or fails: backend or DB issue. Check logs; ensure RDS security group allows EC2 on 5432 and `backend/.env` has the correct `DATABASE_URL`.
+- If **/health** works but **/chat/watches/just-opened** never returns: that endpoint can be slow under load (many buckets). On a small instance, consider t3.small or increasing client timeout in the app.
 
 ---
 

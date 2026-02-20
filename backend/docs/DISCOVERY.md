@@ -24,6 +24,16 @@ We maintain a **rolling 14-day window** of availability snapshots. The **origina
 3. **Hot drops (comparison)**  
    For each date, **just opened** = venues in `venues_json` whose name is **not** in the **original** snapshot (`previous_venues_json`). `hot_drops_json` stores `[{ "name", "detected_at" }]` so we keep first-seen time; we only show venues still in current.
 
+### Baselines without blocking the server
+
+We want a **baseline snapshot** per bucket, then compare each **next run** to it (and to the previous run) to see what’s new. To keep the backend responsive on small instances:
+
+- **No baseline step in the main tick.** Each tick only: prune old buckets, ensure all 28 bucket rows exist (INSERT if missing), then dispatch up to N “ready” buckets to a **thread pool** for polling. The main thread never calls Resy.
+- **First poll = baseline.** When a bucket is polled for the first time (or has `baseline_slot_ids_json` NULL), `run_poll_for_bucket` sets `baseline = prev = curr` and returns. So the first successful poll establishes the baseline; subsequent polls compute drops as `(curr − prev) ∩ (curr − baseline)`.
+- **Result:** The API stays responsive (no long Resy/DB work in the request-handling process), and we still get the same semantics: baseline once, then compare every run to baseline and previous.
+
+The **sliding-window job** (daily) still baselines the 2 new-day buckets so they’re warm; optional and only 2 Resy calls per day.
+
 ## Light profile (small instances, e.g. t3.micro)
 
 Discovery is configurable via **environment variables** so the same code can run with less load on a 1 GB instance. Set these in `backend/.env` (or EC2) to reduce memory and API usage:

@@ -21,14 +21,14 @@ struct LiveUpdateTrainBar: View {
 
                 // Train: gradient head + soft trail
                 if reduceMotion {
-                    // Static “on” segment
+                    // Static “on” segment (red = live)
                     RoundedRectangle(cornerRadius: barHeight / 2)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    AppTheme.accent.opacity(0.5),
-                                    AppTheme.liveDot.opacity(0.6),
-                                    AppTheme.accent.opacity(0.3)
+                                    AppTheme.accentRed.opacity(0.5),
+                                    AppTheme.accentRed.opacity(0.8),
+                                    AppTheme.accentRed.opacity(0.4)
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
@@ -37,20 +37,19 @@ struct LiveUpdateTrainBar: View {
                         .frame(width: trainWidth, height: barHeight)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    // Moving train: head + a few “cars” for a train effect
+                    // Moving train: red head + trail (red = live)
                     HStack(spacing: 6) {
-                        // Head (bright)
                         RoundedRectangle(cornerRadius: barHeight / 2)
-                            .fill(AppTheme.liveDot)
+                            .fill(AppTheme.accentRed)
                             .frame(width: 24, height: barHeight)
                         RoundedRectangle(cornerRadius: barHeight / 2)
-                            .fill(AppTheme.accent.opacity(0.8))
+                            .fill(AppTheme.accentRed.opacity(0.8))
                             .frame(width: 16, height: barHeight)
                         RoundedRectangle(cornerRadius: barHeight / 2)
-                            .fill(AppTheme.accent.opacity(0.5))
+                            .fill(AppTheme.accentRed.opacity(0.5))
                             .frame(width: 12, height: barHeight)
                         RoundedRectangle(cornerRadius: barHeight / 2)
-                            .fill(AppTheme.accent.opacity(0.3))
+                            .fill(AppTheme.accentRed.opacity(0.3))
                             .frame(width: 10, height: barHeight)
                     }
                     .offset(x: -trainWidth + (w + trainWidth) * phase)
