@@ -56,6 +56,11 @@ def _list_str(key: str, default: List[str], allowed: List[str] | None = None) ->
 # -----------------------------------------------------------------------------
 # Discovery window and buckets
 # -----------------------------------------------------------------------------
+# Timezone for "today" in the discovery window (pruning, window start). Use the app's primary
+# market (e.g. America/New_York for NYC) so users see results for their calendar "today" even
+# when the server runs in UTC (e.g. 8pm ET = next day UTC; without this we'd prune "today").
+DISCOVERY_DATE_TIMEZONE = os.environ.get("DISCOVERY_DATE_TIMEZONE", "America/New_York").strip() or "America/New_York"
+
 # Number of days in the discovery window (today + N-1). Fewer = fewer buckets.
 DISCOVERY_WINDOW_DAYS = _int("DISCOVERY_WINDOW_DAYS", 14, min_val=1, max_val=14)
 

@@ -24,7 +24,9 @@ struct FeedView: View {
     
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                LiveUpdateTrainBar()
+                Group {
                 if vm.isLoading && vm.drops.isEmpty {
                     loadingView
                 } else if let err = vm.error {
@@ -54,6 +56,7 @@ struct FeedView: View {
             .navigationBarHidden(true)
             .navigationDestination(item: $seeAllDestination) { dest in
                 AllDropsListView(title: dest.title, drops: dest.drops, style: dest.style)
+            }
             }
         }
     }

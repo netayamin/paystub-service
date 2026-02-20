@@ -30,6 +30,7 @@ Discovery is configurable via **environment variables** so the same code can run
 
 | Env var | Default | Light suggestion | Effect |
 |--------|---------|-------------------|--------|
+| `DISCOVERY_DATE_TIMEZONE` | America/New_York | — | Timezone for "today" (window start and pruning). Ensures users see today's results when server is UTC. |
 | `DISCOVERY_WINDOW_DAYS` | 14 | 7 | Fewer buckets (7 days × slots). |
 | `DISCOVERY_TIME_SLOTS` | 15:00,19:00 | 19:00 | Only prime-time slot → half the buckets. |
 | `DISCOVERY_PARTY_SIZES` | 2,4 | 2 | One party size → half the Resy calls per bucket. |

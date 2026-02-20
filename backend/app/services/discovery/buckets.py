@@ -25,6 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.discovery_config import (
+    DISCOVERY_DATE_TIMEZONE,
     DISCOVERY_MAX_CONCURRENT_BUCKETS,
     DISCOVERY_PARTY_SIZES,
     DISCOVERY_TIME_SLOTS,
@@ -34,7 +35,20 @@ from app.db.session import SessionLocal
 
 
 def window_start_date() -> date:
-    """First day of the 14-day discovery window. Always include today so users see results for today's date."""
+    """
+    First day of the 14-day discovery window, in the app's date timezone (e.g. America/New_York).
+    Using a fixed TZ ensures "today" matches the user's calendar: e.g. 8pm ET is still "today" in NY
+    even when the server is in UTC (where it may already be the next day). Avoids pruning today's
+    buckets and returning no results for "today".
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
+    except Exception:
+        tz = None
+    if tz is not None:
+        now = datetime.now(tz)
+        return now.date()
     return date.today()
 
 from app.models.availability_session import AvailabilitySession
