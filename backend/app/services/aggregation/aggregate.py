@@ -321,7 +321,13 @@ def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
     # Venue rolling metrics: drop frequency, rarity, trend (last 7 vs prev 7), availability rate
     since = today - timedelta(days=ROLLING_WINDOW_DAYS)
     last_7_cutoff = today - timedelta(days=7)
-    vm_rows = db.query(VenueMetrics).filter(VenueMetrics.window_date >= since).all()
+    VENUE_METRICS_LIMIT = 50_000  # cap for scalability (14 days × many venues)
+    vm_rows = (
+        db.query(VenueMetrics)
+        .filter(VenueMetrics.window_date >= since)
+        .limit(VENUE_METRICS_LIMIT)
+        .all()
+    )
     by_venue: dict[str, list[Any]] = defaultdict(list)
     for r in vm_rows:
         by_venue[r.venue_id].append(r)

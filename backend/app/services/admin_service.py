@@ -7,7 +7,7 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.db.tables import DISCOVERY_TABLE_NAMES
+from app.db.tables import DISCOVERY_TABLE_NAMES, FULL_RESET_TABLE_NAMES
 from app.models.availability_session import AvailabilitySession
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
@@ -60,3 +60,24 @@ def reset_discovery_buckets(db: Session) -> dict[str, int]:
             deleted["drop_events"], deleted["slot_availability"], deleted["availability_sessions"], deleted["discovery_buckets"],
         )
     return deleted
+
+
+def reset_all_discovery_and_metrics(db: Session) -> dict:
+    """
+    Full reset: truncate discovery + metrics + feed_cache + venues. Keeps push_tokens, notify_preferences.
+    Next discovery job run will create fresh buckets. Restart backend for fresh scheduler state.
+    """
+    logger.info("reset_all_discovery_and_metrics: starting (full reset)")
+    result: dict = {"ok": True, "truncated": [], "error": None}
+    try:
+        tables = ", ".join(FULL_RESET_TABLE_NAMES)
+        db.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
+        db.commit()
+        result["truncated"] = list(FULL_RESET_TABLE_NAMES)
+        logger.info("reset_all_discovery_and_metrics: done (TRUNCATE %s tables)", len(FULL_RESET_TABLE_NAMES))
+    except Exception as e:
+        db.rollback()
+        logger.exception("reset_all_discovery_and_metrics failed: %s", e)
+        result["ok"] = False
+        result["error"] = str(e)
+    return result

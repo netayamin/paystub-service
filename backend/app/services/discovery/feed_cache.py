@@ -32,8 +32,6 @@ def refresh_feed_cache(db: Session) -> None:
         date_filter=None,
         time_slots=None,
         party_sizes=None,
-        time_after_min=None,
-        time_before_min=None,
         opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
     )
     still_open = get_still_open_from_buckets(
@@ -42,8 +40,6 @@ def refresh_feed_cache(db: Session) -> None:
         date_filter=None,
         time_slots=None,
         party_sizes=None,
-        time_after_min=None,
-        time_before_min=None,
         exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
     )
     feed = build_feed(just_opened, still_open)

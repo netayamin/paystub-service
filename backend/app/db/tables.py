@@ -6,7 +6,7 @@ Use these names when writing raw SQL (e.g. TRUNCATE). Do not reference dropped t
   - chat_sessions, watch_list, venue_search_snapshots, booking_attempts, tool_call_logs,
     documents, paystub_insights (026).
 """
-# All tables that exist in the DB. Must match models and migrations 023–037.
+# All tables that exist in the DB. Must match models and migrations 023–039.
 ALL_TABLE_NAMES = (
     "discovery_buckets",
     "drop_events",
@@ -18,6 +18,7 @@ ALL_TABLE_NAMES = (
     "market_metrics",
     "venue_rolling_metrics",
     "push_tokens",
+    "notify_preferences",
 )
 
 # Tables cleared when resetting discovery state (TRUNCATE). Order matters for FK if any.
@@ -25,5 +26,18 @@ DISCOVERY_TABLE_NAMES = (
     "drop_events",
     "slot_availability",
     "availability_sessions",
+    "discovery_buckets",
+)
+
+# Tables cleared for a full reset (discovery + metrics + cache + venues). Keeps push_tokens, notify_preferences, alembic_version.
+FULL_RESET_TABLE_NAMES = (
+    "drop_events",
+    "slot_availability",
+    "availability_sessions",
+    "feed_cache",
+    "venue_metrics",
+    "market_metrics",
+    "venue_rolling_metrics",
+    "venues",
     "discovery_buckets",
 )

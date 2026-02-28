@@ -79,10 +79,9 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = _scheduler
 
     def startup_background():
-        # Defer first tick so the app can serve /health and accept requests immediately.
-        # On small instances the first discovery tick can be heavy (many buckets, Resy, DB).
+        # Brief delay so /health is up; then run first discovery tick so we get new data quickly.
         import time
-        time.sleep(8)
+        time.sleep(3)
         try:
             run_discovery_bucket_job()
             logger.info("Discovery bucket job tick on startup; next tick in %ss", DISCOVERY_POLL_INTERVAL_SECONDS)

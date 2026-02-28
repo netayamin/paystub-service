@@ -1,7 +1,10 @@
 """Resy API client: venue search. Validation here; client below just sends the request."""
+import logging
 import re
 from datetime import date
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from app.services.resy.client import ResyClient
 from app.services.resy.config import ResyConfig
@@ -210,6 +213,7 @@ def search_with_availability(
     time_filter: str | None = None,
     time_window_hours: int = 1,
     venue_filter: dict[str, Any] | None = None,
+    timeout: float = 20.0,
 ) -> dict[str, Any]:
     """Search venues with availability; returns only venues that have at least one slot. Fetches all pages (using API total_pages), capped at max_pages (default 5 = up to 500 venues). When time_filter is set, time_window_hours (default 1) expands to ±N hours; use 3 for Resy's natural ±3h window."""
     day_str = _day_to_iso(day)
@@ -234,9 +238,12 @@ def search_with_availability(
                 max_pages=max_pages,
                 time_filter=t,
                 venue_filter=venue_filter,
+                timeout=timeout,
             )
             if raw.get("error"):
-                return raw
+                # Skip this time filter and continue; partial results are better than 0 (avoids one timeout killing the whole bucket)
+                logger.debug("Resy search time_filter=%s failed: %s (continuing with other times)", t, raw.get("error"))
+                continue
             hits = (raw.get("search") or {}).get("hits") or []
             all_hits_list.append(hits)
         hits = _merge_hits_by_venue(all_hits_list)
@@ -249,6 +256,7 @@ def search_with_availability(
             max_pages=max_pages,
             time_filter=None,
             venue_filter=venue_filter,
+            timeout=timeout,
         )
         if raw.get("error"):
             return raw

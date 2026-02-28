@@ -1,6 +1,11 @@
 """
-Discovery workload config: env-driven so the same code can run "light" (e.g. t3.micro)
-or "full" (larger instance). All values read at import time.
+Discovery workload config. .env is the source of truth; these defaults apply only when
+the env var is unset. All values read at import time.
+
+Env vars: DISCOVERY_WINDOW_DAYS, DISCOVERY_TIME_SLOTS, DISCOVERY_PARTY_SIZES,
+DISCOVERY_MAX_CONCURRENT_BUCKETS, DISCOVERY_BUCKET_COOLDOWN_SECONDS,
+DISCOVERY_TICK_SECONDS, NOTIFIED_DEDUPE_MINUTES, DISCOVERY_RESY_PER_PAGE,
+DISCOVERY_RESY_MAX_PAGES, DISCOVERY_DATE_TIMEZONE.
 """
 import os
 from dataclasses import dataclass
@@ -54,43 +59,31 @@ def _list_str(key: str, default: List[str], allowed: List[str] | None = None) ->
 
 
 # -----------------------------------------------------------------------------
-# Discovery window and buckets
+# Discovery window and buckets (set in .env; defaults below only when unset)
 # -----------------------------------------------------------------------------
-# Timezone for "today" in the discovery window (pruning, window start). Use the app's primary
-# market (e.g. America/New_York for NYC) so users see results for their calendar "today" even
-# when the server runs in UTC (e.g. 8pm ET = next day UTC; without this we'd prune "today").
 DISCOVERY_DATE_TIMEZONE = os.environ.get("DISCOVERY_DATE_TIMEZONE", "America/New_York").strip() or "America/New_York"
-
-# Number of days in the discovery window (today + N-1). Fewer = fewer buckets.
 DISCOVERY_WINDOW_DAYS = _int("DISCOVERY_WINDOW_DAYS", 14, min_val=1, max_val=14)
-
-# Time slots per day ("15:00" = ~lunch/afternoon, "19:00" = prime). One slot = half the buckets.
 DISCOVERY_TIME_SLOTS = _list_str(
     "DISCOVERY_TIME_SLOTS",
-    ["15:00", "19:00"],
-    allowed=["15:00", "19:00"],
+    ["15:00", "20:30"],
+    allowed=["13:00", "15:00", "19:00", "20:30"],
 )
-
-# Party sizes to query per bucket. Fewer = fewer API calls per bucket.
 DISCOVERY_PARTY_SIZES = _list_int("DISCOVERY_PARTY_SIZES", [2, 4])
 
 # -----------------------------------------------------------------------------
-# Scheduler: concurrency and cooldown
+# Scheduler: concurrency, cooldown, tick (.env is source of truth)
 # -----------------------------------------------------------------------------
-# Max buckets polled in parallel. Lower = less memory/CPU spike (e.g. 2 for t3.micro).
-DISCOVERY_MAX_CONCURRENT_BUCKETS = _int(
-    "DISCOVERY_MAX_CONCURRENT_BUCKETS", 8, min_val=1, max_val=28
-)
-
-# Seconds before a bucket can be polled again after it finishes.
+DISCOVERY_MAX_CONCURRENT_BUCKETS = _int("DISCOVERY_MAX_CONCURRENT_BUCKETS", 7, min_val=1, max_val=28)
 DISCOVERY_BUCKET_COOLDOWN_SECONDS = _int(
-    "DISCOVERY_BUCKET_COOLDOWN_SECONDS", 30, min_val=10, max_val=300
+    "DISCOVERY_BUCKET_COOLDOWN_SECONDS", 10, min_val=5, max_val=300
 )
+DISCOVERY_TICK_SECONDS = _int("DISCOVERY_TICK_SECONDS", 2, min_val=1, max_val=60)
+# Don't create a new DropEvent (or re-notify) for the same (bucket_id, slot_id) within this many minutes (TTL dedupe).
+NOTIFIED_DEDUPE_MINUTES = _int("NOTIFIED_DEDUPE_MINUTES", 30, min_val=5, max_val=1440)
 
 # -----------------------------------------------------------------------------
-# Resy API: results per bucket
+# Resy API: results per bucket (.env is source of truth)
 # -----------------------------------------------------------------------------
-# Venues per page and max pages per search. Lower = less data per bucket (e.g. 50 and 2 for light).
 DISCOVERY_RESY_PER_PAGE = _int("DISCOVERY_RESY_PER_PAGE", 100, min_val=20, max_val=200)
 DISCOVERY_RESY_MAX_PAGES = _int("DISCOVERY_RESY_MAX_PAGES", 5, min_val=1, max_val=10)
 
@@ -103,8 +96,10 @@ class DiscoveryConfig:
     party_sizes: List[int]
     max_concurrent_buckets: int
     bucket_cooldown_seconds: int
+    tick_seconds: int
     resy_per_page: int
     resy_max_pages: int
+    notified_dedupe_minutes: int
 
 
 def get_discovery_config() -> DiscoveryConfig:
@@ -114,6 +109,8 @@ def get_discovery_config() -> DiscoveryConfig:
         party_sizes=DISCOVERY_PARTY_SIZES,
         max_concurrent_buckets=DISCOVERY_MAX_CONCURRENT_BUCKETS,
         bucket_cooldown_seconds=DISCOVERY_BUCKET_COOLDOWN_SECONDS,
+        tick_seconds=DISCOVERY_TICK_SECONDS,
         resy_per_page=DISCOVERY_RESY_PER_PAGE,
         resy_max_pages=DISCOVERY_RESY_MAX_PAGES,
+        notified_dedupe_minutes=NOTIFIED_DEDUPE_MINUTES,
     )

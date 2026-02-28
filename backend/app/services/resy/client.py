@@ -89,6 +89,7 @@ class ResyClient:
         max_pages: int = 5,
         time_filter: str | None = None,
         venue_filter: dict[str, Any] | None = None,
+        timeout: float = 20.0,
     ) -> dict[str, Any]:
         """POST venue search; uses API response total_pages to fetch all pages, returns merged hits. Capped at max_pages (default 5 = up to 500)."""
         slot_filter: dict[str, Any] = {"day": day, "party_size": party_size}
@@ -110,7 +111,7 @@ class ResyClient:
             }
             if venue_filter:
                 payload["venue_filter"] = venue_filter
-            raw = self._post("/3/venuesearch/search", payload)
+            raw = self._post("/3/venuesearch/search", payload, timeout=timeout)
             if raw.get("error"):
                 if all_hits:
                     return {"search": {"hits": all_hits}}

@@ -131,18 +131,29 @@ def get_discovery_fast_checks(db: Session) -> dict:
             feed_updating = (now - scan_dt).total_seconds() < _FEED_UPDATING_SCAN_WITHIN_MIN * 60
         except (ValueError, TypeError):
             pass
+    # Also true if any bucket completed recently (job is actively writing)
+    if not feed_updating:
+        completed_iso = heartbeat.get("last_bucket_completed_at")
+        if completed_iso:
+            try:
+                completed_dt = datetime.fromisoformat(completed_iso.replace("Z", "+00:00"))
+                if completed_dt.tzinfo is None:
+                    completed_dt = completed_dt.replace(tzinfo=timezone.utc)
+                feed_updating = (now - completed_dt).total_seconds() < _FEED_UPDATING_SCAN_WITHIN_MIN * 60
+            except (ValueError, TypeError):
+                pass
 
     return {
         "fast_checks": {
             "job_alive": job_alive,
             "feed_updating": feed_updating,
             "job_alive_meaning": "is_job_running true, or job started within last 5 min and never finished",
-            "feed_updating_meaning": "last_scan_at within last 10 min",
+            "feed_updating_meaning": "last_scan_at or last_bucket_completed_at within last 10 min",
         },
         "job_heartbeat": heartbeat,
         "discovery": {
             "last_scan_at": last_scan_at_iso,
             "total_venues_scanned": info.get("total_venues_scanned", 0),
         },
-        "log_hint": "Bucket job: queue model; tick every 10s, up to 8 buckets in flight, 30s cooldown per bucket. Check bucket_health in GET /chat/watches/discovery-health.",
+        "log_hint": "Bucket job: tick every 5s, cooldown 15s per bucket. Check bucket_health in GET /chat/watches/discovery-health.",
     }

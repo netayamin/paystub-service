@@ -1,7 +1,7 @@
 """
 Discovery: rolling 14-day availability and drops (bucket pipeline only).
 
-- discovery_buckets: 28 buckets (date × 15:00/19:00); baseline/prev slot_id sets.
+- discovery_buckets: 28 buckets (date × 15:00/20:30); baseline/prev slot_id sets.
 - drop_events: emitted when a slot opens (drops = (curr - prev) ∩ (curr - baseline)).
 - No legacy discovery_scans (table dropped in migration 024).
 """

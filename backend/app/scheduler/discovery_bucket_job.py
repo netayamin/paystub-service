@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from app.core.constants import (
     DISCOVERY_BUCKET_COOLDOWN_SECONDS,
     DISCOVERY_MAX_CONCURRENT_BUCKETS,
+    DISCOVERY_PRUNE_EVERY_N_TICKS,
 )
 from app.db.session import SessionLocal
 from app.services.discovery.buckets import (
@@ -33,6 +34,7 @@ _bucket_next_run: dict[str, datetime] = {}
 _in_flight: set[str] = set()
 _lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
+_tick_count = 0  # for throttled retention pruning
 
 
 def _get_executor() -> ThreadPoolExecutor:
@@ -69,16 +71,46 @@ def run_discovery_bucket_job() -> None:
     buckets that are ready (cooldown elapsed, not already in flight). Does not wait for
     them; they run in the shared executor and re-enqueue themselves when done.
 
+    Retention: every DISCOVERY_PRUNE_EVERY_N_TICKS ticks we also prune slot_availability,
+    drop_events, and availability_sessions so tables stay bounded between daily sliding-window runs.
+
     Baselines are set on first poll: run_poll_for_bucket treats baseline_slot_ids_json is None
     as "first run" and sets baseline = prev = curr (no separate baseline step). So we never
     do Resy calls in this thread — only cheap DB (prune, ensure_buckets) and dispatch.
     """
+    global _tick_count
     today = window_start_date()
     db = SessionLocal()
     try:
-        prune_old_buckets(db, today)
+        # Ensure buckets exist first so we can dispatch; then light retention.
         ensure_buckets(db, today)
-        # Do NOT run baselines here. Buckets with no baseline get it on first poll (in executor).
+        try:
+            prune_old_buckets(db, today)
+        except Exception as e:
+            logger.warning("prune_old_buckets failed (tick continues): %s", e, exc_info=True)
+            db.rollback()
+        # drop_events: prune every 2 ticks to keep hot path quick (still clear regularly)
+        _tick_count += 1
+        if _tick_count % 2 == 0:
+            try:
+                from app.services.discovery.buckets import prune_old_drop_events
+
+                prune_old_drop_events(db, today)
+            except Exception as e:
+                logger.warning("prune_old_drop_events failed (tick continues): %s", e, exc_info=True)
+                db.rollback()
+        if _tick_count >= DISCOVERY_PRUNE_EVERY_N_TICKS:
+            _tick_count = 0
+            try:
+                from app.services.discovery.buckets import (
+                    prune_old_slot_availability,
+                    prune_old_sessions,
+                )
+                prune_old_slot_availability(db, today)
+                prune_old_sessions(db, today)
+            except Exception as e:
+                logger.warning("prune slot_availability/sessions failed (tick continues): %s", e, exc_info=True)
+                db.rollback()
     finally:
         db.close()
 
@@ -135,8 +167,12 @@ def run_sliding_window_job() -> None:
     from app.services.discovery.buckets import (
         delete_closed_drop_events,
         prune_old_drop_events,
+        prune_old_market_metrics,
         prune_old_slot_availability,
         prune_old_sessions,
+        prune_old_venue_metrics,
+        prune_old_venue_rolling_metrics,
+        prune_old_venues,
     )
 
     today = window_start_date()
@@ -147,6 +183,10 @@ def run_sliding_window_job() -> None:
         prune_old_drop_events(db, today)
         prune_old_slot_availability(db, today)
         prune_old_sessions(db, today)
+        prune_old_venue_rolling_metrics(db, today, keep_days=60)
+        prune_old_venue_metrics(db, today)
+        prune_old_market_metrics(db, today)
+        prune_old_venues(db)
         ensure_buckets(db, today)
         new_day = today + timedelta(days=WINDOW_DAYS - 1)
         new_day_str = new_day.isoformat()

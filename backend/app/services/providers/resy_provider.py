@@ -22,12 +22,13 @@ class ResyProvider:
             return []
         by_slot: dict[str, NormalizedSlotResult] = {}
         for party_size in party_sizes:
+            # Pass the slot once; Resy returns ±3h in one response. No client-side expansion (was 7 calls/bucket and baselines never filled).
             result = search_with_availability(
                 day,
                 party_size,
                 query="",
                 time_filter=time_slot,
-                time_window_hours=3,
+                time_window_hours=0,
                 per_page=DISCOVERY_RESY_PER_PAGE,
                 max_pages=DISCOVERY_RESY_MAX_PAGES,
             )

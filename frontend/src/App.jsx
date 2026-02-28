@@ -9,6 +9,8 @@ import {
   ChevronDown,
   X,
   Bell,
+  Bookmark,
+  Clock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -17,8 +19,16 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 
-// In dev, same origin (Vite proxies /chat and /resy). In production, set VITE_API_URL to your backend URL (e.g. https://your-app.railway.app).
-const API_BASE = import.meta.env.VITE_API_URL ?? "";
+// Backend URL from .env. Use localhost:8000 when running backend locally to avoid pending timeouts.
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const API_TIMEOUT_MS = 15000;
+const FEED_POLL_INTERVAL_MS = 5000;
+
+function fetchWithTimeout(url, opts = {}, ms = API_TIMEOUT_MS) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  return fetch(url, { ...opts, signal: c.signal }).finally(() => clearTimeout(t));
+}
 
 /** Parse "HH:MM" to minutes since midnight for comparison. */
 function timeToMins(t) {
@@ -61,6 +71,9 @@ const HOT_RESTAURANTS = new Set([
   "Gage & Tollner", "Francie", "Lilia", "Misi", "Aska", "Oxalis",
   "Olmsted", "Al Di Là", "Hometown BBQ",
 ]);
+
+/** Sorted array of HOT_RESTAURANTS names for search suggestions */
+const HOT_RESTAURANT_NAMES = Array.from(HOT_RESTAURANTS).sort((a, b) => a.localeCompare(b));
 
 /** Names that always get a slot in Top Opportunities when they exist in the feed */
 const TOP_OPPORTUNITY_PRIORITY_NAMES = ["Monkey Bar", "I Sodi", "Tatiana"];
@@ -185,6 +198,19 @@ function formatNextScanCountdown(nextScanAt) {
   return `Scan in ${s}s`;
 }
 
+/** User-facing: when new results drop — for engagement. Always returns text so the label is always visible. */
+function formatNextDropLabel(nextScanAt, isRefreshing) {
+  if (isRefreshing) return { text: "Checking…", soon: false };
+  if (!nextScanAt || !(nextScanAt instanceof Date)) return { text: "Next in ~15s", soon: false };
+  const sec = Math.max(0, Math.round((nextScanAt.getTime() - Date.now()) / 1000));
+  if (sec <= 0) return { text: "Any second…", soon: true };
+  if (sec <= 3) return { text: `${sec}s…`, soon: true };
+  if (sec < 60) return { text: `Next in ${sec}s`, soon: false };
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return { text: s > 0 ? `Next in ${m}m ${s}s` : `Next in ${m}m`, soon: false };
+}
+
 /** Per-bucket scan age: "Just now" | "2m" | "1h" for display in date pill. */
 function formatScanAgo(lastScanAtIso) {
   if (!lastScanAtIso) return "—";
@@ -198,6 +224,19 @@ function formatScanAgo(lastScanAtIso) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
+}
+
+/** "Updated just now" | "Updated 12s ago" | "Updated 2m ago" for live bar (use lastScanAt Date). */
+function formatUpdatedAgo(lastScanAt) {
+  if (!lastScanAt || !(lastScanAt instanceof Date)) return null;
+  const sec = Math.floor((Date.now() - lastScanAt.getTime()) / 1000);
+  if (sec < 0) return "Updated just now";
+  if (sec < 60) return `Updated ${sec}s ago`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `Updated ${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `Updated ${h}h ago`;
+  return `Updated ${Math.floor(h / 24)}d ago`;
 }
 
 /** Single time indicator: "Added just now" (under 1 min) | "Added 5m ago" | "Recently" when unknown */
@@ -219,18 +258,16 @@ function formatTimeSinceDetected(detectedAt) {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
-/**
- * Freshness badge: "Just now" (0–5 min), "Last 30 mins" (5–30), "Last hour" (30–60), null after 60 min.
- */
+/** Freshness badge: "Now" (0–5 min), "30m" (5–30), "1h" (30–60), null after 60 min. */
 function getFreshnessLabel(detectedAt) {
   if (!detectedAt) return null;
   const d = new Date(detectedAt);
   if (Number.isNaN(d.getTime())) return null;
   const secondsAgo = (Date.now() - d.getTime()) / 1000;
-  if (secondsAgo < 5 * 60) return "Just now";
-  if (secondsAgo < 30 * 60) return "Last 30 mins";
-  if (secondsAgo < 60 * 60) return "Last hour";
-  return null;   // 60+ min: no badge
+  if (secondsAgo < 5 * 60) return "Now";
+  if (secondsAgo < 30 * 60) return "30m";
+  if (secondsAgo < 60 * 60) return "1h";
+  return null;
 }
 
 /** Slot label for chips: time only when all slots same date (less clutter), else "Sat Feb 12 · 8:00 PM" */
@@ -243,13 +280,10 @@ function formatSlotLabel(slot, sameDateOnly) {
 
 /**
  * Build cards from API snapshot (just-opened or current_snapshot). Same shape: list of { date_str, venues, scanned_at }.
- * timeChip: "7:00 PM" | "8:00 PM" | "Anytime" — filters to venues with a slot in that window.
+ * No time filter: show all venues and times returned by the backend.
  */
-function buildDiscoveryDrops(snapshotList, timeChip, options = {}) {
+function buildDiscoveryDrops(snapshotList, _unusedTimeChip, options = {}) {
   if (!Array.isArray(snapshotList) || snapshotList.length === 0) return [];
-  const startMin = timeChip === "7:00 PM" ? 19 * 60 : timeChip === "8:00 PM" ? 20 * 60 : null;
-  const endMin = timeChip === "7:00 PM" ? 20 * 60 : timeChip === "8:00 PM" ? 21 * 60 : null;
-  const filterByTime = startMin != null && endMin != null;
   const cards = [];
   for (const day of snapshotList) {
     const date_str = day.date_str;
@@ -258,7 +292,6 @@ function buildDiscoveryDrops(snapshotList, timeChip, options = {}) {
     for (const v of venues) {
       const futureTimes = getFutureAvailabilityTimes(date_str, v.availability_times || []);
       if (futureTimes.length === 0) continue;
-      if (filterByTime && !hasAvailabilityInWindow(futureTimes, startMin, endMin)) continue;
       const timeStr = formatAvailabilityTimeRange(futureTimes);
       // Release time: backend sends detected_at (or opened_at). Support snake_case and camelCase.
       const createdAt = v.detected_at ?? v.opened_at ?? v.detectedAt ?? v.openedAt ?? null;
@@ -301,6 +334,8 @@ export default function App() {
   const [lastScanAt, setLastScanAt] = useState(null); // when the last discovery scan completed (Date)
   const [totalVenuesScanned, setTotalVenuesScanned] = useState(0); // total venues in last scan (so user sees system is active)
   const [bucketHealth, setBucketHealth] = useState([]); // per-bucket last_scan_at from GET /chat/watches/bucket-status
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const permissionAskedRef = useRef(false);
   const [notificationPermission, setNotificationPermission] = useState(
     () => (typeof window !== "undefined" && "Notification" in window ? Notification.permission : "default")
   );
@@ -311,25 +346,53 @@ export default function App() {
   const today = new Date();
   const isPast11PM = today.getHours() >= 23;
 
-  // Filter states
-  const [selectedDates, setSelectedDates] = useState(new Set([todayStr]));
-  /** Time: "all" | "lunch" | "afternoon" | "6-8" | "6-9" | "7-9" | "7-10" | "custom" */
-  const [selectedTimePreset, setSelectedTimePreset] = useState("all");
-  const [selectedPartySizes, setSelectedPartySizes] = useState(new Set([2, 3, 4, 5]));
-  const [timeRangeStart, setTimeRangeStart] = useState("18:00");
-  const [timeRangeEnd, setTimeRangeEnd] = useState("20:00");
+  // Filter states — time/size preferences are persisted to localStorage across sessions
+  const [selectedDates, setSelectedDates] = useState(new Set([todayStr])); // NOT persisted (date-specific)
+  const [selectedPartySizes, _setSelectedPartySizes] = useState(() => {
+    try {
+      const saved = localStorage.getItem("scout_party_sizes");
+      return saved ? new Set(JSON.parse(saved)) : new Set([2, 3, 4, 5]);
+    } catch { return new Set([2, 3, 4, 5]); }
+  });
+  const setSelectedPartySizes = useCallback((v) => {
+    _setSelectedPartySizes(prev => {
+      const next = typeof v === "function" ? v(prev) : v;
+      try { localStorage.setItem("scout_party_sizes", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
 
   const selectedDateStr = selectedDates.size > 0 ? Array.from(selectedDates)[0] : todayStr;
   const isViewingToday = selectedDateStr === todayStr;
   const isThatsItForToday = isViewingToday && isPast11PM;
 
-  /** Home = curated high signal. All = full list (scanning/exploration). */
+  /** Home = curated high signal. All = full list. Watches = only watched venues. */
   const [viewMode, setViewMode] = useState("home");
+
+  // Per-browser identity (UUID, persisted in localStorage) — used for watch list
+  const [recipientId] = useState(() => {
+    try {
+      let id = localStorage.getItem("scout_recipient_id");
+      if (!id) { id = crypto.randomUUID(); localStorage.setItem("scout_recipient_id", id); }
+      return id;
+    } catch { return "default"; }
+  });
+  const [watchedVenues, setWatchedVenues] = useState(new Set()); // normalized names (strip+lower)
+  const watchIdByName = useRef({}); // name -> DB row id (to avoid extra GET on delete)
+  /** Venues user removed from default hotlist (no notifications); normalized names */
+  const [excludedVenues, setExcludedVenues] = useState(new Set());
+  const excludedIdByName = useRef({}); // normalized name -> exclude row id
+  const [watchSearch, setWatchSearch] = useState(""); // search/add input in My Watches view
+  /** NYC hotlist names (from API) — user gets notifications for these by default unless excluded */
+  const [notifyHotlist, setNotifyHotlist] = useState([]);
   
   // Live indicators
   const [scanProgress, setScanProgress] = useState(0);
   const [recentDropIds, setRecentDropIds] = useState(new Set());
   const [showAllDates, setShowAllDates] = useState(false);
+  /** Force re-render every 2s so "Updated Xs ago" stays current */
+  const [liveTick, setLiveTick] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // New drop tracking
   const [seenDropIds, setSeenDropIds] = useState(new Set());
@@ -345,6 +408,8 @@ export default function App() {
   
   // UX: which cards have "View all times" expanded (set of drop.id)
   const [expandedSlotCardIds, setExpandedSlotCardIds] = useState(new Set());
+  /** Show this many time slots inline; rest behind "…" */
+  const SLOTS_VISIBLE = 3;
   /** Date rail: default collapsed; clicking date pill opens slide-down panel */
   const [dateDrawerOpen, setDateDrawerOpen] = useState(false);
   /** Live ticker (Just Dropped) paused until timestamp; null = not paused */
@@ -376,28 +441,19 @@ export default function App() {
 
   const fetchJustOpened = useCallback(async () => {
     setJustOpenedError(null);
+    setIsRefreshing(true);
     try {
       const params = new URLSearchParams();
       // Date filter: backend returns only selected dates
       if (selectedDates.size > 0) {
         params.set("dates", Array.from(selectedDates).join(","));
       }
-      // Time filter: pass only time_range; backend returns restaurants with slots in that range
-      if (selectedTimePreset !== "all") {
-        let start = timeRangeStart || "18:00";
-        let end = timeRangeEnd || "20:00";
-        if (timeToMins(end) <= timeToMins(start)) [start, end] = [end, start];
-        params.set("time_range", `${start}-${end}`);
-      }
       if (selectedPartySizes.size > 0 && selectedPartySizes.size < 4) {
         params.set("party_sizes", Array.from(selectedPartySizes).sort((a, b) => a - b).join(","));
       }
       params.set("_t", String(Date.now()));
       const qs = params.toString();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const res = await fetch(`${API_BASE}/chat/watches/just-opened?${qs}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
+      const res = await fetchWithTimeout(`${API_BASE}/chat/watches/just-opened?${qs}`);
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setJustOpened(Array.isArray(data.just_opened) ? data.just_opened : []);
@@ -412,13 +468,13 @@ export default function App() {
           setApiFeed(null);
         }
         // Fetch calendar counts for the bar graph (same data source, no date filter)
-        const countsRes = await fetch(`${API_BASE}/chat/watches/calendar-counts`);
+        const countsRes = await fetchWithTimeout(`${API_BASE}/chat/watches/calendar-counts`);
         const countsData = await countsRes.json().catch(() => ({}));
         if (countsRes.ok && countsData.by_date) {
           setCalendarCounts({ by_date: countsData.by_date, dates: Array.isArray(countsData.dates) ? countsData.dates : [] });
         }
         try {
-          const bucketRes = await fetch(`${API_BASE}/chat/watches/bucket-status?_t=${Date.now()}`);
+          const bucketRes = await fetchWithTimeout(`${API_BASE}/chat/watches/bucket-status?_t=${Date.now()}`);
           const bucketData = await bucketRes.json().catch(() => ({}));
           if (bucketRes.ok && Array.isArray(bucketData.buckets)) {
             setBucketHealth(bucketData.buckets);
@@ -438,7 +494,7 @@ export default function App() {
         setTotalVenuesScanned(typeof data.total_venues_scanned === "number" ? data.total_venues_scanned : 0);
         // Fetch just-opened for all dates (no date filter) so notifications appear for any date, not just selected
         try {
-          const notifRes = await fetch(`${API_BASE}/chat/watches/just-opened?_t=${Date.now()}`);
+          const notifRes = await fetchWithTimeout(`${API_BASE}/chat/watches/just-opened?_t=${Date.now()}`);
           const notifData = await notifRes.json().catch(() => ({}));
           if (notifRes.ok && Array.isArray(notifData.just_opened)) {
             const allDatesDrops = buildDiscoveryDrops(notifData.just_opened, "Anytime");
@@ -452,7 +508,7 @@ export default function App() {
         // New-drops: backend returns only drops detected after last poll when since= is sent
         try {
           const sinceParam = lastNewDropsAtRef.current ? `&since=${encodeURIComponent(lastNewDropsAtRef.current)}` : "";
-          const newDropsRes = await fetch(`${API_BASE}/chat/watches/new-drops?within_minutes=15${sinceParam}&_t=${Date.now()}`);
+          const newDropsRes = await fetchWithTimeout(`${API_BASE}/chat/watches/new-drops?within_minutes=15${sinceParam}&_t=${Date.now()}`);
           const newDropsData = await newDropsRes.json().catch(() => ({}));
           if (newDropsRes.ok && newDropsData.at) lastNewDropsAtRef.current = newDropsData.at;
           // Only add to notifications when we sent since= (real-time "new since last poll"); first poll we just set baseline, add 0
@@ -516,13 +572,15 @@ export default function App() {
     } catch (e) {
       const msg = e?.name === "AbortError" ? "Backend timed out. Is it running?" : "Couldn't reach backend. Start it with: make dev-backend";
       setJustOpenedError(msg);
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [selectedTimePreset, selectedPartySizes, selectedDates, timeRangeStart, timeRangeEnd]);
+  }, [selectedPartySizes, selectedDates]);
 
 
   useEffect(() => {
     fetchJustOpened();
-    const t = setInterval(fetchJustOpened, 15000);
+    const t = setInterval(fetchJustOpened, FEED_POLL_INTERVAL_MS);
     const onVisible = () => fetchJustOpened();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -530,6 +588,20 @@ export default function App() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [fetchJustOpened]);
+
+  // Live tick: update "Updated Xs ago" every 2s
+  useEffect(() => {
+    const interval = setInterval(() => setLiveTick((c) => c + 1), 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Countdown tick: every 1s when we have nextScanAt so "Next drop in Xs" updates smoothly (Temu-style engagement)
+  const [countdownTick, setCountdownTick] = useState(0);
+  useEffect(() => {
+    if (!nextScanAt) return () => {};
+    const interval = setInterval(() => setCountdownTick((c) => c + 1), 1000);
+    return () => clearInterval(interval);
+  }, [nextScanAt]);
 
   // Track scroll position (for ticker vs pill and insert animation)
   useEffect(() => {
@@ -570,6 +642,86 @@ export default function App() {
     });
   }, [selectedDates]);
 
+  // Load watch list, excluded list, and hotlist (what you get notifications for) on mount / recipient change
+  useEffect(() => {
+    fetchWithTimeout(`${API_BASE}/chat/venue-watches`, {
+      headers: { "X-Recipient-Id": recipientId },
+    })
+      .then(r => r.ok ? r.json() : { watches: [], excluded: [] })
+      .then(data => {
+        const watches = data.watches || [];
+        const excluded = data.excluded || [];
+        const watchIds = {};
+        watches.forEach(w => { watchIds[w.venue_name] = w.id; });
+        watchIdByName.current = watchIds;
+        setWatchedVenues(new Set(watches.map(w => w.venue_name)));
+        const exclIds = {};
+        excluded.forEach(e => { exclIds[e.venue_name] = e.id; });
+        excludedIdByName.current = exclIds;
+        setExcludedVenues(new Set(excluded.map(e => e.venue_name)));
+      })
+      .catch(() => {});
+    fetchWithTimeout(`${API_BASE}/chat/watches/hotlist`)
+      .then(r => r.ok ? r.json() : { hotlist: [] })
+      .then(data => setNotifyHotlist(Array.isArray(data.hotlist) ? data.hotlist : []))
+      .catch(() => setNotifyHotlist([]));
+  }, [recipientId]);
+
+  const toggleWatch = useCallback(async (rawName) => {
+    const name = (rawName || "").trim().toLowerCase();
+    if (!name) return;
+    if (watchedVenues.has(name)) {
+      const id = watchIdByName.current[name];
+      if (id) {
+        fetchWithTimeout(`${API_BASE}/chat/venue-watches/${id}`, {
+          method: "DELETE",
+          headers: { "X-Recipient-Id": recipientId },
+        }).catch(() => {});
+      }
+      delete watchIdByName.current[name];
+      setWatchedVenues(prev => { const n = new Set(prev); n.delete(name); return n; });
+    } else {
+      fetchWithTimeout(`${API_BASE}/chat/venue-watches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Recipient-Id": recipientId },
+        body: JSON.stringify({ venue_name: name }),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.id) watchIdByName.current[name] = data.id; })
+        .catch(() => {});
+      setWatchedVenues(prev => new Set(prev).add(name));
+    }
+  }, [watchedVenues, recipientId]);
+
+  /** Remove a hotlist venue from notifications (add to excluded). */
+  const addExclude = useCallback(async (rawName) => {
+    const name = (rawName || "").trim().toLowerCase();
+    if (!name) return;
+    fetchWithTimeout(`${API_BASE}/chat/venue-watches/exclude`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Recipient-Id": recipientId },
+      body: JSON.stringify({ venue_name: name }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.id) excludedIdByName.current[name] = data.id; })
+      .catch(() => {});
+    setExcludedVenues(prev => new Set(prev).add(name));
+  }, [recipientId]);
+
+  /** Add a venue back to hotlist notifications (remove from excluded). */
+  const removeExclude = useCallback(async (rawName) => {
+    const name = (rawName || "").trim().toLowerCase();
+    if (!name) return;
+    const id = excludedIdByName.current[name];
+    if (id != null) {
+      fetchWithTimeout(`${API_BASE}/chat/venue-watches/exclude/${id}`, {
+        method: "DELETE",
+        headers: { "X-Recipient-Id": recipientId },
+      }).catch(() => {});
+    }
+    delete excludedIdByName.current[name];
+    setExcludedVenues(prev => { const n = new Set(prev); n.delete(name); return n; });
+  }, [recipientId]);
 
   /** All drops for this request: from backend feed when present, else built from just_opened */
   const newDropsAll = useMemo(() => {
@@ -615,44 +767,21 @@ export default function App() {
     return options;
   }, [todayStr, newDropsAll, calendarCounts.by_date]);
 
-  // Filter drops: when backend sends feed it's already filtered; otherwise apply time + party client-side
+  // Filter drops: when backend sends feed use it; otherwise apply party-size filter only (no time filter)
   const filteredDrops = useMemo(() => {
     if (apiFeed && Array.isArray(apiFeed.ranked_board)) return apiFeed.ranked_board;
     let filtered = newDropsAll;
 
-    if (selectedTimePreset !== "all") {
-      filtered = filtered.filter(d => {
-        if (!d.time) return false;
-        const timeStr = d.time.trim();
-        const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/);
-        if (!match) return false;
-        let hour = parseInt(match[1], 10);
-        const isPM = match[3] && match[3].toLowerCase() === "pm";
-        const isAM = match[3] && match[3].toLowerCase() === "am";
-        if (isPM && hour !== 12) hour += 12;
-        if (isAM && hour === 12) hour = 0;
-        const [startH, startM] = timeRangeStart.split(":").map(Number);
-        const [endH, endM] = timeRangeEnd.split(":").map(Number);
-        const minStart = startH * 60 + (startM || 0);
-        const minEnd = endH * 60 + (endM || 0);
-        const dropMins = hour * 60 + (parseInt(match[2], 10) || 0);
-        if (minEnd > minStart && dropMins >= minStart && dropMins < minEnd) return true;
-        if (minEnd <= minStart && (dropMins >= minStart || dropMins < minEnd)) return true;
-        return false;
-      });
-    }
-
-    // Party size filter - only show drops that have at least one selected party size
     if (selectedPartySizes.size > 0 && selectedPartySizes.size < 4) {
       filtered = filtered.filter(d => {
         const available = d.party_sizes_available || [];
-        if (available.length === 0) return false; // No party size info
+        if (available.length === 0) return false;
         return available.some(size => selectedPartySizes.has(size));
       });
     }
 
     return filtered;
-  }, [apiFeed, newDropsAll, selectedTimePreset, selectedPartySizes, timeRangeStart, timeRangeEnd]);
+  }, [apiFeed, newDropsAll, selectedPartySizes]);
 
   // Detect new drops and show notifications/banner (use all-dates list so notifications appear for any date)
   const dropsForNotifications = notificationDropsAllDates.length > 0 ? notificationDropsAllDates : newDropsAll;
@@ -794,10 +923,10 @@ export default function App() {
         }
         if (Notification.permission === "granted") {
           sendBrowserNotification(title, body);
-        } else if (Notification.permission === "default") {
-          Notification.requestPermission().then((p) => {
-            if (p === "granted") sendBrowserNotification(title, body);
-          });
+        } else if (Notification.permission === "default" && !permissionAskedRef.current) {
+          // Show value-first modal instead of firing the native browser dialog mid-stream
+          permissionAskedRef.current = true;
+          setShowPermissionModal(true);
         }
       }
 
@@ -1155,13 +1284,32 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen text-[var(--color-text-main)] antialiased overflow-hidden font-sans font-light">
-      {/* Header — logo + subtle live state | clean profile. No heavy toggles. */}
-      <header className="h-14 shrink-0 px-6 sm:px-8 md:px-10 border-b border-slate-200 bg-white flex items-center justify-between z-[60]">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-white shrink-0 shadow-lg shadow-red-900/30 ring-1 ring-white/10">
+      {/* Header — Gen Z: streaming-style LIVE pill + bold logo */}
+      <header className="h-14 shrink-0 px-6 sm:px-8 md:px-10 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm flex items-center justify-between z-[60] shadow-[0_1px_0_0_rgba(0,0,0,0.03)]">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-white shrink-0 shadow-lg shadow-red-500/25 ring-1 ring-red-400/30">
             <Flame className="w-5 h-5" strokeWidth={2} />
           </div>
           <h1 className="text-[13px] sm:text-[15px] font-black tracking-tight text-slate-900 truncate">DROP FEED</h1>
+          <span className="live-pill shrink-0" aria-label="Live" title="Live">
+            <span className="live-pill-dot" />
+            LIVE
+          </span>
+          {/* Next drop countdown — lean: "28s" or "Now" */}
+          {(nextScanAt || isRefreshing) && (() => {
+            const { text, soon } = formatNextDropLabel(nextScanAt, isRefreshing);
+            const short = isRefreshing ? "…" : soon ? "Now" : text.replace(/^Next in /, "");
+            return (
+              <span
+                className={`shrink-0 text-[11px] font-semibold tabular-nums px-2.5 py-1 rounded-lg border ${soon ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-slate-100 text-slate-700 border-slate-200"}`}
+                title="Next scan"
+              >
+                {short}
+              </span>
+            );
+          })()}
+          {liveTick >= 0 && <span className="sr-only">{liveTick}</span>}
+          {countdownTick >= 0 && nextScanAt && <span className="sr-only">{countdownTick}</span>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <DropdownMenu open={notificationPanelOpen} onOpenChange={setNotificationPanelOpen}>
@@ -1280,6 +1428,20 @@ export default function App() {
           </DropdownMenu>
           <button
             type="button"
+            onClick={() => setViewMode(v => v === "watches" ? "home" : "watches")}
+            className={`relative p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 transition-colors ${viewMode === "watches" ? "text-red-600 bg-red-50 hover:bg-red-100" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"}`}
+            title="My Watches"
+            aria-label="My Watches"
+          >
+            <Bookmark className={`w-5 h-5 ${viewMode === "watches" ? "fill-red-600" : ""}`} />
+            {watchedVenues.size > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                {watchedVenues.size}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
             className="relative rounded-full focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
             title="Profile"
             aria-label="Profile"
@@ -1293,10 +1455,17 @@ export default function App() {
         </div>
       </header>
 
+
       <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Side update rail: ephemeral ticker, not a feed — what just changed, disappears in ~25s */}
+        {/* Side update rail: ephemeral ticker — what just changed, disappears in ~25s */}
         <div className="fixed right-4 top-1/2 -translate-y-1/2 z-40 w-[200px] hidden md:flex flex-col gap-2 pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-2">
+            {sideUpdates.length > 0 && (
+              <span className="relative flex h-2 w-2 self-start" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              </span>
+            )}
             <AnimatePresence mode="popLayout">
               {sideUpdates.map((u) => (
                 <motion.div
@@ -1339,104 +1508,11 @@ export default function App() {
                   if (h === 12) return "12:" + String(m || 0).padStart(2, "0") + " PM";
                   return (h - 12) + ":" + String(m || 0).padStart(2, "0") + " PM";
                 };
-                const TIME_PRESETS = [
-                  { id: "all", label: "All" },
-                  { id: "lunch", label: "Lunch", start: "11:00", end: "15:00" },
-                  { id: "afternoon", label: "Afternoon", start: "15:00", end: "18:00" },
-                  { id: "6-8", label: "6–8 PM", start: "18:00", end: "20:00" },
-                  { id: "6-9", label: "6–9 PM", start: "18:00", end: "21:00" },
-                  { id: "7-9", label: "7–9 PM", start: "19:00", end: "21:00" },
-                  { id: "7-10", label: "7–10 PM", start: "19:00", end: "22:00" },
-                ];
-                const timeLabel = selectedTimePreset === "all"
-                  ? "All"
-                  : selectedTimePreset === "custom"
-                    ? `${fmtTime(timeRangeStart)} – ${fmtTime(timeRangeEnd)}`
-                    : TIME_PRESETS.find(p => p.id === selectedTimePreset)?.label || "All";
                 const guestList = Array.from(selectedPartySizes).sort((a, b) => a - b);
                 const guestLabel = guestList.length === 0 ? "Guests" : guestList.length === 1 ? `${guestList[0]} guests` : `${guestList.join(", ")} guests`;
                 const dateLabel = selectedDateStr ? `${formatDayShort(selectedDateStr)} ${formatMonthDay(selectedDateStr)}` : "Date";
-                const SLIDER_MIN = 17 * 60;
-                const SLIDER_MAX = 24 * 60;
-                const STEP = 30;
-                const startMins = Math.max(SLIDER_MIN, Math.min(SLIDER_MAX - STEP, timeToMins(timeRangeStart)));
-                const endMins = Math.max(SLIDER_MIN + STEP, Math.min(SLIDER_MAX, timeToMins(timeRangeEnd)));
                 return (
                   <>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-[12px] font-semibold hover:bg-slate-50 transition-colors"
-                        >
-                          {timeLabel}
-                          <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="min-w-[220px]">
-                        <div className="px-2 py-2 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                          <span className="text-[11px] font-medium text-slate-500">Time range</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {TIME_PRESETS.map((p) => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedTimePreset(p.id);
-                                  if (p.start) setTimeRangeStart(p.start);
-                                  if (p.end) setTimeRangeEnd(p.end);
-                                }}
-                                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                  selectedTimePreset === p.id
-                                    ? "bg-red-100 text-red-800 border border-red-200"
-                                    : "bg-slate-100 text-slate-700 border border-transparent hover:bg-slate-200"
-                                }`}
-                              >
-                                {p.label}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="flex flex-col gap-1.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] text-slate-500">From</span>
-                              <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(startMins))}</span>
-                            </div>
-                            <input
-                              type="range"
-                              min={SLIDER_MIN}
-                              max={SLIDER_MAX - STEP}
-                              step={STEP}
-                              value={startMins}
-                              onChange={e => {
-                                const v = Number(e.target.value);
-                                setSelectedTimePreset("custom");
-                                setTimeRangeStart(minsToTime(v));
-                                if (timeToMins(timeRangeEnd) <= v) setTimeRangeEnd(minsToTime(Math.min(SLIDER_MAX, v + STEP)));
-                              }}
-                              className="w-full h-2 accent-red-600"
-                            />
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] text-slate-500">To</span>
-                              <span className="text-xs font-medium text-slate-700">{fmtTime(minsToTime(endMins))}</span>
-                            </div>
-                            <input
-                              type="range"
-                              min={SLIDER_MIN + STEP}
-                              max={SLIDER_MAX}
-                              step={STEP}
-                              value={endMins}
-                              onChange={e => {
-                                const v = Number(e.target.value);
-                                setSelectedTimePreset("custom");
-                                setTimeRangeEnd(minsToTime(v));
-                                if (timeToMins(timeRangeStart) >= v) setTimeRangeStart(minsToTime(Math.max(SLIDER_MIN, v - STEP)));
-                              }}
-                              className="w-full h-2 accent-red-600"
-                            />
-                          </div>
-                        </div>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -1553,6 +1629,48 @@ export default function App() {
               )}
             </AnimatePresence>
 
+            {/* Value-first notification permission modal — shown after first drop, before native dialog */}
+            <AnimatePresence>
+              {showPermissionModal && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 16 }}
+                  className="fixed bottom-6 right-4 z-50 max-w-xs bg-slate-900 rounded-xl p-4 shadow-xl border border-white/10"
+                >
+                  <p className="text-[13px] font-semibold text-white mb-1">Get instant drop alerts</p>
+                  <p className="text-[11px] text-white/70 mb-3">
+                    Hot tables typically disappear in under 5 minutes. Enable notifications to act fast.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof Notification !== "undefined") {
+                          Notification.requestPermission().then((p) => {
+                            setNotificationPermission(p);
+                            setShowPermissionModal(false);
+                          });
+                        } else {
+                          setShowPermissionModal(false);
+                        }
+                      }}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-white text-slate-900 text-[12px] font-bold hover:bg-slate-100"
+                    >
+                      Enable
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPermissionModal(false)}
+                      className="px-3 py-1.5 rounded-lg border border-white/20 text-white/70 text-[12px] hover:text-white"
+                    >
+                      Not now
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div>
 
 
@@ -1572,35 +1690,51 @@ export default function App() {
                         Pick tomorrow or another day to see live drops.
                       </p>
                     </div>
+                  ) : totalVenuesScanned === 0 && lastScanAt != null ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-10 sm:p-12 text-center max-w-xl mx-auto">
+                      <p className="text-[15px] font-medium text-slate-800">
+                        No availability from Resy right now
+                      </p>
+                      <p className="text-[13px] text-slate-600 mt-2">
+                        Discovery is running but Resy returned 0 slots for the scanned dates and times. This often means credentials need refreshing or there’s no open inventory in the search window.
+                      </p>
+                      <p className="text-[12px] text-slate-500 mt-3">
+                        Backend check: <code className="bg-slate-200/80 px-1.5 py-0.5 rounded">GET /chat/watches/resy-test?days_ahead=7</code> — if that shows <code className="bg-slate-200/80 px-1.5 py-0.5 rounded">venue_count &gt; 0</code>, discovery will fill once buckets catch up. Ensure <code className="bg-slate-200/80 px-1.5 py-0.5 rounded">RESY_API_KEY</code> and <code className="bg-slate-200/80 px-1.5 py-0.5 rounded">RESY_AUTH_TOKEN</code> are set in backend <code className="bg-slate-200/80 px-1.5 py-0.5 rounded">.env</code>.
+                      </p>
+                    </div>
                   ) : (
                     <>
-                      {/* Scanning skeleton cards */}
-                      <div className="flex flex-wrap gap-4">
+                      <div className="flex flex-wrap gap-4 items-start">
+                        <span className="relative flex h-2 w-2 shrink-0 mt-2" aria-hidden="true">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-70" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                        </span>
                         {[1, 2, 3, 4, 5, 6].map((i) => (
                           <div key={`skeleton-empty-${i}`} className="bg-white rounded-lg overflow-hidden border border-slate-200 animate-pulse flex max-w-[350px]">
-                            <div className="w-20 h-20 bg-slate-100 shrink-0"></div>
+                            <div className="w-20 h-20 bg-slate-100 shrink-0" />
                             <div className="flex-1 p-2.5 flex flex-col justify-between">
-                      <div className="space-y-1">
-                                <div className="h-3 bg-slate-100 rounded w-3/4"></div>
-                                <div className="h-2 bg-slate-100 rounded w-1/2"></div>
-                      </div>
+                              <div className="space-y-1">
+                                <div className="h-3 bg-slate-100 rounded w-3/4" />
+                                <div className="h-2 bg-slate-100 rounded w-1/2" />
+                              </div>
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
-                                  <div className="h-2.5 bg-slate-100 rounded w-12"></div>
-                                  <div className="h-2 bg-slate-100 rounded w-8"></div>
-                    </div>
-                                <div className="h-6 bg-slate-100 rounded w-16"></div>
+                                  <div className="h-2.5 bg-slate-100 rounded w-12" />
+                                  <div className="h-2 bg-slate-100 rounded w-8" />
+                                </div>
+                                <div className="h-6 bg-slate-100 rounded w-16" />
                               </div>
                             </div>
                           </div>
                         ))}
                       </div>
-                      
-                      {/* Status message - minimal */}
-                      {lastScanAt != null && totalVenuesScanned > 0 && (
-                        <p className="text-center text-[11px] text-slate-400 mt-6">
-                          Scout found {totalVenuesScanned} venues. New drops appear when tables open.
-                        </p>
+                      {lastScanAt != null && (
+                        <div className="flex justify-center mt-6">
+                          <span className="relative flex h-2 w-2" aria-hidden="true">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                          </span>
+                        </div>
                       )}
                     </>
                   )}
@@ -1629,7 +1763,7 @@ export default function App() {
                         </button>
                       </div>
                       <h2 className="text-[18px] font-bold text-slate-900 mb-0.5">All Drops</h2>
-                      <p className="text-[11px] text-slate-500 mb-4">Live feed across all dates.</p>
+                      <p className="text-[11px] text-slate-500 mb-4">Live</p>
                       <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
                         {allDropsByNewest.map((drop, idx) => {
                           const imageUrl = drop.image_url;
@@ -1654,23 +1788,31 @@ export default function App() {
                                     {isNewR ? <Sparkles className="w-2.5 h-2.5 shrink-0" /> : isHot ? <Flame className="w-2.5 h-2.5 shrink-0" /> : <Zap className="w-2.5 h-2.5 shrink-0" />}
                                     {isNewR ? "New" : isHot ? "Hot" : "Trending"}
                                   </span>
-                                  {getFreshnessLabel(drop.detected_at) && (
-                                    <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[9px] font-medium">{getFreshnessLabel(drop.detected_at)}</span>
-                                  )}
+                                  <div className="flex items-center gap-1">
+                                    {getFreshnessLabel(drop.detected_at) && (
+                                      <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[9px] font-medium">{getFreshnessLabel(drop.detected_at)}</span>
+                                    )}
+                                    <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); toggleWatch(drop.name); }} className="p-1 rounded-full bg-black/30 hover:bg-black/50 transition-colors" title={watchedVenues.has((drop.name||"").toLowerCase()) ? "Remove watch" : "Watch this restaurant"}>
+                                      <Bookmark className={`w-3 h-3 ${watchedVenues.has((drop.name||"").toLowerCase()) ? "fill-white text-white" : "text-white/60"}`} />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                               <div className="p-3 flex flex-col gap-2">
                                 <div>
                                   <h4 className="text-[15px] font-bold text-slate-900 truncate">{drop.name}</h4>
                                   <p className="text-[11px] text-slate-500 mt-0.5">{drop.location || "NYC"} · {formatPartySizeShort(drop.party_sizes_available)}</p>
+                                  {drop.rarity_score >= 75 ? (
+                                    <span className="text-[10px] font-semibold text-amber-600">Rare</span>
+                                  ) : drop.days_with_drops > 0 ? (
+                                    <span className="text-[10px] text-slate-400">{drop.days_with_drops}/14</span>
+                                  ) : null}
                                 </div>
                                 <div className="flex flex-nowrap items-center gap-1.5 min-w-0">
                                   {drop.slots && drop.slots.length > 0 ? (
                                     (() => {
                                       const sameDateOnly = drop.slots.every(s => s.date_str === drop.slots[0].date_str);
                                       const expanded = expandedSlotCardIds.has(drop.id);
-                                      const firstSlot = drop.slots[0];
-                                      const hasMore = drop.slots.length > 1 && !expanded;
                                       if (expanded) {
                                         return (
                                           <>
@@ -1683,14 +1825,18 @@ export default function App() {
                                           </>
                                         );
                                       }
+                                      const visible = drop.slots.slice(0, SLOTS_VISIBLE);
+                                      const rest = drop.slots.length - SLOTS_VISIBLE;
                                       return (
                                         <>
-                                          <a href={firstSlot.resyUrl || "#"} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[12px] font-semibold hover:bg-slate-50 transition-colors truncate min-w-0 shrink">
-                                            {formatSlotLabel(firstSlot, sameDateOnly)}
-                                          </a>
-                                          {hasMore && (
+                                          {visible.map((slot, tIdx) => (
+                                            <a key={`all-${drop.id}-${slot.date_str}-${slot.time}-${tIdx}`} href={slot.resyUrl || "#"} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[12px] font-semibold hover:bg-slate-50 transition-colors shrink-0">
+                                              {formatSlotLabel(slot, sameDateOnly)}
+                                            </a>
+                                          ))}
+                                          {rest > 0 && (
                                             <button type="button" onClick={() => setExpandedSlotCardIds(prev => new Set(prev).add(drop.id))} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-[12px] font-semibold hover:bg-slate-100 shrink-0" title={`View all ${drop.slots.length} times`}>
-                                              +{drop.slots.length - 1}
+                                              …+{rest}
                                             </button>
                                           )}
                                         </>
@@ -1706,46 +1852,301 @@ export default function App() {
                         })}
                       </div>
                     </>
+                  ) : viewMode === "watches" ? (
+                    /* My Watches = only drops for venues the user bookmarked */
+                    <>
+                      <div className="mb-6 flex items-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => setViewMode("home")}
+                          className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-600 hover:text-slate-900"
+                        >
+                          ← Back to Feed
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <Bookmark className="w-5 h-5 text-red-600 fill-red-600 shrink-0" />
+                        <h2 className="text-[18px] font-bold text-slate-900">My Watches</h2>
+                      </div>
+                      <p className="text-[12px] text-slate-600 mb-4">You get notifications for every restaurant in the grid below. Remove any you don&apos;t want; add more via search or add back from Removed.</p>
+
+                      {/* Search: add any restaurant to "Your saved" */}
+                      {(() => {
+                        const q = watchSearch.trim().toLowerCase();
+                        const suggestions = q.length < 1 ? [] :
+                          HOT_RESTAURANT_NAMES
+                            .filter(n => n.toLowerCase().includes(q) && !watchedVenues.has(n.toLowerCase()))
+                            .slice(0, 6);
+                        const showFreeText = q.length >= 2 && !watchedVenues.has(q)
+                          && !suggestions.some(s => s.toLowerCase() === q);
+                        return (
+                          <div className="relative mb-5">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Search any restaurant to watch…"
+                                value={watchSearch}
+                                onChange={e => setWatchSearch(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter" && watchSearch.trim().length >= 2) {
+                                    toggleWatch(watchSearch.trim());
+                                    setWatchSearch("");
+                                  }
+                                  if (e.key === "Escape") setWatchSearch("");
+                                }}
+                                className="w-full px-3 py-2 pr-8 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400/50 focus:border-red-400"
+                              />
+                              {watchSearch && (
+                                <button type="button" onClick={() => setWatchSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            {(suggestions.length > 0 || showFreeText) && (
+                              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
+                                {suggestions.map(name => (
+                                  <button
+                                    key={name}
+                                    type="button"
+                                    onMouseDown={e => { e.preventDefault(); toggleWatch(name); setWatchSearch(""); }}
+                                    className="w-full px-3 py-2.5 text-left text-[13px] text-slate-800 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 border-b border-slate-100 last:border-0"
+                                  >
+                                    <Bookmark className="w-3 h-3 text-slate-400 shrink-0" />
+                                    {name}
+                                  </button>
+                                ))}
+                                {showFreeText && (
+                                  <button
+                                    type="button"
+                                    onMouseDown={e => { e.preventDefault(); toggleWatch(watchSearch.trim()); setWatchSearch(""); }}
+                                    className="w-full px-3 py-2.5 text-left text-[13px] text-red-600 font-semibold hover:bg-red-50 flex items-center gap-2"
+                                  >
+                                    <span className="text-[15px] leading-none font-bold">+</span>
+                                    Add &ldquo;{watchSearch.trim()}&rdquo;
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Your saved (added by you); shown as chips + in grid below */}
+                      {watchedVenues.size > 0 && (
+                        <div className="mb-4">
+                          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Your saved</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Array.from(watchedVenues).sort().map(name => (
+                              <span key={`saved-${name}`} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium">
+                                <span className="capitalize">{name}</span>
+                                <button type="button" onClick={() => toggleWatch(name)} className="text-slate-400 hover:text-slate-700 p-0.5">
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Grid: restaurants you get notifications for (hotlist − excluded + saved) */}
+                      <div className="mb-6">
+                        <p className="text-[13px] font-semibold text-slate-800 mb-3">Getting notifications ({(() => {
+                          const hotlistActive = notifyHotlist.filter(n => !excludedVenues.has((n || "").trim().toLowerCase()));
+                          const savedOnly = Array.from(watchedVenues).filter(n => !notifyHotlist.some(h => (h || "").trim().toLowerCase() === n));
+                          return hotlistActive.length + savedOnly.length;
+                        })()} spots)</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {[
+                            ...notifyHotlist.filter(n => !excludedVenues.has((n || "").trim().toLowerCase())).map(name => ({ name: (name || "").trim(), saved: false })),
+                            ...Array.from(watchedVenues).filter(n => !notifyHotlist.some(h => (h || "").trim().toLowerCase() === n)).map(name => ({ name, saved: true })),
+                          ]
+                            .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }))
+                            .map(({ name, saved }) => (
+                              <div key={name} className="flex items-center justify-between gap-1.5 p-2.5 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-colors">
+                                <span className="text-[12px] font-medium text-slate-800 truncate capitalize min-w-0">{name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => saved ? toggleWatch(name) : addExclude(name)}
+                                  className="shrink-0 p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                  title={saved ? "Stop watching" : "Remove from notifications"}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                        </div>
+                        {notifyHotlist.filter(n => !excludedVenues.has((n || "").trim().toLowerCase())).length === 0 && watchedVenues.size === 0 && (
+                          <p className="text-[12px] text-slate-500 py-4">Add restaurants via search above, or add back from &quot;Removed&quot; below.</p>
+                        )}
+                      </div>
+
+                      {/* Grid: removed from notifications — add back */}
+                      {excludedVenues.size > 0 && (
+                        <div className="mb-6">
+                          <p className="text-[13px] font-semibold text-slate-700 mb-3">Removed from notifications ({excludedVenues.size})</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                            {Array.from(excludedVenues).sort().map(name => (
+                              <div key={name} className="flex items-center justify-between gap-1.5 p-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:border-slate-300 transition-colors">
+                                <span className="text-[12px] font-medium text-slate-600 truncate capitalize min-w-0">{name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeExclude(name)}
+                                  className="shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium text-green-600 hover:bg-green-50"
+                                  title="Add back to notifications"
+                                >
+                                  Add back
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {watchedVenues.size === 0 ? (
+                        <div className="py-6 flex flex-col items-center gap-2 text-center border-t border-slate-100 pt-6">
+                          <p className="text-[12px] text-slate-500">No saved restaurants yet. Search above or tap the bookmark on a card in the feed.</p>
+                        </div>
+                      ) : (() => {
+                        const watchedCards = allDropsByNewest.filter(d => watchedVenues.has((d.name || "").toLowerCase()));
+                        if (watchedCards.length === 0) {
+                          return (
+                            <div className="py-10 flex flex-col items-center gap-3 text-center">
+                              <p className="text-[14px] font-semibold text-slate-500">Nothing open right now</p>
+                              <p className="text-[12px] text-slate-400 max-w-xs">
+                                This view auto-updates every 15 seconds — drops will appear here the moment they're detected.
+                              </p>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+                            {watchedCards.map((drop, idx) => {
+                              const imageUrl = drop.image_url;
+                              const secondsSinceDetected = drop.detected_at ? Math.floor((Date.now() - new Date(drop.detected_at).getTime()) / 1000) : 999;
+                              const isHot = !!drop.feedHot;
+                              const firstSeenR = newCardFirstSeenAt.current[drop.id];
+                              const isNewR = (firstSeenR && (Date.now() - firstSeenR) < NEW_BADGE_SECONDS * 1000) || secondsSinceDetected < 300;
+                              return (
+                                <motion.div
+                                  key={drop.id}
+                                  initial={{ opacity: 0, y: 4 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ duration: 0.2, delay: Math.min(idx * 0.02, 0.2), ease: "easeOut" }}
+                                  className={`rounded-xl overflow-hidden border bg-white transition-shadow hover:shadow-md group flex flex-col w-full min-w-0 shadow-sm ${isNewR ? "border-red-300 ring-2 ring-red-400/30" : "border-slate-200"}`}
+                                >
+                                  <div className="relative h-20 sm:h-24 bg-gradient-to-br from-slate-800 to-slate-900">
+                                    {imageUrl && (
+                                      <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-70 transition-opacity" />
+                                    )}
+                                    <div className="absolute inset-0 flex items-start justify-between p-2">
+                                      <span className={`px-2 py-0.5 rounded-md text-white text-[9px] font-semibold inline-flex items-center gap-1 ${isNewR ? "bg-[#7a473d]" : isHot ? "bg-[#6b3d33]" : "bg-slate-600"}`}>
+                                        {isNewR ? <Sparkles className="w-2.5 h-2.5 shrink-0" /> : isHot ? <Flame className="w-2.5 h-2.5 shrink-0" /> : <Zap className="w-2.5 h-2.5 shrink-0" />}
+                                        {isNewR ? "New" : isHot ? "Hot" : "Open"}
+                                      </span>
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); toggleWatch(drop.name); }} className="p-1 rounded-full bg-black/30 hover:bg-black/50 transition-colors" title="Remove watch">
+                                        <Bookmark className="w-3 h-3 fill-white text-white" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="p-3 flex flex-col gap-2">
+                                    <div>
+                                      <h4 className="text-[15px] font-bold text-slate-900 truncate">{drop.name}</h4>
+                                      <p className="text-[11px] text-slate-500 mt-0.5">{drop.location || "NYC"} · {formatPartySizeShort(drop.party_sizes_available)}</p>
+                                    </div>
+                                    <div className="flex flex-nowrap items-center gap-1.5 min-w-0">
+                                      {drop.slots && drop.slots.length > 0 ? (
+                                        (() => {
+                                          const sameDateOnly = drop.slots.every(s => s.date_str === drop.slots[0].date_str);
+                                          const expanded = expandedSlotCardIds.has(drop.id);
+                                          if (expanded) {
+                                            return (
+                                              <>
+                                                <button type="button" onClick={() => setExpandedSlotCardIds(prev => { const next = new Set(prev); next.delete(drop.id); return next; })} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-[12px] font-semibold hover:bg-slate-100 shrink-0">← Back</button>
+                                                {drop.slots.map((slot, tIdx) => (
+                                                  <a key={`w-${drop.id}-${slot.date_str}-${slot.time}-${tIdx}`} href={slot.resyUrl || "#"} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[12px] font-semibold hover:bg-slate-50 transition-colors shrink-0">
+                                                    {formatSlotLabel(slot, sameDateOnly)}
+                                                  </a>
+                                                ))}
+                                              </>
+                                            );
+                                          }
+                                          const visible = drop.slots.slice(0, SLOTS_VISIBLE);
+                                          const rest = drop.slots.length - SLOTS_VISIBLE;
+                                          return (
+                                            <>
+                                              {visible.map((slot, tIdx) => (
+                                                <a key={`w-${drop.id}-${slot.date_str}-${slot.time}-${tIdx}`} href={slot.resyUrl || "#"} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[12px] font-semibold hover:bg-slate-50 transition-colors shrink-0">
+                                                  {formatSlotLabel(slot, sameDateOnly)}
+                                                </a>
+                                              ))}
+                                              {rest > 0 && (
+                                                <button type="button" onClick={() => setExpandedSlotCardIds(prev => new Set(prev).add(drop.id))} className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-[12px] font-semibold hover:bg-slate-100 shrink-0" title={`View all ${drop.slots.length} times`}>
+                                                  …+{rest}
+                                                </button>
+                                              )}
+                                            </>
+                                          );
+                                        })()
+                                      ) : (
+                                        <span className="text-[11px] text-slate-400">No times</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </>
                   ) : (
                     <>
-                  {/* Per-bucket scan status: above Top Opportunities */}
-                  {bucketHealth.length > 0 && selectedDateStr && (() => {
-                    const bucketsForSelected = bucketHealth.filter((b) => b.date_str === selectedDateStr);
-                    if (bucketsForSelected.length === 0) return null;
-                    const slotLabel = (ts) => (ts === "15:00" ? "3pm" : ts === "19:00" ? "7pm" : ts);
-                    const line = bucketsForSelected.map((b) => `${slotLabel(b.time_slot)} ${formatScanAgo(b.last_scan_at)}`).join(" · ");
-                    return (
-                      <div className="mb-4 flex items-center gap-2 text-[11px] text-slate-500">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
-                        <span>Scanned: {line}</span>
-                      </div>
-                    );
-                  })()}
+                  {/* Live pulse: lean — just "14s · 28s" (last check · next check) */}
+                  {(nextScanAt || lastScanAt) && (
+                    <div className="mb-4 flex items-center gap-2">
+                      <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                      </span>
+                      <span className="text-[11px] font-medium text-slate-500 tabular-nums">
+                        {lastScanAt && (() => {
+                          const sec = Math.floor((Date.now() - lastScanAt.getTime()) / 1000);
+                          if (sec < 60) return `${sec}s`;
+                          const m = Math.floor(sec / 60);
+                          if (m < 60) return `${m}m`;
+                          return `${Math.floor(m / 60)}h`;
+                        })()}
+                        {lastScanAt && nextScanAt && <span className="text-slate-300 mx-1">·</span>}
+                        {nextScanAt && !isRefreshing && (() => {
+                          const { text: s, soon } = formatNextDropLabel(nextScanAt, false);
+                          if (soon) return "Now";
+                          return s.replace(/^Next in /, "");
+                        })()}
+                        {isRefreshing && "…"}
+                      </span>
+                      {countdownTick >= 0 && <span className="sr-only">{countdownTick}</span>}
+                    </div>
+                  )}
+                  {/* Per-slot scan age for selected date */}
+
                   {/* 1) TOP OPPORTUNITIES — premium dark spotlight, ranked by demand */}
                   {topOpportunities.length > 0 && (
                     <section className="mb-10 -mx-6 sm:-mx-8 md:-mx-10 px-6 sm:px-8 md:px-10">
                       <div className="rounded-2xl overflow-hidden spotlight-section p-6 sm:p-8 relative">
                         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-500/30 to-transparent" aria-hidden />
-                        <div className="relative flex items-start justify-between gap-4 mb-6">
-                          <div className="flex items-center gap-3">
-                            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white shrink-0 shadow-lg shadow-red-900/30 ring-1 ring-white/10">
-                              <Flame className="w-5 h-5" strokeWidth={2} />
-                            </span>
-                            <div className="flex flex-col gap-0.5">
-                              <h2 className="text-[15px] font-bold text-white uppercase tracking-wider">Top Opportunities</h2>
-                              <p className="text-[11px] text-slate-400 font-medium normal-case tracking-normal">Ranked by demand · Currently available</p>
-                            </div>
-                          </div>
-                          <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-lg bg-white/5 text-white/70 text-[10px] font-semibold uppercase tracking-widest border border-white/10">
-                            Featured
+                        <div className="relative flex items-center gap-3 mb-6">
+                          <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white shrink-0 shadow-lg shadow-red-900/30 ring-1 ring-white/10">
+                            <Flame className="w-5 h-5" strokeWidth={2} />
+                          </span>
+                          <h2 className="text-[15px] font-bold text-white uppercase tracking-wider">Top Opportunities</h2>
+                          <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md bg-white/5 text-white/60 text-[9px] font-semibold uppercase tracking-wider border border-white/10">
+                            Live
                           </span>
                         </div>
                         <div className="grid gap-5 sm:gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
                           {topOpportunities.map((drop, idx) => {
                             const imageUrl = drop.image_url;
-                            const firstSlot = drop.slots?.[0];
                             const sameDateOnly = drop.slots?.every(s => s.date_str === drop.slots?.[0]?.date_str);
-                            const hasMoreSlots = drop.slots && drop.slots.length > 1;
                             const expanded = expandedSlotCardIds.has(drop.id);
                             const secondsSinceDetected = drop.detected_at ? Math.floor((Date.now() - new Date(drop.detected_at).getTime()) / 1000) : 999;
                             const firstSeen = newCardFirstSeenAt.current[drop.id];
@@ -1771,39 +2172,52 @@ export default function App() {
                                         New
                                       </span>
                                     )}
-                                    {getFreshnessLabel(drop.detected_at) && (
-                                      <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[9px] font-medium">{getFreshnessLabel(drop.detected_at)}</span>
-                                    )}
+                                    <div className="flex items-center gap-1 ml-auto">
+                                      {getFreshnessLabel(drop.detected_at) && (
+                                        <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[9px] font-medium">{getFreshnessLabel(drop.detected_at)}</span>
+                                      )}
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); toggleWatch(drop.name); }} className="p-1 rounded-full bg-black/30 hover:bg-black/50 transition-colors" title={watchedVenues.has((drop.name||"").toLowerCase()) ? "Remove watch" : "Watch this restaurant"}>
+                                        <Bookmark className={`w-3.5 h-3.5 ${watchedVenues.has((drop.name||"").toLowerCase()) ? "fill-white text-white" : "text-white/60"}`} />
+                                      </button>
+                                    </div>
                                   </div>
                                   <div className="relative mt-auto p-4 sm:p-5 pt-8">
                                     {!expanded && (
                                       <>
                                         <h4 className="text-[18px] sm:text-[20px] font-bold text-white truncate drop-shadow-sm">{drop.name}</h4>
-                                        <p className="text-[12px] text-white/85 mt-0.5">
-                                          {drop.location || "NYC"} · Usually hard to get
+                                        <p className="text-[11px] text-white/70 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                          {drop.location && <><span>{drop.location}</span><span className="text-white/40"> · </span></>}
+                                          {drop.rarity_score >= 75 ? (
+                                            <span className="font-semibold text-amber-400">Rare</span>
+                                          ) : drop.days_with_drops > 0 ? (
+                                            <span>{drop.days_with_drops}/14</span>
+                                          ) : (
+                                            <span className="text-white/60">Hard to get</span>
+                                          )}
                                         </p>
                                       </>
                                     )}
                                     {!expanded && (
-                                      <div className="flex flex-nowrap items-center gap-2 mt-3 min-w-0">
-                                        {firstSlot ? (
+                                      <div className="flex flex-wrap items-center gap-2 mt-3 min-w-0">
+                                        {(drop.slots || []).slice(0, SLOTS_VISIBLE).map((slot, tIdx) => (
                                           <a
-                                            href={firstSlot.resyUrl || "#"}
+                                            key={`opp-${drop.id}-${slot.date_str}-${slot.time}-${tIdx}`}
+                                            href={slot.resyUrl || "#"}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="spotlight-cta inline-flex items-center justify-center min-w-[100px] px-4 py-2.5 rounded-xl bg-white text-slate-900 text-[13px] font-bold hover:bg-slate-100 transition-colors shadow-lg truncate"
+                                            className="spotlight-cta inline-flex items-center justify-center min-w-[72px] px-3 py-2 rounded-xl bg-white text-slate-900 text-[12px] font-bold hover:bg-slate-100 transition-colors shadow-lg shrink-0"
                                           >
-                                            {formatSlotLabel(firstSlot, sameDateOnly)}
+                                            {formatSlotLabel(slot, sameDateOnly)}
                                           </a>
-                                        ) : null}
-                                        {hasMoreSlots && (
+                                        ))}
+                                        {drop.slots && drop.slots.length > SLOTS_VISIBLE && (
                                           <button
                                             type="button"
                                             onClick={() => setExpandedSlotCardIds(prev => new Set(prev).add(drop.id))}
-                                            className="spotlight-cta inline-flex items-center justify-center px-3 py-2.5 rounded-xl bg-white/90 text-slate-600 text-[13px] font-bold hover:bg-white transition-colors shadow-lg shrink-0"
+                                            className="spotlight-cta inline-flex items-center justify-center px-3 py-2 rounded-xl bg-white/90 text-slate-600 text-[12px] font-bold hover:bg-white transition-colors shadow-lg shrink-0"
                                             title={`View all ${drop.slots.length} times`}
                                           >
-                                            +{drop.slots.length - 1}
+                                            …+{drop.slots.length - SLOTS_VISIBLE}
                                           </button>
                                         )}
                                       </div>
@@ -1839,13 +2253,10 @@ export default function App() {
                     <section className="mb-8 -mx-6 sm:-mx-8 md:-mx-10 px-6 sm:px-8 md:px-10">
                       <div className="rounded-xl border-slate-200 bg-white px-5 sm:px-6">
                         <h2 className="flex items-center gap-3 text-[12px] font-semibold text-slate-600 uppercase tracking-widest mb-4">
-                          <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white shrink-0 shadow-lg shadow-red-900/30 ring-1 ring-white/10">
-                            <Flame className="w-5 h-5" strokeWidth={2} />
+                          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-gradient-to-br from-red-600 to-red-700 text-white shrink-0 shadow-lg shadow-red-900/30 ring-1 ring-white/10">
+                            <Flame className="w-4 h-4" strokeWidth={2} />
                           </span>
-                          <span className="flex flex-col gap-0.5">
-                            <span>Hot Right Now</span>
-                            <span className="text-[11px] text-slate-500 font-normal normal-case tracking-normal">High-demand restaurants that are still open for your selected date</span>
-                          </span>
+                          <span>Hot Right Now</span>
                         </h2>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                           {homeFeedSecondRow.map((drop, idx) => {
@@ -1873,16 +2284,28 @@ export default function App() {
                                         New
                                       </span>
                                     )}
-                                    {getFreshnessLabel(drop.detected_at) && (
-                                      <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[9px] font-medium shrink-0">{getFreshnessLabel(drop.detected_at)}</span>
-                                    )}
+                                    <div className="flex items-center gap-1 ml-auto">
+                                      {getFreshnessLabel(drop.detected_at) && (
+                                        <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[9px] font-medium shrink-0">{getFreshnessLabel(drop.detected_at)}</span>
+                                      )}
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); e.preventDefault(); toggleWatch(drop.name); }} className="p-1 rounded-full bg-black/30 hover:bg-black/50 transition-colors" title={watchedVenues.has((drop.name||"").toLowerCase()) ? "Remove watch" : "Watch this restaurant"}>
+                                        <Bookmark className={`w-3 h-3 ${watchedVenues.has((drop.name||"").toLowerCase()) ? "fill-white text-white" : "text-white/60"}`} />
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="p-3 flex flex-col gap-2">
                                   <div>
                                     <h4 className="text-[14px] font-bold text-slate-900 truncate">{drop.name}</h4>
-                                    <p className="text-[11px] text-slate-500 mt-0.5">
-                                      {drop.location || "NYC"} · {formatPartySizeShort(drop.party_sizes_available)}
+                                    <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                      {drop.location && <span>{drop.location}</span>}
+                                      {drop.location && <span className="text-slate-300">·</span>}
+                                      <span>{formatPartySizeShort(drop.party_sizes_available)}</span>
+                                      {drop.rarity_score >= 75 ? (
+                                        <span className="text-[10px] font-semibold text-amber-600">Rare</span>
+                                      ) : drop.days_with_drops > 0 ? (
+                                        <span className="text-[10px] text-slate-400">{drop.days_with_drops}/14</span>
+                                      ) : null}
                                     </p>
                                   </div>
                                   <div className="flex flex-nowrap items-center gap-1.5 min-w-0">
@@ -1890,8 +2313,6 @@ export default function App() {
                                       (() => {
                                         const sameDateOnly = drop.slots.every(s => s.date_str === drop.slots[0].date_str);
                                         const expanded = expandedSlotCardIds.has(drop.id);
-                                        const firstSlot = drop.slots[0];
-                                        const hasMore = drop.slots.length > 1 && !expanded;
                                         if (expanded) {
                                           return (
                                             <>
@@ -1904,14 +2325,18 @@ export default function App() {
                                             </>
                                           );
                                         }
+                                        const visible = drop.slots.slice(0, SLOTS_VISIBLE);
+                                        const rest = drop.slots.length - SLOTS_VISIBLE;
                                         return (
                                           <>
-                                            <a href={firstSlot.resyUrl || "#"} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-slate-700 text-[12px] font-semibold hover:bg-slate-50 transition-colors truncate min-w-0 shrink">
-                                              {formatSlotLabel(firstSlot, sameDateOnly)}
-                                            </a>
-                                            {hasMore && (
+                                            {visible.map((slot, tIdx) => (
+                                              <a key={`hrn-${drop.id}-${slot.date_str}-${slot.time}-${tIdx}`} href={slot.resyUrl || "#"} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-slate-700 text-[12px] font-semibold hover:bg-slate-50 transition-colors shrink-0">
+                                                {formatSlotLabel(slot, sameDateOnly)}
+                                              </a>
+                                            ))}
+                                            {rest > 0 && (
                                               <button type="button" onClick={() => setExpandedSlotCardIds(prev => new Set(prev).add(drop.id))} className="px-2.5 py-1.5 rounded-md border border-slate-200 bg-slate-50 text-slate-600 text-[12px] font-semibold hover:bg-slate-100 shrink-0" title={`View all ${drop.slots.length} times`}>
-                                                +{drop.slots.length - 1}
+                                                …+{rest}
                                               </button>
                                             )}
                                           </>
@@ -1942,9 +2367,9 @@ export default function App() {
                       }}
                       className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border-2 border-slate-200 bg-white text-slate-800 text-[14px] font-bold hover:border-slate-300 hover:bg-slate-50 transition-all"
                     >
-                      View all available tables →
+                      View all →
                     </button>
-                    <p className="text-[11px] text-slate-500 mt-1.5">Live feed across all dates</p>
+                    <p className="text-[10px] text-slate-400 mt-1.5">Live</p>
                   </div>
                 </>
                   )}

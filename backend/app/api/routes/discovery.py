@@ -12,24 +12,35 @@ from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.core.constants import DISCOVERY_BUCKET_JOB_ID, DISCOVERY_POLL_INTERVAL_SECONDS, JUST_OPENED_WITHIN_MINUTES
-from app.core.nyc_hotspots import is_hotspot
-from app.db.session import get_db
+from app.core.constants import (
+    DISCOVERY_BUCKET_JOB_ID,
+    DISCOVERY_FEED_LIMIT,
+    DISCOVERY_JUST_OPENED_LIMIT,
+    DISCOVERY_POLL_INTERVAL_SECONDS,
+    DISCOVERY_ROLLING_METRICS_LIMIT,
+    JUST_OPENED_WITHIN_MINUTES,
+)
+from app.core.discovery_config import DISCOVERY_PARTY_SIZES, DISCOVERY_TIME_SLOTS
+from app.core.nyc_hotspots import is_hotspot, list_hotspots
+from app.db.session import get_db, SessionLocal
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
+from app.models.notify_preference import NotifyPreference
 from app.models.slot_availability import SlotAvailability
 from app.models.market_metrics import MarketMetrics
 from app.models.venue_metrics import VenueMetrics
 from app.models.venue_rolling_metrics import VenueRollingMetrics
-from app.services.admin_service import clear_resy_db, reset_discovery_buckets
+from app.services.admin_service import clear_resy_db, reset_discovery_buckets, reset_all_discovery_and_metrics
 from app.services.resy import search_with_availability
 from app.services.resy.config import ResyConfig
 from app.services.discovery import get_discovery_debug, get_discovery_fast_checks, get_discovery_job_heartbeat, get_feed_item_debug
 from app.services.discovery.buckets import (
     all_bucket_ids,
     delete_closed_drop_events,
+    fetch_for_bucket,
     get_baseline_snapshot,
     get_bucket_health,
     get_calendar_counts,
@@ -38,6 +49,14 @@ from app.services.discovery.buckets import (
     get_last_scan_info_buckets,
     get_notifications_by_date,
     get_still_open_from_buckets,
+    prune_old_buckets,
+    prune_old_drop_events,
+    prune_old_market_metrics,
+    prune_old_sessions,
+    prune_old_slot_availability,
+    prune_old_venue_metrics,
+    prune_old_venue_rolling_metrics,
+    prune_old_venues,
     refresh_baselines_for_all_buckets,
     window_start_date,
 )
@@ -46,7 +65,6 @@ from app.services.discovery.feed import build_feed
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
 
 def _next_scan_iso(request: Request) -> str:
     """Next discovery bucket job run time (UTC ISO). Fallback if scheduler not ready."""
@@ -102,6 +120,7 @@ async def discovery_health(request: Request, db: Session = Depends(get_db)):
     """
     try:
         out = get_discovery_fast_checks(db)
+        out["config"] = {"time_slots": DISCOVERY_TIME_SLOTS, "party_sizes": DISCOVERY_PARTY_SIZES}
         bucket_health = get_bucket_health(db, window_start_date())
         out["bucket_health"] = bucket_health
         stale = [b for b in bucket_health if b.get("stale")]
@@ -127,20 +146,27 @@ async def discovery_health(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/watches/resy-test")
-async def resy_test():
+async def resy_test(debug: bool = False, days_ahead: int = 0):
     """
     Test Resy API from this host: one search_with_availability call (same as one discovery bucket).
-    Use to verify RESY_API_KEY and RESY_AUTH_TOKEN on EC2: curl http://EC2_IP:8000/chat/watches/resy-test
+    Uses discovery 'today' (America/New_York). Add ?days_ahead=7 to test a future date (more likely to have slots).
+    Add ?debug=1 to see raw API hit count and first hit structure.
     """
+    from datetime import timedelta
+    from app.services.resy.client import ResyClient
+    from app.services.discovery.buckets import window_start_date
     config = ResyConfig()
     credentials_configured = config.is_configured()
-    # One bucket: today, 19:00, party_size=2 (same as discovery)
-    today = date.today()
+    # Use same "today" as discovery (ET) so we're testing the same dates buckets use
+    today = window_start_date()
+    if days_ahead > 0:
+        today = today + timedelta(days=min(days_ahead, 30))
+    day_str = today.isoformat()
     result = search_with_availability(
         today,
         party_size=2,
         query="",
-        time_filter="19:00",
+        time_filter="20:30",
         time_window_hours=3,
         per_page=100,
         max_pages=1,
@@ -148,20 +174,38 @@ async def resy_test():
     if result.get("error"):
         return {
             "credentials_configured": credentials_configured,
-            "resy_request": "one bucket (today, 19:00, party=2)",
+            "resy_request": "one bucket (today, 20:30, party=2)",
             "result": {"error": result["error"], "detail": result.get("detail")},
             "hint": "Set RESY_API_KEY and RESY_AUTH_TOKEN in backend/.env on this host and restart backend.",
         }
     venues = result.get("venues") or []
     names = [v.get("name") or "(no name)" for v in venues[:5]]
-    return {
+    out = {
         "credentials_configured": credentials_configured,
-        "resy_request": "one bucket (today, 19:00, party=2)",
+        "resy_request": f"date={day_str}, time_filter=20:30, party=2 (discovery today, days_ahead={days_ahead})",
         "result": {
             "venue_count": len(venues),
             "sample_venue_names": names,
         },
+        "hint": "If venue_count=0, Resy has no open slots for this date/time. Try ?days_ahead=7 for a future date." if len(venues) == 0 else None,
     }
+    if debug:
+        # Raw client call to see total hits before filtering by availability
+        client = ResyClient()
+        raw = client.search_with_availability(day_str, 2, time_filter="20:30", per_page=100, max_pages=1)
+        hits = (raw.get("search") or {}).get("hits") or []
+        first_keys = list(hits[0].keys()) if hits else []
+        avail = (hits[0].get("availability") or {}) if hits else {}
+        avail_keys = list(avail.keys()) if isinstance(avail, dict) else []
+        slots = avail.get("slots", []) if isinstance(avail, dict) else []
+        out["debug"] = {
+            "raw_hit_count": len(hits),
+            "first_hit_keys": first_keys,
+            "availability_keys": avail_keys,
+            "slots_count": len(slots) if isinstance(slots, list) else 0,
+            "hint": "If raw_hit_count>0 but venue_count=0, hits have no availability.slots (Resy returned venues but no open times).",
+        }
+    return out
 
 
 def _opentable_test_script_path() -> Path:
@@ -230,9 +274,10 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
             SlotAvailability.state == "open",
             SlotAvailability.venue_id.isnot(None),
         ).distinct().count()
-        just_opened_list = get_just_opened_from_buckets(db, limit_events=500)
+        just_opened_list = get_just_opened_from_buckets(db, limit_events=200)
         just_opened_venue_count = sum(len(day.get("venues") or []) for day in just_opened_list)
         just_opened_capped = just_opened_venue_count >= 500 or open_slots_count > 500
+        all_baselines_zero = bucket_health and all((b.get("baseline_count") or 0) == 0 for b in bucket_health)
         return {
             "db": {
                 "slot_availability_open_count": open_slots_count,
@@ -246,12 +291,13 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
                 "last_scan_at": bucket_info.get("last_scan_at"),
                 "total_venues_scanned": bucket_info.get("total_venues_scanned", 0),
                 "bucket_health": bucket_health,
+                **({"baseline_all_zero_hint": "Resy returned no open slots for the dates/times polled (common for same-day/near-term). Try GET /chat/watches/resy-test?days_ahead=7 — if that shows venue_count>0, discovery will fill baselines for buckets further out in the window."} if all_baselines_zero else {}),
             },
             "fast_checks": fast_checks.get("fast_checks", {}),
             "job_heartbeat": heartbeat,
             "next_scan_at": _next_scan_iso(request),
             "hint": (
-                "Bucket job runs every 30s; all 28 buckets polled in parallel. job_heartbeat.last_poll_invariants: baseline_echo_total must be 0. "
+                "Tick every 2s; all buckets in parallel; compare to prev only; TTL dedupe NOTIFIED_DEDUPE_MINUTES. "
                 "Feed-item-debug: GET /chat/watches/feed-item-debug?event_id=N or ?slot_id=&bucket_id= to see why an item is in the feed."
             ),
             "endpoints": {
@@ -266,6 +312,8 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
                 "still_open": "GET /chat/watches/still-open",
                 "refresh_discovery_baselines": "POST /chat/watches/refresh-discovery-baselines",
                 "reset_discovery_buckets": "POST /chat/watches/reset-discovery-buckets",
+                "reset_all": "POST /chat/watches/reset-all-discovery-and-metrics (full: discovery + metrics + cache + venues)",
+                "prune_now": "POST /chat/watches/prune-now (run retention prunes now to shrink DB)",
                 "baseline": "GET /chat/watches/baseline",
                 "calendar_counts": "GET /chat/watches/calendar-counts",
                 "providers": "GET /chat/providers (list availability providers: resy, opentable)",
@@ -276,26 +324,44 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
         return {"error": str(e), "db": {}, "discovery_buckets": {}, "job_heartbeat": get_discovery_job_heartbeat(), "next_scan_at": _next_scan_iso(request), "fast_checks": {}}
 
 
-@router.post("/watches/refresh-discovery-baselines")
-async def refresh_baselines(db: Session = Depends(get_db)):
-    """
-    Re-run baseline for all 28 buckets in place (current Resy search area). Does not delete
-    any data — overwrites each bucket's baseline and prev with a fresh snapshot. Use after
-    changing the search bounding box so the feed is correct for the new area without wiping
-    drop_events or taking baselines down first. Live-safe.
-    """
+def _refresh_baselines_sync() -> dict:
+    """Run in thread: own DB session so we don't block the event loop or share session across threads."""
+    db = SessionLocal()
     try:
-        result = refresh_baselines_for_all_buckets(db, window_start_date())
-        return {
-            "ok": True,
-            "buckets_refreshed": result["buckets_refreshed"],
-            "buckets_total": result["buckets_total"],
-            "errors": result["errors"],
-            "message": "Baselines refreshed in place. No data deleted.",
-        }
+        return refresh_baselines_for_all_buckets(db, window_start_date())
+    finally:
+        db.close()
+
+
+def _run_refresh_baselines_background() -> None:
+    """Fire-and-forget: run refresh in thread and log result. Called from background task."""
+    try:
+        result = _refresh_baselines_sync()
+        logger.info(
+            "refresh-discovery-baselines completed: buckets_refreshed=%s buckets_total=%s errors=%s",
+            result["buckets_refreshed"],
+            result["buckets_total"],
+            result["errors"],
+        )
+        if result["errors"]:
+            logger.warning("refresh-discovery-baselines had errors for buckets: %s", result["errors"])
     except Exception as e:
-        logger.warning("refresh-discovery-baselines failed: %s", e, exc_info=True)
-        return {"ok": False, "error": str(e)}
+        logger.exception("refresh-discovery-baselines failed: %s", e)
+
+
+@router.post("/watches/refresh-discovery-baselines")
+async def refresh_baselines():
+    """
+    Start baseline refresh in the background and return immediately (202). Re-runs baseline
+    for all buckets in place (current Resy search area). Takes 1–2 minutes; check server
+    logs for completion. Server stays responsive.
+    """
+    asyncio.create_task(asyncio.to_thread(_run_refresh_baselines_background))
+    return Response(
+        status_code=202,
+        content='{"ok": true, "message": "Baseline refresh started in background. Takes 1-2 min. Check server logs for completion."}',
+        media_type="application/json",
+    )
 
 
 @router.post("/watches/reset-discovery-buckets")
@@ -311,6 +377,62 @@ async def reset_buckets(db: Session = Depends(get_db)):
     except Exception as e:
         logger.warning("reset-discovery-buckets failed: %s", e, exc_info=True)
         return {"ok": False, "error": str(e)}
+
+
+@router.post("/watches/reset-all-discovery-and-metrics")
+async def reset_all_discovery_route(db: Session = Depends(get_db)):
+    """
+    Full reset: truncate discovery_buckets, drop_events, slot_availability, availability_sessions,
+    feed_cache, venue_metrics, market_metrics, venue_rolling_metrics, venues. Keeps push_tokens and notify_preferences.
+    Restart the backend after so the scheduler and job state are fresh.
+    """
+    try:
+        result = reset_all_discovery_and_metrics(db)
+        return {
+            **result,
+            "message": "All discovery, metrics, cache, and venues tables truncated. Restart backend for fresh jobs.",
+        }
+    except Exception as e:
+        logger.warning("reset-all-discovery-and-metrics failed: %s", e, exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+def _prune_one(db: Session, name: str, fn, *args, **kwargs):
+    """Run one prune, return count or error string. Rolls back on failure so next prune can run."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        logger.warning("prune-now %s failed: %s", name, e)
+        db.rollback()
+        return f"error: {e!s}"
+
+
+@router.post("/watches/prune-now")
+async def prune_now(db: Session = Depends(get_db)):
+    """
+    Run all retention prunes now so the DB only keeps data we need. Removes rows past retention
+    (old buckets, old drop_events, old slot_availability, old sessions, old metrics, old venues).
+    Use this when tables have grown too large and the job is slow; keeps current-window data.
+    For a full reset, use POST /chat/watches/reset-discovery-buckets instead.
+    """
+    today = window_start_date()
+    deleted = {
+        "discovery_buckets": _prune_one(db, "discovery_buckets", prune_old_buckets, db, today),
+        "drop_events": _prune_one(db, "drop_events", prune_old_drop_events, db, today),
+        "slot_availability": _prune_one(db, "slot_availability", prune_old_slot_availability, db, today),
+        "availability_sessions": _prune_one(db, "availability_sessions", prune_old_sessions, db, today),
+        "venue_rolling_metrics": _prune_one(db, "venue_rolling_metrics", prune_old_venue_rolling_metrics, db, today, keep_days=60),
+        "venue_metrics": _prune_one(db, "venue_metrics", prune_old_venue_metrics, db, today),
+        "market_metrics": _prune_one(db, "market_metrics", prune_old_market_metrics, db, today),
+        "venues": _prune_one(db, "venues", prune_old_venues, db),
+    }
+    errors = [k for k, v in deleted.items() if isinstance(v, str)]
+    return {
+        "ok": len(errors) == 0,
+        "deleted": deleted,
+        "message": "Retention prunes run. Only data within retention is kept. Run GET /chat/watches/row-counts to verify."
+        + (f" Skipped (table missing?): {errors}." if errors else ""),
+    }
 
 
 @router.get("/watches/baseline")
@@ -458,6 +580,171 @@ async def calendar_counts(db: Session = Depends(get_db)):
         return {"by_date": {}, "dates": [], "error": str(e)}
 
 
+@router.get("/watches/hotlist")
+async def hotlist():
+    """
+    NYC hotlist (hotspot) restaurant names. By default you get email/push notifications
+    for drops at any of these, plus any venues you add to My Watches. Use in bookmarks UI
+    to show "what you'll get notified about".
+    """
+    return {"hotlist": list_hotspots()}
+
+
+def _normalize_venue(name: str | None) -> str:
+    if not name:
+        return ""
+    return name.strip().lower()
+
+
+def _recipient_id(request: Request) -> str:
+    return (request.headers.get("X-Recipient-Id") or "default").strip() or "default"
+
+
+@router.get("/venue-watches")
+async def get_venue_watches(request: Request, db: Session = Depends(get_db)):
+    """
+    User's notify list: saved (include) and excluded (removed from default hotlist).
+    Effective notify list = (hotlist ∪ watches) − excluded.
+    """
+    rid = _recipient_id(request)
+    includes = (
+        db.query(NotifyPreference)
+        .filter(NotifyPreference.recipient_id == rid, NotifyPreference.preference == "include")
+        .all()
+    )
+    excludes = (
+        db.query(NotifyPreference)
+        .filter(NotifyPreference.recipient_id == rid, NotifyPreference.preference == "exclude")
+        .all()
+    )
+    # Frontend expects venue_name (display); we store normalized. Return display as title-case of normalized for includes; for hotlist we don't store display name so use normalized as-is (frontend can capitalize).
+    watches = [{"id": r.id, "venue_name": r.venue_name_normalized} for r in includes]
+    excluded = [{"id": r.id, "venue_name": r.venue_name_normalized} for r in excludes]
+    return {"watches": watches, "excluded": excluded}
+
+
+@router.post("/venue-watches")
+async def add_venue_watch(request: Request, db: Session = Depends(get_db)):
+    """Add a venue to your notify list (include)."""
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    name = (body.get("venue_name") or "").strip()
+    if not name:
+        return Response(status_code=400, content='{"error": "venue_name required"}', media_type="application/json")
+    rid = _recipient_id(request)
+    norm = _normalize_venue(name)
+    existing = (
+        db.query(NotifyPreference)
+        .filter(NotifyPreference.recipient_id == rid, NotifyPreference.venue_name_normalized == norm)
+        .first()
+    )
+    if existing:
+        if existing.preference == "exclude":
+            existing.preference = "include"
+            db.commit()
+            return {"id": existing.id, "venue_name": norm}
+        return {"id": existing.id, "venue_name": norm}
+    row = NotifyPreference(recipient_id=rid, venue_name_normalized=norm, preference="include")
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "venue_name": norm}
+
+
+@router.delete("/venue-watches/{watch_id:int}")
+async def remove_venue_watch(request: Request, watch_id: int, db: Session = Depends(get_db)):
+    """Remove a venue from your saved list (include)."""
+    rid = _recipient_id(request)
+    row = (
+        db.query(NotifyPreference)
+        .filter(NotifyPreference.id == watch_id, NotifyPreference.recipient_id == rid, NotifyPreference.preference == "include")
+        .first()
+    )
+    if not row:
+        return Response(status_code=404, content='{"error": "not found"}', media_type="application/json")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/venue-watches/exclude")
+async def add_venue_exclude(request: Request, db: Session = Depends(get_db)):
+    """Remove a venue from default hotlist notifications (exclude)."""
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    name = (body.get("venue_name") or "").strip()
+    if not name:
+        return Response(status_code=400, content='{"error": "venue_name required"}', media_type="application/json")
+    rid = _recipient_id(request)
+    norm = _normalize_venue(name)
+    existing = (
+        db.query(NotifyPreference)
+        .filter(NotifyPreference.recipient_id == rid, NotifyPreference.venue_name_normalized == norm)
+        .first()
+    )
+    if existing:
+        if existing.preference == "include":
+            existing.preference = "exclude"
+            db.commit()
+            return {"id": existing.id, "venue_name": norm}
+        return {"id": existing.id, "venue_name": norm}
+    row = NotifyPreference(recipient_id=rid, venue_name_normalized=norm, preference="exclude")
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "venue_name": norm}
+
+
+@router.delete("/venue-watches/exclude/{exclude_id:int}")
+async def remove_venue_exclude(request: Request, exclude_id: int, db: Session = Depends(get_db)):
+    """Add a venue back to default hotlist notifications (remove from excluded)."""
+    rid = _recipient_id(request)
+    row = (
+        db.query(NotifyPreference)
+        .filter(NotifyPreference.id == exclude_id, NotifyPreference.recipient_id == rid, NotifyPreference.preference == "exclude")
+        .first()
+    )
+    if not row:
+        return Response(status_code=404, content='{"error": "not found"}', media_type="application/json")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/watches/row-counts")
+async def row_counts(db: Session = Depends(get_db)):
+    """
+    Approximate row counts for discovery tables (from pg_class, fast). Use to spot bloat.
+    Large slot_availability or venue_rolling_metrics can slow just-opened; prune runs every ~50s.
+    """
+    tables = (
+        "discovery_buckets",
+        "drop_events",
+        "slot_availability",
+        "availability_sessions",
+        "venue_rolling_metrics",
+        "venue_metrics",
+        "market_metrics",
+        "venues",
+        "feed_cache",
+        "notify_preferences",
+    )
+    out = {}
+    for t in tables:
+        try:
+            # Use pg_class.reltuples so we don't do full table scan (COUNT(*) is slow on big tables)
+            row = db.execute(
+                text("SELECT reltuples::bigint FROM pg_class WHERE relname = :name"),
+                {"name": t},
+            ).first()
+            out[t] = int(row[0]) if row and row[0] is not None else 0
+        except Exception as e:
+            out[t] = {"error": str(e)}
+    return {
+        "row_counts": out,
+        "approx": True,
+        "hint": "If counts are huge: POST /chat/watches/prune-now to run retention prunes and shrink DB (keeps current data). For full clear: POST /chat/watches/reset-discovery-buckets.",
+    }
+
+
 @router.get("/watches/notifications-by-date")
 async def notifications_by_date(
     db: Session = Depends(get_db),
@@ -521,8 +808,10 @@ async def feed(
                 since_dt = since_dt.replace(tzinfo=timezone.utc)
         except ValueError:
             pass
-    if limit < 1 or limit > 500:
-        limit = 100
+    if limit < 1:
+        limit = DISCOVERY_FEED_LIMIT
+    elif limit > 500:
+        limit = 500
     try:
         events = get_feed(db, since=since_dt, limit=limit)
         return {"events": events, "count": len(events)}
@@ -641,98 +930,6 @@ def _parse_ints(value: str | None) -> list[int] | None:
     return out if out else None
 
 
-def _parse_time_to_minutes(value: str | None) -> int | None:
-    """Parse HH:MM or HH:MM:SS to minutes since midnight. None if invalid."""
-    if not value or not value.strip():
-        return None
-    parts = value.strip().split(":")
-    if not parts:
-        return None
-    try:
-        h = int(parts[0])
-        m = int(parts[1]) if len(parts) > 1 else 0
-        if 0 <= h <= 24 and 0 <= m <= 59:
-            return h * 60 + m
-    except (ValueError, TypeError):
-        pass
-    return None
-
-
-def _time_str_to_minutes_for_filter(t: str) -> int | None:
-    """Parse time from 'HH:MM', 'HH:MM:SS', or 'YYYY-MM-DD HH:MM:SS' to minutes since midnight."""
-    if not t or not isinstance(t, str):
-        return None
-    s = t.strip()
-    if " " in s:
-        s = s.split(" ", 1)[1]  # "2026-02-19 17:00:00" -> "17:00:00"
-    return _parse_time_to_minutes(s[:5] if len(s) >= 5 else s)  # "17:00:00" -> "17:00"
-
-
-def _filter_availability_times_to_range(
-    times: list[str],
-    after_min: int,
-    before_min: int,
-) -> list[str]:
-    """Keep only time strings that fall in [after_min, before_min] (inclusive)."""
-    out = []
-    for t in times or []:
-        mins = _time_str_to_minutes_for_filter(t.strip() if isinstance(t, str) else None)
-        if mins is None:
-            continue
-        if mins < after_min or mins > before_min:
-            continue
-        out.append(t)
-    return out
-
-
-def _filter_feed_cards_by_time_range(
-    cards: list[dict],
-    after_min: int,
-    before_min: int,
-) -> list[dict]:
-    """Filter each card's slots to the time range; drop cards with no slots left."""
-    result = []
-    for c in cards or []:
-        slots = c.get("slots") or []
-        kept_slots = []
-        for s in slots:
-            time_str = (s.get("time") or "").strip()
-            if not time_str or time_str == "—":
-                continue
-            mins = _parse_time_to_minutes(time_str[:5] if len(time_str) >= 5 else time_str)
-            if mins is None:
-                continue
-            if after_min <= mins <= before_min:
-                kept_slots.append(s)
-        if not kept_slots:
-            continue
-        card = dict(c)
-        card["slots"] = kept_slots
-        card["resyUrl"] = (kept_slots[0].get("resyUrl") if kept_slots else None) or None
-        result.append(card)
-    return result
-
-
-def _parse_time_range(value: str | None) -> tuple[int | None, int | None]:
-    """Parse time_range 'HH:MM-HH:MM' or 'HH:MM - HH:MM' into (time_after_min, time_before_min). Returns (None, None) if invalid."""
-    if not value or not value.strip():
-        return (None, None)
-    raw = value.strip()
-    # Allow hyphen or " - " between start and end
-    for sep in (" - ", "-"):
-        if sep in raw:
-            start, _, end = raw.partition(sep)
-            start_min = _parse_time_to_minutes(start.strip())
-            end_min = _parse_time_to_minutes(end.strip())
-            if start_min is not None and end_min is not None:
-                if start_min < end_min:
-                    return (start_min, end_min)
-                if start_min > end_min:
-                    return (end_min, start_min)  # accept reversed range instead of returning (None, None) and unbounded results
-            return (None, None)
-    return (None, None)
-
-
 @router.get("/watches/just-opened")
 async def list_just_opened(
     request: Request,
@@ -741,12 +938,9 @@ async def list_just_opened(
     dates: str | None = None,
     time_slots: str | None = None,
     party_sizes: str | None = None,
-    time_after: str | None = None,
-    time_before: str | None = None,
-    time_range: str | None = None,
     debug: str | None = None,
 ):
-    """Just opened + still open. Optional: dates, time_slots, party_sizes; time filter via time_after+time_before OR time_range (e.g. 18:00-21:00)."""
+    """Just opened + still open. Optional: dates, time_slots, party_sizes. Returns all times Resy returned (no time filter)."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     try:
@@ -756,25 +950,14 @@ async def list_just_opened(
             date_filter = [s.strip() for s in dates.split(",") if s.strip()]
         time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         party_size_list = _parse_ints(party_sizes)
-        range_after, range_before = _parse_time_range(time_range)
-        if range_after is not None and range_before is not None:
-            time_after_min, time_before_min = range_after, range_before
-        else:
-            time_after_min = _parse_time_to_minutes(time_after)
-            time_before_min = _parse_time_to_minutes(time_before)
-        # Expose time filter in response so you can verify local vs EC2 (Network tab → Headers)
-        if time_after_min is not None and time_before_min is not None:
-            response.headers["X-Time-Range-Active"] = "1"
-            response.headers["X-Time-Range-Min"] = f"{time_after_min}-{time_before_min}"
+        response.headers["X-Discovery-Today"] = today.isoformat()
         info = get_last_scan_info_buckets(db, today)
         just_opened = get_just_opened_from_buckets(
             db,
-            limit_events=5000,
+            limit_events=DISCOVERY_JUST_OPENED_LIMIT,
             date_filter=date_filter,
             time_slots=time_slot_list,
             party_sizes=party_size_list,
-            time_after_min=time_after_min,
-            time_before_min=time_before_min,
             opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
         still_open = get_still_open_from_buckets(
@@ -783,36 +966,8 @@ async def list_just_opened(
             date_filter=date_filter,
             time_slots=time_slot_list,
             party_sizes=party_size_list,
-            time_after_min=time_after_min,
-            time_before_min=time_before_min,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
-        # Only show venues with at least one slot in the requested range; trim each venue's times to that range
-        if time_after_min is not None and time_before_min is not None:
-            for day in just_opened:
-                kept = []
-                for v in day.get("venues") or []:
-                    times = v.get("availability_times")
-                    if not times:
-                        kept.append(v)
-                        continue
-                    filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
-                    if filtered:
-                        v["availability_times"] = filtered
-                        kept.append(v)
-                day["venues"] = kept
-            for day in still_open:
-                kept = []
-                for v in day.get("venues") or []:
-                    times = v.get("availability_times")
-                    if not times:
-                        kept.append(v)
-                        continue
-                    filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
-                    if filtered:
-                        v["availability_times"] = filtered
-                        kept.append(v)
-                day["venues"] = kept
         # Tag NYC hotspot venues for special notifications
         for day in just_opened:
             for v in day.get("venues") or []:
@@ -821,14 +976,42 @@ async def list_just_opened(
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"))
 
-        feed = build_feed(just_opened, still_open)
+        # Feed shows only "just opened" (venues that had 0 availability and now have some).
+        # Do not merge in still_open — those include baseline availability and would show places that were already open.
+        feed = build_feed(just_opened, [])
         ranked_board = feed["ranked_board"]
         top_opportunities = feed["top_opportunities"]
         hot_right_now = feed["hot_right_now"]
-        if time_after_min is not None and time_before_min is not None:
-            ranked_board = _filter_feed_cards_by_time_range(ranked_board, time_after_min, time_before_min)
-            top_opportunities = _filter_feed_cards_by_time_range(top_opportunities, time_after_min, time_before_min)
-            hot_right_now = _filter_feed_cards_by_time_range(hot_right_now, time_after_min, time_before_min)
+
+        # Enrich feed cards with venue scarcity metrics (rarity_score, availability_rate_14d, etc.)
+        # Load most-recent rolling metrics per venue (capped for scalability)
+        rolling_rows = (
+            db.query(VenueRollingMetrics)
+            .filter(VenueRollingMetrics.venue_name.isnot(None))
+            .order_by(VenueRollingMetrics.computed_at.desc())
+            .limit(DISCOVERY_ROLLING_METRICS_LIMIT)
+            .all()
+        )
+        rolling_by_name: dict[str, VenueRollingMetrics] = {}
+        for rm in rolling_rows:
+            key = (rm.venue_name or "").strip().lower()
+            if key and key not in rolling_by_name:
+                rolling_by_name[key] = rm
+
+        def _attach_metrics(cards: list[dict]) -> None:
+            for c in cards:
+                nm = (c.get("name") or "").strip().lower()
+                rm = rolling_by_name.get(nm)
+                if rm:
+                    c["rarity_score"] = rm.rarity_score
+                    c["availability_rate_14d"] = rm.availability_rate_14d
+                    c["days_with_drops"] = rm.days_with_drops
+                    c["drop_frequency_per_day"] = rm.drop_frequency_per_day
+
+        _attach_metrics(ranked_board)
+        _attach_metrics(top_opportunities)
+        _attach_metrics(hot_right_now)
+
         payload = {
             "just_opened": just_opened,
             "still_open": still_open,
@@ -838,6 +1021,11 @@ async def list_just_opened(
             **info,
             "next_scan_at": _next_scan_iso(request),
         }
+        if (info.get("total_venues_scanned") or 0) == 0:
+            payload["zero_venues_hint"] = (
+                "Resy returned no open slots for the scanned dates/times. "
+                "Check GET /chat/watches/resy-test?days_ahead=7 and RESY_API_KEY / RESY_AUTH_TOKEN in .env."
+            )
         if debug and str(debug).strip() in ("1", "true", "yes"):
             just_opened_by_date = {d["date_str"]: len(d.get("venues") or []) for d in just_opened}
             still_open_by_date = {d["date_str"]: len(d.get("venues") or []) for d in still_open}
@@ -854,10 +1042,6 @@ async def list_just_opened(
             empty_baseline_buckets = [r.bucket_id for r in rows if _baseline_empty(r.baseline_slot_ids_json)]
             payload["_debug"] = {
                 "date_filter_sent": date_filter,
-                "time_range_sent": time_range,
-                "time_after_min": time_after_min,
-                "time_before_min": time_before_min,
-                "time_filter_active": time_after_min is not None and time_before_min is not None,
                 "just_opened_dates": list(just_opened_by_date.keys()),
                 "still_open_dates": list(still_open_by_date.keys()),
                 "just_opened_per_date": just_opened_by_date,
@@ -878,11 +1062,8 @@ async def list_still_open(
     dates: str | None = None,
     time_slots: str | None = None,
     party_sizes: str | None = None,
-    time_after: str | None = None,
-    time_before: str | None = None,
-    time_range: str | None = None,
 ):
-    """Still open only. Same query params as just-opened; time filter via time_after+time_before OR time_range (e.g. 18:00-21:00)."""
+    """Still open only. Same query params as just-opened. Returns all times (no time filter)."""
     try:
         today = window_start_date()
         date_filter = None
@@ -890,12 +1071,6 @@ async def list_still_open(
             date_filter = [s.strip() for s in dates.split(",") if s.strip()]
         time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         party_size_list = _parse_ints(party_sizes)
-        range_after, range_before = _parse_time_range(time_range)
-        if range_after is not None and range_before is not None:
-            time_after_min, time_before_min = range_after, range_before
-        else:
-            time_after_min = _parse_time_to_minutes(time_after)
-            time_before_min = _parse_time_to_minutes(time_before)
         info = get_last_scan_info_buckets(db, today)
         still_open = get_still_open_from_buckets(
             db,
@@ -903,23 +1078,8 @@ async def list_still_open(
             date_filter=date_filter,
             time_slots=time_slot_list,
             party_sizes=party_size_list,
-            time_after_min=time_after_min,
-            time_before_min=time_before_min,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
-        if time_after_min is not None and time_before_min is not None:
-            for day in still_open:
-                kept = []
-                for v in day.get("venues") or []:
-                    times = v.get("availability_times")
-                    if not times:
-                        kept.append(v)
-                        continue
-                    filtered = _filter_availability_times_to_range(times, time_after_min, time_before_min)
-                    if filtered:
-                        v["availability_times"] = filtered
-                        kept.append(v)
-                day["venues"] = kept
         return {
             "still_open": still_open,
             **info,
