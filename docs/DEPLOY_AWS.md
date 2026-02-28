@@ -32,6 +32,7 @@ sudo docker-compose -f docker-compose.prod.yml logs --tail 80 backend
   1. **From your Mac:** `EC2_KEY=/path/to/your.pem ./scripts/deploy-to-ec2.sh` — SSHs into EC2 and runs the deploy steps there.
   2. **GitHub Actions:** Push to `main` (or run “Deploy to AWS” from the Actions tab). The workflow SSHs to EC2 and runs the same steps. Requires repo secrets: `EC2_HOST`, `EC2_SSH_KEY`.
 - **Check what’s running:** `GET http://YOUR_EC2_IP:8000/health` returns `{"status":"ok","version":"abc123"}` — the version is the git short commit so you can confirm the deploy.
+- **"No space left on device" during build:** The deploy script now runs `docker system prune -af` before each build. If you still hit this, SSH in and run once: `sudo docker system prune -af && df -h`, then deploy again from your Mac.
 
 ---
 

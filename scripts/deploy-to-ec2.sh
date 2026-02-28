@@ -27,6 +27,8 @@ ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "ec2-user@${EC2_HOST}" << 'REM
   cd ~/paystub-service
   git pull origin main
   GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+  # Free disk space before build (avoids "no space left on device" on small EC2)
+  sudo docker system prune -af 2>/dev/null || true
   # Use plain docker build to avoid "compose build requires buildx 0.17.0 or later" on older EC2
   sudo docker build --build-arg GIT_SHA="$GIT_SHA" --no-cache -t paystub-service-backend ./backend
   if command -v docker-compose >/dev/null 2>&1; then
