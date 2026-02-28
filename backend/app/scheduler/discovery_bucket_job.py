@@ -71,8 +71,9 @@ def run_discovery_bucket_job() -> None:
     buckets that are ready (cooldown elapsed, not already in flight). Does not wait for
     them; they run in the shared executor and re-enqueue themselves when done.
 
-    Retention: every DISCOVERY_PRUNE_EVERY_N_TICKS ticks we also prune slot_availability,
-    drop_events, and availability_sessions so tables stay bounded between daily sliding-window runs.
+    Retention: every DISCOVERY_PRUNE_EVERY_N_TICKS ticks we prune slot_availability and
+    availability_state only (no heavy drop_events deletes in hot path). drop_events and
+    notifications are pruned in the daily sliding-window job.
 
     Baselines are set on first poll: run_poll_for_bucket treats baseline_slot_ids_json is None
     as "first run" and sets baseline = prev = curr (no separate baseline step). So we never
@@ -89,25 +90,17 @@ def run_discovery_bucket_job() -> None:
         except Exception as e:
             logger.warning("prune_old_buckets failed (tick continues): %s", e, exc_info=True)
             db.rollback()
-        # drop_events: prune every 2 ticks to keep hot path quick (still clear regularly)
+        # No heavy drop_events prune in tick — only in daily job (avoids expensive deletes every 20s).
         _tick_count += 1
-        if _tick_count % 2 == 0:
-            try:
-                from app.services.discovery.buckets import prune_old_drop_events
-
-                prune_old_drop_events(db, today)
-            except Exception as e:
-                logger.warning("prune_old_drop_events failed (tick continues): %s", e, exc_info=True)
-                db.rollback()
         if _tick_count >= DISCOVERY_PRUNE_EVERY_N_TICKS:
             _tick_count = 0
             try:
                 from app.services.discovery.buckets import (
+                    prune_old_availability_state,
                     prune_old_slot_availability,
-                    prune_old_sessions,
                 )
                 prune_old_slot_availability(db, today)
-                prune_old_sessions(db, today)
+                prune_old_availability_state(db, today)
             except Exception as e:
                 logger.warning("prune slot_availability/sessions failed (tick continues): %s", e, exc_info=True)
                 db.rollback()
@@ -169,20 +162,22 @@ def run_sliding_window_job() -> None:
         prune_old_drop_events,
         prune_old_market_metrics,
         prune_old_slot_availability,
-        prune_old_sessions,
+        prune_old_availability_state,
         prune_old_venue_metrics,
         prune_old_venue_rolling_metrics,
         prune_old_venues,
     )
+    from app.services.discovery.buckets import prune_old_notifications
 
     today = window_start_date()
     db = SessionLocal()
     try:
         delete_closed_drop_events(db)
         prune_old_buckets(db, today)
-        prune_old_drop_events(db, today)
+        prune_old_drop_events(db, today)  # Scheduled: only daily, not every tick
         prune_old_slot_availability(db, today)
-        prune_old_sessions(db, today)
+        prune_old_availability_state(db, today)
+        prune_old_notifications(db)
         prune_old_venue_rolling_metrics(db, today, keep_days=60)
         prune_old_venue_metrics(db, today)
         prune_old_market_metrics(db, today)

@@ -30,8 +30,8 @@ DISCOVERY_FEED_LIMIT = 100          # max rows for GET /feed
 DISCOVERY_MAX_VENUES_PER_DATE = 500  # cap venues per date in just-opened/still-open
 # Retention: run slot/drop/session pruning every N discovery ticks (in addition to daily sliding window)
 DISCOVERY_PRUNE_EVERY_N_TICKS = 5   # ~50s at 10s tick; keeps tables bounded, avoids DB bloat
-# drop_events: prune rows older than this (and already pushed) so table does not grow unbounded
-DROP_EVENTS_RETENTION_DAYS = 7
+# drop_events retention (from discovery_config; env-driven 7–30 days). Re-export for buckets.py etc.
+from app.core.discovery_config import DROP_EVENTS_RETENTION_DAYS  # noqa: F401
 # venue_metrics, market_metrics: keep this many days of history (daily prune in sliding window)
 METRICS_RETENTION_DAYS = 90
 # venues: prune rows not seen in this many days (daily prune in sliding window)

@@ -49,10 +49,11 @@ from app.services.discovery.buckets import (
     get_last_scan_info_buckets,
     get_notifications_by_date,
     get_still_open_from_buckets,
+    prune_old_availability_state,
     prune_old_buckets,
     prune_old_drop_events,
     prune_old_market_metrics,
-    prune_old_sessions,
+    prune_old_notifications,
     prune_old_slot_availability,
     prune_old_venue_metrics,
     prune_old_venue_rolling_metrics,
@@ -382,7 +383,7 @@ async def reset_buckets(db: Session = Depends(get_db)):
 @router.post("/watches/reset-all-discovery-and-metrics")
 async def reset_all_discovery_route(db: Session = Depends(get_db)):
     """
-    Full reset: truncate discovery_buckets, drop_events, slot_availability, availability_sessions,
+    Full reset: truncate discovery_buckets, drop_events, slot_availability, availability_state (and legacy availability_sessions),
     feed_cache, venue_metrics, market_metrics, venue_rolling_metrics, venues. Keeps push_tokens and notify_preferences.
     Restart the backend after so the scheduler and job state are fresh.
     """
@@ -420,7 +421,8 @@ async def prune_now(db: Session = Depends(get_db)):
         "discovery_buckets": _prune_one(db, "discovery_buckets", prune_old_buckets, db, today),
         "drop_events": _prune_one(db, "drop_events", prune_old_drop_events, db, today),
         "slot_availability": _prune_one(db, "slot_availability", prune_old_slot_availability, db, today),
-        "availability_sessions": _prune_one(db, "availability_sessions", prune_old_sessions, db, today),
+        "availability_state": _prune_one(db, "availability_state", prune_old_availability_state, db, today),
+        "user_notifications": _prune_one(db, "user_notifications", prune_old_notifications, db),
         "venue_rolling_metrics": _prune_one(db, "venue_rolling_metrics", prune_old_venue_rolling_metrics, db, today, keep_days=60),
         "venue_metrics": _prune_one(db, "venue_metrics", prune_old_venue_metrics, db, today),
         "market_metrics": _prune_one(db, "market_metrics", prune_old_market_metrics, db, today),
@@ -720,11 +722,13 @@ async def row_counts(db: Session = Depends(get_db)):
         "drop_events",
         "slot_availability",
         "availability_sessions",
+        "availability_state",
         "venue_rolling_metrics",
         "venue_metrics",
         "market_metrics",
         "venues",
         "feed_cache",
+        "user_notifications",
         "notify_preferences",
     )
     out = {}

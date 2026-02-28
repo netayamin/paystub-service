@@ -178,3 +178,34 @@ events = q.all()  # NO LIMIT — can load 50k+ rows and full payload_json
 - **ensure_buckets:** Replaced 28 existence checks with one query for existing bucket_ids, then `db.add_all(to_add)` for missing buckets and a single commit. (Done.)
 
 Other items above are documented for future tuning (pruning venues, batched prune of drop_events, feed_cache size, composite index).
+
+---
+
+## 8. TTL, retention, and avoiding hot-path deletes (implemented)
+
+To prevent index bloat and query latency from unbounded growth:
+
+### 8.1 **availability_state (replaces session history)**
+
+- **Before:** `availability_sessions` — one row per open/close window → 230k+ rows from repeated polls.
+- **After:** `availability_state` — one row per `(bucket_id, slot_id)`. Upsert on open; on close we update the row, run aggregation, then **delete** the row. Table holds only currently-open slots (bounded).
+- **Hot path:** No deletes in the poll loop; we only upsert and update. Deletes happen after aggregation (same run) and in scheduled prune (stale buckets).
+
+### 8.2 **drop_events: events not ticks**
+
+- Only store real drops (slot became available). Already enforced by logic.
+- **Retention:** `DROP_EVENTS_RETENTION_DAYS` (env, 7–30). Prune only in **daily** sliding-window job, not every tick.
+- **Unique:** Index `(bucket_id, slot_id, venue_id, date_trunc('minute', opened_at))` prevents flapping from creating many rows per minute.
+
+### 8.3 **user_notifications**
+
+- **Retention:** `NOTIFICATIONS_RETENTION_DAYS` (env, 7–90). Prune in daily job and optionally via POST `/watches/prune-now`.
+
+### 8.4 **No heavy deletes in the hot path**
+
+- **Every tick (every ~20s):** Only light work — upsert `availability_state`, ensure buckets, and every N ticks prune `slot_availability` and `availability_state` by bucket date. **No** `prune_old_drop_events` in the tick.
+- **Daily job:** `prune_old_drop_events`, `prune_old_notifications`, `prune_old_availability_state`, slot_availability, buckets, metrics, venues.
+
+### 8.5 **Partitioning (future)**
+
+For very large `drop_events` or `user_notifications`, consider **partition by day (or week) on `created_at`/`opened_at`**. Cleanup then becomes **DROP PARTITION** for old dates (O(1), no vacuum pain). Not required at current scale; add when single-table deletes become slow.

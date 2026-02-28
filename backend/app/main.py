@@ -38,6 +38,15 @@ from app.core.constants import (
     PUSH_INTERVAL_SECONDS,
     PUSH_JOB_ID,
 )
+from app.core.discovery_config import (
+    DISCOVERY_BUCKET_COOLDOWN_SECONDS,
+    DISCOVERY_MAX_CONCURRENT_BUCKETS,
+    DISCOVERY_PARTY_SIZES,
+    DISCOVERY_RESY_MAX_PAGES,
+    DISCOVERY_RESY_PER_PAGE,
+    DISCOVERY_TIME_SLOTS,
+    DISCOVERY_WINDOW_DAYS,
+)
 from app.scheduler.discovery_bucket_job import run_discovery_bucket_job, run_sliding_window_job
 from app.scheduler.push_job import run_push_for_new_drops_job
 from app.scheduler.hourly_resy import run_hourly_check
@@ -170,5 +179,18 @@ def _health_version() -> str:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "version": _health_version()}
+def health() -> dict:
+    """Health check; includes discovery config so each environment can verify env vars."""
+    return {
+        "status": "ok",
+        "version": _health_version(),
+        "discovery": {
+            "window_days": DISCOVERY_WINDOW_DAYS,
+            "time_slots": DISCOVERY_TIME_SLOTS,
+            "party_sizes": DISCOVERY_PARTY_SIZES,
+            "max_concurrent_buckets": DISCOVERY_MAX_CONCURRENT_BUCKETS,
+            "bucket_cooldown_seconds": DISCOVERY_BUCKET_COOLDOWN_SECONDS,
+            "resy_per_page": DISCOVERY_RESY_PER_PAGE,
+            "resy_max_pages": DISCOVERY_RESY_MAX_PAGES,
+        },
+    }

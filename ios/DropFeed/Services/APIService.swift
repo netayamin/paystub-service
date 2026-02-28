@@ -56,7 +56,7 @@ final class APIService {
         }
         
         do {
-            return try decoder.decode(JustOpenedResponse.self, from: data)
+            return try JustOpenedResponse.decodeLenient(from: data, decoder: decoder)
         } catch {
             throw APIError.decodeError(error)
         }

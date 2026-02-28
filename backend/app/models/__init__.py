@@ -1,4 +1,5 @@
 from app.models.availability_session import AvailabilitySession
+from app.models.availability_state import AvailabilityState
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
 from app.models.feed_cache import FeedCache
@@ -12,6 +13,7 @@ from app.models.venue_rolling_metrics import VenueRollingMetrics
 
 __all__ = [
     "AvailabilitySession",
+    "AvailabilityState",
     "DiscoveryBucket",
     "DropEvent",
     "FeedCache",

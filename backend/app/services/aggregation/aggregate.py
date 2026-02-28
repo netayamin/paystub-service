@@ -43,15 +43,15 @@ def aggregate_closed_events_into_metrics(db: Session, closed_events: list[Closed
     if not closed_events:
         return
 
-    from app.models.availability_session import AvailabilitySession
+    from app.models.availability_state import AvailabilityState
 
     now = datetime.now(timezone.utc)
     session_ids = [e.session_id for e in closed_events if getattr(e, "session_id", None) is not None]
     unaggregated_ids: set[int] = set()
     if session_ids:
         rows = (
-            db.query(AvailabilitySession.id)
-            .filter(AvailabilitySession.id.in_(session_ids), AvailabilitySession.aggregated_at.is_(None))
+            db.query(AvailabilityState.id)
+            .filter(AvailabilityState.id.in_(session_ids), AvailabilityState.aggregated_at.is_(None))
             .all()
         )
         unaggregated_ids = {r[0] for r in rows}
@@ -150,11 +150,11 @@ def aggregate_closed_events_into_metrics(db: Session, closed_events: list[Closed
             logger.warning("aggregate_closed_events: skip market_metrics for %s", wd)
     db.commit()
 
-    # Mark sessions as aggregated so the same close is never double-counted
+    # Mark availability_state rows as aggregated so the same close is never double-counted
     if unaggregated_ids:
-        db.query(AvailabilitySession).filter(
-            AvailabilitySession.id.in_(unaggregated_ids),
-        ).update({AvailabilitySession.aggregated_at: now}, synchronize_session=False)
+        db.query(AvailabilityState).filter(
+            AvailabilityState.id.in_(unaggregated_ids),
+        ).update({AvailabilityState.aggregated_at: now}, synchronize_session=False)
         db.commit()
 
 

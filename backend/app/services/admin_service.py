@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.tables import DISCOVERY_TABLE_NAMES, FULL_RESET_TABLE_NAMES
 from app.models.availability_session import AvailabilitySession
+from app.models.availability_state import AvailabilityState
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
 from app.models.slot_availability import SlotAvailability
@@ -26,6 +27,7 @@ def clear_resy_db(db: Session) -> dict[str, int]:
     deleted["drop_events"] = db.query(DropEvent).delete()
     deleted["slot_availability"] = db.query(SlotAvailability).delete()
     deleted["availability_sessions"] = db.query(AvailabilitySession).delete()
+    deleted["availability_state"] = db.query(AvailabilityState).delete()
     deleted["discovery_buckets"] = db.query(DiscoveryBucket).delete()
     db.commit()
     return deleted
@@ -53,11 +55,12 @@ def reset_discovery_buckets(db: Session) -> dict[str, int]:
         deleted["drop_events"] = db.query(DropEvent).delete()
         deleted["slot_availability"] = db.query(SlotAvailability).delete()
         deleted["availability_sessions"] = db.query(AvailabilitySession).delete()
+        deleted["availability_state"] = db.query(AvailabilityState).delete()
         deleted["discovery_buckets"] = db.query(DiscoveryBucket).delete()
         db.commit()
         logger.info(
-            "reset_discovery_buckets: done (DELETE) drop_events=%s slot_availability=%s availability_sessions=%s discovery_buckets=%s",
-            deleted["drop_events"], deleted["slot_availability"], deleted["availability_sessions"], deleted["discovery_buckets"],
+            "reset_discovery_buckets: done (DELETE) drop_events=%s slot_availability=%s availability_sessions=%s availability_state=%s discovery_buckets=%s",
+            deleted["drop_events"], deleted["slot_availability"], deleted["availability_sessions"], deleted["availability_state"], deleted["discovery_buckets"],
         )
     return deleted
 

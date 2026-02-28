@@ -11,10 +11,43 @@ final class FeedViewModel: ObservableObject {
     @Published var lastScanAt: Date?
     @Published var totalVenuesScanned: Int = 0
     
-    @Published var selectedDate: String = ""
+    @Published var selectedDate: String = "" {
+        didSet { applyDateFilter() }
+    }
     @Published var selectedTimeFilter: String = "all"
     
+    /// Full feed (all dates) from backend; filtered by selectedDate for display.
+    private var allRankedBoard: [Drop] = []
+    private var allTopOpportunities: [Drop] = []
+    private var allHotRightNow: [Drop] = []
+    
     private let service = APIService.shared
+    
+    private func applyDateFilter() {
+        guard !selectedDate.isEmpty else {
+            drops = allRankedBoard
+            topOpportunities = allTopOpportunities.isEmpty ? nil : allTopOpportunities
+            hotRightNow = allHotRightNow.isEmpty ? nil : allHotRightNow
+            return
+        }
+        let date = selectedDate
+        func matchesDate(_ d: Drop) -> Bool {
+            if (d.dateStr ?? "") == date { return true }
+            return d.slots.contains { ($0.dateStr ?? "") == date }
+        }
+        var filtered = allRankedBoard.filter(matchesDate)
+        var filteredTop = allTopOpportunities.filter(matchesDate)
+        var filteredHot = allHotRightNow.filter(matchesDate)
+        // If date filter would hide everything but we have data, show all (e.g. timezone/format mismatch).
+        if filtered.isEmpty && !allRankedBoard.isEmpty {
+            filtered = allRankedBoard
+            filteredTop = allTopOpportunities
+            filteredHot = allHotRightNow
+        }
+        drops = filtered
+        topOpportunities = filteredTop.isEmpty ? nil : filteredTop
+        hotRightNow = filteredHot.isEmpty ? nil : filteredHot
+    }
     
     /// Next 14 days for date picker (YYYY-MM-DD)
     var dateOptions: [String] {
@@ -68,20 +101,22 @@ final class FeedViewModel: ObservableObject {
         
         do {
             let today = formatToday()
-            let date = selectedDate.isEmpty ? today : selectedDate
             if selectedDate.isEmpty { selectedDate = today }
-            let (after, before) = timeFilterAPI
+            // Fetch without date filter so we get all drops (match web). Filter by selectedDate for display.
             let resp = try await service.fetchJustOpened(
-                dates: [date],
+                dates: nil,
                 partySizes: [2, 4],
-                timeAfter: after,
-                timeBefore: before
+                timeAfter: nil,
+                timeBefore: nil
             )
             
-            drops = resp.rankedBoard ?? []
-            topOpportunities = resp.topOpportunities
-            hotRightNow = resp.hotRightNow
+            allRankedBoard = resp.rankedBoard ?? []
+            allTopOpportunities = resp.topOpportunities ?? []
+            allHotRightNow = resp.hotRightNow ?? []
             totalVenuesScanned = resp.totalVenuesScanned ?? 0
+            drops = allRankedBoard
+            topOpportunities = allTopOpportunities.isEmpty ? nil : allTopOpportunities
+            hotRightNow = allHotRightNow.isEmpty ? nil : allHotRightNow
             
             if let iso = resp.lastScanAt {
                 let fmt = ISO8601DateFormatter()

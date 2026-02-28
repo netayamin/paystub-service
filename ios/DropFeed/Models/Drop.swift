@@ -119,6 +119,31 @@ struct JustOpenedResponse: Codable {
         case totalVenuesScanned = "total_venues_scanned"
         case nextScanAt = "next_scan_at"
     }
+    
+    /// Decode response, skipping any feed cards that fail to decode so one bad card doesn't empty the feed.
+    static func decodeLenient(from data: Data, decoder: JSONDecoder) throws -> JustOpenedResponse {
+        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        func decodeDrops(_ key: String) -> [Drop] {
+            guard let arr = json[key] as? [[String: Any]] else { return [] }
+            return arr.compactMap { item in
+                guard let d = try? JSONSerialization.data(withJSONObject: item),
+                      let drop = try? decoder.decode(Drop.self, from: d) else { return nil }
+                return drop
+            }
+        }
+        func intValue(_ key: String) -> Int? {
+            if let n = json[key] as? Int { return n }
+            return (json[key] as? NSNumber)?.intValue
+        }
+        return JustOpenedResponse(
+            rankedBoard: decodeDrops("ranked_board"),
+            topOpportunities: decodeDrops("top_opportunities"),
+            hotRightNow: decodeDrops("hot_right_now"),
+            lastScanAt: json["last_scan_at"] as? String,
+            totalVenuesScanned: intValue("total_venues_scanned"),
+            nextScanAt: json["next_scan_at"] as? String
+        )
+    }
 }
 
 // MARK: - Preview helpers

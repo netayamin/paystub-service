@@ -35,6 +35,7 @@ from app.core.discovery_config import (
     DISCOVERY_TIME_SLOTS,
     DISCOVERY_WINDOW_DAYS,
     NOTIFIED_DEDUPE_MINUTES,
+    NOTIFICATIONS_RETENTION_DAYS,
 )
 from app.db.session import SessionLocal
 
@@ -58,10 +59,11 @@ def window_start_date() -> date:
         return now.date() - timedelta(days=1)
     return date.today() - timedelta(days=1)
 
-from app.models.availability_session import AvailabilitySession
+from app.models.availability_state import AvailabilityState
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
 from app.models.slot_availability import SlotAvailability
+from app.models.user_notification import UserNotification
 from app.models.venue import Venue
 from app.services.aggregation import aggregate_closed_events_into_metrics
 from app.services.providers import get_provider
@@ -302,7 +304,7 @@ def run_baseline_for_bucket(
 ) -> int:
     """
     Fetch current state for bucket and set baseline = prev = curr. Replaces any previous baseline.
-    Does NOT write to slot_availability or availability_sessions (no sessions/metrics from baseline).
+    Does NOT write to slot_availability or availability_state (no state/metrics from baseline).
     Returns slot count.
     """
     rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider)
@@ -531,14 +533,15 @@ def run_poll_for_bucket(
         except Exception as e:
             logger.debug("DropEvent batch insert skip: %s", e)
 
-    # Sessions: one query for existing open (bucket, slot), then add only missing
+    # availability_state: one row per (bucket, slot). Upsert on open (no history — avoids write amplification).
     existing_slot_ids = {
         row[0]
-        for row in db.query(AvailabilitySession.slot_id).filter(
-            AvailabilitySession.bucket_id == bid,
-            AvailabilitySession.closed_at.is_(None),
+        for row in db.query(AvailabilityState.slot_id).filter(
+            AvailabilityState.bucket_id == bid,
+            AvailabilityState.closed_at.is_(None),
         ).all()
     }
+    state_rows_to_upsert = []
     for sid in drops:
         if sid in existing_slot_ids:
             continue
@@ -546,14 +549,29 @@ def run_poll_for_bucket(
         r = by_slot.get(sid)
         payload = r.get("payload") if r else None
         slot_date_val, _ = _slot_date_time_from_payload(payload, date_str)
-        db.add(AvailabilitySession(
-            bucket_id=bid,
-            slot_id=sid,
-            opened_at=now,
-            venue_id=r.get("venue_id") if r else None,
-            venue_name=r.get("venue_name") if r else None,
-            slot_date=slot_date_val,
-            provider=provider,
+        state_rows_to_upsert.append({
+            "bucket_id": bid,
+            "slot_id": sid,
+            "opened_at": now,
+            "closed_at": None,
+            "venue_id": r.get("venue_id") if r else None,
+            "venue_name": r.get("venue_name") if r else None,
+            "slot_date": slot_date_val,
+            "provider": provider,
+        })
+    for i in range(0, len(state_rows_to_upsert), POLL_BATCH_SIZE):
+        chunk = state_rows_to_upsert[i : i + POLL_BATCH_SIZE]
+        stmt = pg_insert(AvailabilityState).values(chunk)
+        db.execute(stmt.on_conflict_do_update(
+            index_elements=["bucket_id", "slot_id"],
+            set_={
+                AvailabilityState.opened_at: stmt.excluded.opened_at,
+                AvailabilityState.closed_at: None,
+                AvailabilityState.venue_id: stmt.excluded.venue_id,
+                AvailabilityState.venue_name: stmt.excluded.venue_name,
+                AvailabilityState.slot_date: stmt.excluded.slot_date,
+                AvailabilityState.provider: stmt.excluded.provider,
+            },
         ))
     # Close all slots that are open in DB but not in curr_set (one query + bulk update + sessions)
     to_aggregate: list[ClosedEventData] = []
@@ -586,26 +604,25 @@ def run_poll_for_bucket(
             duration_seconds = int((now - opened_at_dt).total_seconds()) if opened_at_dt else 0
             if duration_seconds < 0:
                 continue
-            open_session = (
-                db.query(AvailabilitySession)
+            open_state = (
+                db.query(AvailabilityState)
                 .filter(
-                    AvailabilitySession.bucket_id == bid,
-                    AvailabilitySession.slot_id == row.slot_id,
-                    AvailabilitySession.closed_at.is_(None),
+                    AvailabilityState.bucket_id == bid,
+                    AvailabilityState.slot_id == row.slot_id,
+                    AvailabilityState.closed_at.is_(None),
                 )
-                .order_by(AvailabilitySession.opened_at.desc())
                 .first()
             )
-            if open_session:
-                open_session.closed_at = now
-                open_session.duration_seconds = duration_seconds
+            if open_state:
+                open_state.closed_at = now
+                open_state.duration_seconds = duration_seconds
                 to_aggregate.append(ClosedEventData(
                     venue_id=row.venue_id,
                     venue_name=row.venue_name,
                     drop_duration_seconds=duration_seconds,
                     slot_date=row.slot_date or date_str,
                     bucket_id=bid,
-                    session_id=open_session.id,
+                    session_id=open_state.id,
                 ))
 
     bucket_row.prev_slot_ids_json = json.dumps(sorted(curr_set))
@@ -644,6 +661,11 @@ def run_poll_for_bucket(
     if to_aggregate:
         try:
             aggregate_closed_events_into_metrics(db, to_aggregate)
+            # Delete closed rows from availability_state so table stays small (only open slots).
+            state_ids = [e.session_id for e in to_aggregate if getattr(e, "session_id", None) is not None]
+            if state_ids:
+                db.query(AvailabilityState).filter(AvailabilityState.id.in_(state_ids)).delete(synchronize_session=False)
+                db.commit()
         except Exception as e:
             logger.warning("Aggregate closed events failed bucket=%s: %s", bid, e)
 
@@ -732,13 +754,28 @@ def prune_old_slot_availability(db: Session, today: date) -> int:
 
 
 def prune_old_sessions(db: Session, today: date) -> int:
-    """Remove closed sessions for buckets before today (retention)."""
+    """No-op: we use availability_state now. Kept for API compatibility (daily job)."""
+    return 0
+
+
+def prune_old_availability_state(db: Session, today: date) -> int:
+    """Remove availability_state rows for buckets before today (stale open slots)."""
     today_str = today.isoformat()
     cutoff = f"{today_str}_15:00"
-    n = db.query(AvailabilitySession).filter(AvailabilitySession.bucket_id < cutoff).delete(synchronize_session=False)
+    n = db.query(AvailabilityState).filter(AvailabilityState.bucket_id < cutoff).delete(synchronize_session=False)
     db.commit()
     if n:
-        logger.info("Pruned %s availability_sessions (date < %s)", n, today_str)
+        logger.info("Pruned %s availability_state (bucket_id < %s)", n, today_str)
+    return n
+
+
+def prune_old_notifications(db: Session) -> int:
+    """Remove user_notifications older than NOTIFICATIONS_RETENTION_DAYS (scheduled daily, not in hot path)."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=NOTIFICATIONS_RETENTION_DAYS)
+    n = db.query(UserNotification).filter(UserNotification.created_at < cutoff).delete(synchronize_session=False)
+    db.commit()
+    if n:
+        logger.info("Pruned %s user_notifications (created_at > %s days)", n, NOTIFICATIONS_RETENTION_DAYS)
     return n
 
 

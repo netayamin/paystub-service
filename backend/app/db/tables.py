@@ -6,12 +6,13 @@ Use these names when writing raw SQL (e.g. TRUNCATE). Do not reference dropped t
   - chat_sessions, watch_list, venue_search_snapshots, booking_attempts, tool_call_logs,
     documents, paystub_insights (026).
 """
-# All tables that exist in the DB. Must match models and migrations 023–039.
+# All tables that exist in the DB. Must match models and migrations 023–042.
 ALL_TABLE_NAMES = (
     "discovery_buckets",
     "drop_events",
     "slot_availability",
-    "availability_sessions",
+    "availability_sessions",  # legacy; we write to availability_state now
+    "availability_state",
     "venues",
     "feed_cache",
     "venue_metrics",
@@ -26,6 +27,7 @@ DISCOVERY_TABLE_NAMES = (
     "drop_events",
     "slot_availability",
     "availability_sessions",
+    "availability_state",
     "discovery_buckets",
 )
 
@@ -34,6 +36,7 @@ FULL_RESET_TABLE_NAMES = (
     "drop_events",
     "slot_availability",
     "availability_sessions",
+    "availability_state",
     "feed_cache",
     "venue_metrics",
     "market_metrics",
