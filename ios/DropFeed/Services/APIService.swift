@@ -26,7 +26,8 @@ final class APIService {
         decoder = JSONDecoder()
     }
     
-    /// Fetch just-opened feed with optional filters
+    // MARK: - Feed
+    
     func fetchJustOpened(
         dates: [String]? = nil,
         partySizes: [Int]? = nil,
@@ -62,13 +63,14 @@ final class APIService {
         }
     }
     
-    /// Latest things that opened across all buckets (for New / Notifications tab)
-    func fetchNewDrops(withinMinutes: Int = 15) async throws -> [Drop] {
+    func fetchNewDrops(withinMinutes: Int = 15, since: String? = nil) async throws -> [Drop] {
         var components = URLComponents(string: "\(baseURL)/chat/watches/new-drops")!
-        components.queryItems = [
+        var qi: [URLQueryItem] = [
             URLQueryItem(name: "within_minutes", value: "\(withinMinutes)"),
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))")
         ]
+        if let s = since { qi.append(URLQueryItem(name: "since", value: s)) }
+        components.queryItems = qi
         guard let url = components.url else { throw APIError.invalidURL }
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
@@ -88,15 +90,102 @@ final class APIService {
                 createdAt: item.detectedAt,
                 detectedAt: item.detectedAt,
                 resyUrl: item.resyUrl,
-                feedHot: nil,
-                resyPopularityScore: nil,
-                ratingAverage: nil,
-                ratingCount: nil
+                feedHot: nil
             )
         }
     }
-
-    /// Register device for push notifications (new drops). Call after receiving token from APNs.
+    
+    func fetchCalendarCounts() async throws -> CalendarCounts {
+        guard let url = URL(string: "\(baseURL)/chat/watches/calendar-counts") else {
+            throw APIError.invalidURL
+        }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+        return try decoder.decode(CalendarCounts.self, from: data)
+    }
+    
+    // MARK: - Watchlist
+    
+    func fetchWatches() async throws -> VenueWatchesResponse {
+        guard let url = URL(string: "\(baseURL)/chat/venue-watches") else {
+            throw APIError.invalidURL
+        }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+        return try decoder.decode(VenueWatchesResponse.self, from: data)
+    }
+    
+    func addWatch(venueName: String) async throws -> VenueWatch {
+        guard let url = URL(string: "\(baseURL)/chat/venue-watches") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["venue_name": venueName])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+        return try decoder.decode(VenueWatch.self, from: data)
+    }
+    
+    func removeWatch(id: Int) async throws {
+        guard let url = URL(string: "\(baseURL)/chat/venue-watches/\(id)") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+    }
+    
+    func addExclude(venueName: String) async throws {
+        guard let url = URL(string: "\(baseURL)/chat/venue-watches/exclude") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["venue_name": venueName])
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+    }
+    
+    func removeExclude(id: Int) async throws {
+        guard let url = URL(string: "\(baseURL)/chat/venue-watches/exclude/\(id)") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+    }
+    
+    func fetchHotlist() async throws -> [String] {
+        guard let url = URL(string: "\(baseURL)/chat/watches/hotlist") else {
+            throw APIError.invalidURL
+        }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+        let decoded = try decoder.decode(HotlistResponse.self, from: data)
+        return decoded.names
+    }
+    
+    // MARK: - Push
+    
     func registerPushToken(deviceToken: String) async {
         guard let url = URL(string: "\(baseURL)/chat/push/register") else { return }
         var request = URLRequest(url: url)

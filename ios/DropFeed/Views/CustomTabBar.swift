@@ -3,16 +3,17 @@ import SwiftUI
 /// Pill-style tab bar: frosted glass (blur + dark tint), selected tab has a light pill.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
-    var badgeCount: Int
+    var alertBadgeCount: Int = 0
     
     private let barHeight: CGFloat = 56
     var bottomSafeInset: CGFloat = 0
     
     var body: some View {
         HStack(spacing: 0) {
-            tabItem(tag: 0, icon: "house", label: "Home")
-            tabItem(tag: 1, icon: "bell", label: "New", badge: badgeCount)
-            tabItem(tag: 2, icon: "person", label: "Profile")
+            tabItem(tag: 0, icon: "bolt.fill", label: "Feed")
+            tabItem(tag: 1, icon: "bookmark", label: "Saved")
+            tabItem(tag: 2, icon: "bell", label: "Alerts", badge: alertBadgeCount)
+            tabItem(tag: 3, icon: "person", label: "You")
         }
         .frame(height: barHeight)
         .padding(.horizontal, 2)
@@ -49,7 +50,7 @@ struct CustomTabBar: View {
                 }
                 VStack(spacing: 4) {
                     ZStack(alignment: .topTrailing) {
-                        Image(systemName: icon)
+                        Image(systemName: selected ? icon : icon.replacingOccurrences(of: ".fill", with: ""))
                             .font(.system(size: 20, weight: .medium))
                         if badge > 0 {
                             Text("\(min(badge, 99))")
@@ -76,7 +77,7 @@ struct CustomTabBar: View {
         AppTheme.background.ignoresSafeArea()
         VStack {
             Spacer()
-            CustomTabBar(selectedTab: .constant(0), badgeCount: 3)
+            CustomTabBar(selectedTab: .constant(0), alertBadgeCount: 3)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
         }

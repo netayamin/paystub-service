@@ -196,8 +196,16 @@ def _consolidate_cards(
 
 
 def _priority_score(card: dict, is_hot: bool) -> float:
-    heat = 2.0 if is_hot else 1.0
-    availability = 1.0 if (card.get("slots")) else 0.01
+    # Scarcity: rarity_score (0-1, higher = rarer) is the strongest signal.
+    # Fall back to is_hot boolean for venues without metrics yet.
+    rarity = card.get("rarity_score")
+    if isinstance(rarity, (int, float)) and rarity > 0:
+        scarcity = 1.0 + rarity * 3.0  # range 1.0 – 4.0
+    else:
+        scarcity = 2.5 if is_hot else 1.0
+
+    availability = 1.0 if card.get("slots") else 0.01
+
     detected = card.get("detected_at") or card.get("created_at")
     if detected:
         try:
@@ -209,10 +217,19 @@ def _priority_score(card: dict, is_hot: bool) -> float:
             minutes_ago = 999
     else:
         minutes_ago = 999
-    freshness = 1.0 / (1.0 + minutes_ago / 30)
+
+    # Freshness: strong boost for "just dropped" (< 10 min) so they always surface
+    if minutes_ago <= 10:
+        freshness = 2.0
+    elif minutes_ago <= 30:
+        freshness = 1.5
+    else:
+        freshness = 1.0 / (1.0 + minutes_ago / 60)
+
     pop = card.get("resy_popularity_score")
     popularity = (0.5 + float(pop)) if isinstance(pop, (int, float)) else 1.0
-    return heat * availability * freshness * popularity
+
+    return scarcity * availability * freshness * popularity
 
 
 def build_feed(

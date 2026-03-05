@@ -2,7 +2,10 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedTab = 0
-    @State private var newTabBadgeCount = 0
+    @StateObject private var feedVM = FeedViewModel()
+    @StateObject private var savedVM = SavedViewModel()
+    @StateObject private var alertsVM = AlertsViewModel()
+    @StateObject private var premium = PremiumManager()
     
     init() {
         UITabBar.appearance().isHidden = true
@@ -13,30 +16,41 @@ struct ContentView: View {
             let bottomInset = geo.safeAreaInsets.bottom
             VStack(spacing: 0) {
                 TabView(selection: $selectedTab) {
-                    FeedView()
+                    FeedView(feedVM: feedVM, savedVM: savedVM, premium: premium)
                         .applyBG()
                         .tag(0)
-                    NewDropsView(badgeCount: $newTabBadgeCount)
+                    SavedView(savedVM: savedVM, feedVM: feedVM, premium: premium)
                         .applyBG()
                         .tag(1)
-                    ProfilePlaceholderView()
+                    AlertsView(alertsVM: alertsVM)
                         .applyBG()
                         .tag(2)
+                    ProfilePlaceholderView()
+                        .applyBG()
+                        .tag(3)
                 }
-                CustomTabBar(selectedTab: $selectedTab, badgeCount: newTabBadgeCount, bottomSafeInset: bottomInset)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 20)
+                CustomTabBar(
+                    selectedTab: $selectedTab,
+                    alertBadgeCount: alertsVM.unreadCount,
+                    bottomSafeInset: bottomInset
+                )
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 20)
             }
             .background(AppTheme.background)
             .ignoresSafeArea(.keyboard)
             .ignoresSafeArea(edges: .bottom)
         }
         .ignoresSafeArea()
+        .task {
+            await savedVM.loadAll()
+            alertsVM.startPolling()
+            await premium.checkEntitlements()
+        }
     }
 }
 
-// MARK: - Full-screen content (article pattern)
 private extension View {
     func applyBG() -> some View {
         self

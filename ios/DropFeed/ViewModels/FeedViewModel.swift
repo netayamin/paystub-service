@@ -6,51 +6,78 @@ final class FeedViewModel: ObservableObject {
     @Published var drops: [Drop] = []
     @Published var topOpportunities: [Drop]?
     @Published var hotRightNow: [Drop]?
+    @Published var likelyToOpen: [LikelyToOpenVenue] = []
+    @Published var calendarCounts: CalendarCounts = CalendarCounts()
     @Published var isLoading = false
     @Published var error: String?
     @Published var lastScanAt: Date?
     @Published var totalVenuesScanned: Int = 0
     
-    @Published var selectedDate: String = "" {
-        didSet { applyDateFilter() }
+    @Published var selectedDates: Set<String> = [] {
+        didSet { applyFilters() }
+    }
+    @Published var selectedPartySizes: Set<Int> = [] {
+        didSet { applyFilters() }
     }
     @Published var selectedTimeFilter: String = "all"
     
-    /// Full feed (all dates) from backend; filtered by selectedDate for display.
     private var allRankedBoard: [Drop] = []
     private var allTopOpportunities: [Drop] = []
     private var allHotRightNow: [Drop] = []
     
     private let service = APIService.shared
     
-    private func applyDateFilter() {
-        guard !selectedDate.isEmpty else {
-            drops = allRankedBoard
-            topOpportunities = allTopOpportunities.isEmpty ? nil : allTopOpportunities
-            hotRightNow = allHotRightNow.isEmpty ? nil : allHotRightNow
-            return
+    // MARK: - Hero card (top-ranked drop)
+    
+    var heroCard: Drop? {
+        drops.first
+    }
+    
+    var feedCards: [Drop] {
+        guard drops.count > 1 else { return [] }
+        return Array(drops.dropFirst())
+    }
+    
+    // MARK: - Filtering
+    
+    private func applyFilters() {
+        let dateSet = selectedDates
+        let partySet = selectedPartySizes
+        
+        func matchesDrop(_ d: Drop) -> Bool {
+            if !dateSet.isEmpty {
+                let cardDate = d.dateStr ?? ""
+                let slotDates = Set(d.slots.compactMap(\.dateStr))
+                if !dateSet.contains(cardDate) && dateSet.isDisjoint(with: slotDates) {
+                    return false
+                }
+            }
+            if !partySet.isEmpty {
+                let available = Set(d.partySizesAvailable)
+                if !available.isEmpty && partySet.isDisjoint(with: available) {
+                    return false
+                }
+            }
+            return true
         }
-        let date = selectedDate
-        func matchesDate(_ d: Drop) -> Bool {
-            if (d.dateStr ?? "") == date { return true }
-            return d.slots.contains { ($0.dateStr ?? "") == date }
-        }
-        var filtered = allRankedBoard.filter(matchesDate)
-        var filteredTop = allTopOpportunities.filter(matchesDate)
-        var filteredHot = allHotRightNow.filter(matchesDate)
-        // If date filter would hide everything but we have data, show all (e.g. timezone/format mismatch).
-        if filtered.isEmpty && !allRankedBoard.isEmpty {
+        
+        var filtered = allRankedBoard.filter(matchesDrop)
+        var filteredTop = allTopOpportunities.filter(matchesDrop)
+        var filteredHot = allHotRightNow.filter(matchesDrop)
+        
+        if filtered.isEmpty && !allRankedBoard.isEmpty && !dateSet.isEmpty {
             filtered = allRankedBoard
             filteredTop = allTopOpportunities
             filteredHot = allHotRightNow
         }
+        
         drops = filtered
         topOpportunities = filteredTop.isEmpty ? nil : filteredTop
         hotRightNow = filteredHot.isEmpty ? nil : filteredHot
     }
     
     /// Next 14 days for date picker (YYYY-MM-DD)
-    var dateOptions: [String] {
+    var dateOptions: [(dateStr: String, dayName: String, dayNum: String)] {
         let cal = Calendar.current
         let today = Date()
         return (0..<14).compactMap { offset in
@@ -58,11 +85,19 @@ final class FeedViewModel: ObservableObject {
             let y = cal.component(.year, from: d)
             let m = cal.component(.month, from: d)
             let day = cal.component(.day, from: d)
-            return String(format: "%04d-%02d-%02d", y, m, day)
+            let dateStr = String(format: "%04d-%02d-%02d", y, m, day)
+            let dayName: String = {
+                if offset == 0 { return "Today" }
+                if offset == 1 { return "Tmrw" }
+                let symbols = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                let weekday = cal.component(.weekday, from: d)
+                return weekday >= 1 && weekday <= 7 ? symbols[weekday] : ""
+            }()
+            let dayNum = "\(day)"
+            return (dateStr, dayName, dayNum)
         }
     }
     
-    /// time_after / time_before for API (e.g. "18:00", "20:00"). Nil = no filter.
     var timeFilterAPI: (after: String?, before: String?) {
         switch selectedTimeFilter {
         case "lunch": return ("11:00", "15:00")
@@ -89,7 +124,7 @@ final class FeedViewModel: ObservableObject {
         refreshTask = Task { @MainActor in
             while !Task.isCancelled {
                 await refresh()
-                try? await Task.sleep(nanoseconds: 15_000_000_000) // 15s
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
             }
         }
     }
@@ -100,61 +135,49 @@ final class FeedViewModel: ObservableObject {
         defer { isLoading = false }
         
         do {
-            // Fetch without date filter so we get all drops (match web). Filter by selectedDate for display.
             let resp = try await service.fetchJustOpened(
                 dates: nil,
-                partySizes: [2, 4],
+                partySizes: nil,
                 timeAfter: nil,
                 timeBefore: nil
             )
             
             var ranked = resp.rankedBoard ?? []
-            var top = resp.topOpportunities ?? []
-            var hot = resp.hotRightNow ?? []
+            let top = resp.topOpportunities ?? []
+            let hot = resp.hotRightNow ?? []
             let scanned = resp.totalVenuesScanned ?? 0
-            // If just-opened is empty but we have no scan count, try new-drops as fallback (e.g. different API shape)
+            
             if ranked.isEmpty && scanned == 0 {
                 let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
                 if !newDrops.isEmpty {
                     ranked = newDrops
-                    top = []
-                    hot = Array(newDrops.prefix(12))
                 }
             }
+            
             allRankedBoard = ranked
-            allTopOpportunities = top.isEmpty ? [] : top
+            allTopOpportunities = top
             allHotRightNow = hot
             totalVenuesScanned = scanned
-            drops = allRankedBoard
-            topOpportunities = allTopOpportunities.isEmpty ? nil : allTopOpportunities
-            hotRightNow = allHotRightNow.isEmpty ? nil : allHotRightNow
+            likelyToOpen = resp.likelyToOpen ?? []
             
-            if selectedDate.isEmpty {
-                selectedDate = formatToday()
-            }
-            applyDateFilter()
+            applyFilters()
             
             if let iso = resp.lastScanAt {
-                let fmt = ISO8601DateFormatter()
-                fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                lastScanAt = fmt.date(from: iso)
-                    ?? ISO8601DateFormatter().date(from: iso)
+                lastScanAt = Drop.parseISO(iso)
             } else {
                 lastScanAt = nil
             }
+            
+            // Fetch calendar counts (non-blocking)
+            Task {
+                if let counts = try? await service.fetchCalendarCounts() {
+                    self.calendarCounts = counts
+                }
+            }
         } catch is CancellationError {
-            // Pull-to-refresh or navigation cancelled the task; don't show "cancelled" to the user
+            // Ignore
         } catch {
             self.error = error.localizedDescription
         }
-    }
-    
-    private func formatToday() -> String {
-        let cal = Calendar.current
-        let d = Date()
-        let y = cal.component(.year, from: d)
-        let m = cal.component(.month, from: d)
-        let day = cal.component(.day, from: d)
-        return String(format: "%04d-%02d-%02d", y, m, day)
     }
 }

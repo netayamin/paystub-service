@@ -31,6 +31,15 @@
 		A100004C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004D /* AppDelegate.swift */; };
 		A100004E /* LocalNotificationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004F /* LocalNotificationHelper.swift */; };
 		A1000054 /* LiveUpdateTrainBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000052 /* LiveUpdateTrainBar.swift */; };
+		A2000011 /* SavedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* SavedViewModel.swift */; };
+		A2000012 /* AlertsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002 /* AlertsViewModel.swift */; };
+		A2000013 /* PremiumManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* PremiumManager.swift */; };
+		A2000014 /* HeroCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004 /* HeroCardView.swift */; };
+		A2000015 /* DateStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000005 /* DateStripView.swift */; };
+		A2000016 /* LikelyToOpenSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006 /* LikelyToOpenSection.swift */; };
+		A2000017 /* SavedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* SavedView.swift */; };
+		A2000018 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* AlertsView.swift */; };
+		A2000019 /* PremiumPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* PremiumPaywallView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -61,6 +70,15 @@
 		A100004F /* LocalNotificationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationHelper.swift; sourceTree = "<group>"; };
 		A1000050 /* DropFeed.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DropFeed.entitlements; sourceTree = "<group>"; };
 		A1000052 /* LiveUpdateTrainBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveUpdateTrainBar.swift; sourceTree = "<group>"; };
+		A2000001 /* SavedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedViewModel.swift; sourceTree = "<group>"; };
+		A2000002 /* AlertsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsViewModel.swift; sourceTree = "<group>"; };
+		A2000003 /* PremiumManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumManager.swift; sourceTree = "<group>"; };
+		A2000004 /* HeroCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroCardView.swift; sourceTree = "<group>"; };
+		A2000005 /* DateStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateStripView.swift; sourceTree = "<group>"; };
+		A2000006 /* LikelyToOpenSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LikelyToOpenSection.swift; sourceTree = "<group>"; };
+		A2000007 /* SavedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedView.swift; sourceTree = "<group>"; };
+		A2000008 /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
+		A2000009 /* PremiumPaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumPaywallView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -104,6 +122,7 @@
 			children = (
 				A1000014 /* APIService.swift */,
 				A100004F /* LocalNotificationHelper.swift */,
+				A2000003 /* PremiumManager.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -112,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000015 /* DropCardView.swift */,
+				A2000004 /* HeroCardView.swift */,
 				A1000019 /* TopOpportunityCardView.swift */,
 				A100002B /* AnimatedLiveDot.swift */,
 				A1000052 /* LiveUpdateTrainBar.swift */,
@@ -120,11 +140,16 @@
 				A1000038 /* ShimmerModifier.swift */,
 				A100003A /* FeedSkeletonView.swift */,
 				A100003C /* AllDropsListView.swift */,
+				A2000005 /* DateStripView.swift */,
 				A1000045 /* DateTimeFilterSheet.swift */,
+				A2000006 /* LikelyToOpenSection.swift */,
 				A1000047 /* NewDropsView.swift */,
 				A1000049 /* ProfilePlaceholderView.swift */,
 				A100004B /* CustomTabBar.swift */,
 				A1000016 /* FeedView.swift */,
+				A2000007 /* SavedView.swift */,
+				A2000008 /* AlertsView.swift */,
+				A2000009 /* PremiumPaywallView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -133,6 +158,8 @@
 			isa = PBXGroup;
 			children = (
 				A1000017 /* FeedViewModel.swift */,
+				A2000001 /* SavedViewModel.swift */,
+				A2000002 /* AlertsViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -244,6 +271,15 @@
 				A1000046 /* NewDropsView.swift in Sources */,
 				A1000048 /* ProfilePlaceholderView.swift in Sources */,
 				A100004A /* CustomTabBar.swift in Sources */,
+				A2000011 /* SavedViewModel.swift in Sources */,
+				A2000012 /* AlertsViewModel.swift in Sources */,
+				A2000013 /* PremiumManager.swift in Sources */,
+				A2000014 /* HeroCardView.swift in Sources */,
+				A2000015 /* DateStripView.swift in Sources */,
+				A2000016 /* LikelyToOpenSection.swift in Sources */,
+				A2000017 /* SavedView.swift in Sources */,
+				A2000018 /* AlertsView.swift in Sources */,
+				A2000019 /* PremiumPaywallView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
