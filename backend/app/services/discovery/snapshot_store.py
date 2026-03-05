@@ -7,12 +7,16 @@ and stores it in memory.  API endpoints read from the snapshot and apply
 lightweight in-memory filters (date, party_size) — zero DB queries per
 client request.
 
+The unfiltered response is also pre-serialized to JSON bytes so the common
+no-filter path returns raw bytes with zero per-request Python work (no
+deepcopy, no json.dumps, no jsonable_encoder).
+
 With N concurrent users the DB load stays constant (one rebuild per tick)
 instead of scaling linearly with poll requests.
 """
 from __future__ import annotations
 
-import copy
+import json as _json
 import logging
 import threading
 from datetime import date, datetime, timezone
@@ -30,15 +34,34 @@ from app.core.nyc_hotspots import is_hotspot
 logger = logging.getLogger(__name__)
 
 _snapshot: dict | None = None
+_snapshot_json: bytes | None = None  # pre-serialized JSON for zero-copy no-filter path
+_calendar_json: bytes | None = None
+_bucket_health_json: bytes | None = None
 _snapshot_lock = threading.Lock()
 
 
-def get_snapshot() -> dict | None:
-    """Return a deep copy of the current snapshot, or None if not yet built."""
+def get_snapshot_json() -> bytes | None:
+    """Return pre-serialized JSON bytes for the no-filter just-opened response, or None."""
     with _snapshot_lock:
-        if _snapshot is None:
-            return None
-        return copy.deepcopy(_snapshot)
+        return _snapshot_json
+
+
+def get_calendar_json() -> bytes | None:
+    """Pre-serialized calendar-counts JSON."""
+    with _snapshot_lock:
+        return _calendar_json
+
+
+def get_bucket_health_json() -> bytes | None:
+    """Pre-serialized bucket-status JSON."""
+    with _snapshot_lock:
+        return _bucket_health_json
+
+
+def get_snapshot() -> dict | None:
+    """Return the raw snapshot dict (shared reference — callers must not mutate)."""
+    with _snapshot_lock:
+        return _snapshot
 
 
 def rebuild_snapshot(db: Session) -> None:
@@ -169,12 +192,33 @@ def rebuild_snapshot(db: Session) -> None:
             "computed_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        with _snapshot_lock:
-            global _snapshot
-            _snapshot = snap
+        # Pre-serialize the API-ready response (without internal fields) to JSON bytes.
+        # The no-filter fast path returns these bytes directly — zero per-request work.
+        api_payload = {k: v for k, v in snap.items()
+                       if k not in ("rolling_by_name", "bucket_health", "calendar_counts", "computed_at")}
+        api_bytes = _json.dumps(api_payload, separators=(",", ":"), default=str).encode()
 
-        logger.info("Discovery snapshot rebuilt: %d just-opened days, %d still-open days",
-                     len(just_opened), len(still_open))
+        cal_bytes = _json.dumps(
+            {"by_date": calendar_by_date, "dates": date_strs},
+            separators=(",", ":"),
+        ).encode()
+
+        bh_stale = [b for b in bucket_health if b.get("stale")]
+        bh_payload = {
+            "buckets": bucket_health,
+            "summary": {"total": len(bucket_health), "stale_count": len(bh_stale), "all_fresh": len(bh_stale) == 0},
+        }
+        bh_bytes = _json.dumps(bh_payload, separators=(",", ":"), default=str).encode()
+
+        with _snapshot_lock:
+            global _snapshot, _snapshot_json, _calendar_json, _bucket_health_json
+            _snapshot = snap
+            _snapshot_json = api_bytes
+            _calendar_json = cal_bytes
+            _bucket_health_json = bh_bytes
+
+        logger.info("Discovery snapshot rebuilt (%d KB): %d just-opened days, %d still-open days",
+                     len(api_bytes) // 1024, len(just_opened), len(still_open))
 
     except Exception:
         logger.exception("Failed to rebuild discovery snapshot")
@@ -185,7 +229,7 @@ def filter_snapshot_for_request(
     date_filter: list[str] | None = None,
     party_sizes: list[int] | None = None,
 ) -> dict:
-    """Apply date and party-size filters to a snapshot copy (in-memory, no DB)."""
+    """Build a filtered response dict from the shared snapshot (non-mutating)."""
     date_set = set(date_filter) if date_filter else None
     ps_set = set(party_sizes) if party_sizes else None
 
@@ -213,12 +257,19 @@ def filter_snapshot_for_request(
             out.append(c)
         return out
 
-    snap["just_opened"] = _filter_days(snap["just_opened"])
-    snap["still_open"] = _filter_days(snap["still_open"])
-    snap["ranked_board"] = _filter_cards(snap["ranked_board"])
-    snap["top_opportunities"] = _filter_cards(snap["top_opportunities"])
-    snap["hot_right_now"] = _filter_cards(snap["hot_right_now"])
-    return snap
+    return {
+        "just_opened": _filter_days(snap["just_opened"]),
+        "still_open": _filter_days(snap["still_open"]),
+        "ranked_board": _filter_cards(snap["ranked_board"]),
+        "top_opportunities": _filter_cards(snap["top_opportunities"]),
+        "hot_right_now": _filter_cards(snap["hot_right_now"]),
+        "likely_to_open": snap.get("likely_to_open", []),
+        "likely_open_today": [],
+        "likely_open_tomorrow": [],
+        "likely_open_soon": [],
+        "last_scan_at": snap.get("last_scan_at"),
+        "total_venues_scanned": snap.get("total_venues_scanned", 0),
+    }
 
 
 def _venue_matches_party(v: dict, ps_set: set[int]) -> bool:

@@ -68,7 +68,13 @@ from app.services.discovery.buckets import (
 )
 from app.services.providers import get_provider, list_providers
 from app.services.discovery.feed import attach_likely_open_labels, build_feed
-from app.services.discovery.snapshot_store import get_snapshot, filter_snapshot_for_request
+from app.services.discovery.snapshot_store import (
+    get_snapshot,
+    get_snapshot_json,
+    get_calendar_json,
+    get_bucket_health_json,
+    filter_snapshot_for_request,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -102,11 +108,10 @@ async def bucket_status(db: Session = Depends(get_db)):
     Monitor all 28 buckets without running a refresh. Served from snapshot when available.
     """
     try:
-        snap = get_snapshot()
-        if snap is not None and "bucket_health" in snap:
-            bucket_health = snap["bucket_health"]
-        else:
-            bucket_health = get_bucket_health(db, window_start_date())
+        raw = get_bucket_health_json()
+        if raw is not None:
+            return Response(content=raw, media_type="application/json")
+        bucket_health = get_bucket_health(db, window_start_date())
         stale = [b for b in bucket_health if b.get("stale")]
         return {
             "buckets": bucket_health,
@@ -608,9 +613,9 @@ async def market_metrics(
 async def calendar_counts(db: Session = Depends(get_db)):
     """Result counts per date for the 14-day calendar. Served from snapshot (zero DB queries)."""
     try:
-        snap = get_snapshot()
-        if snap is not None and "calendar_counts" in snap:
-            return snap["calendar_counts"]
+        raw = get_calendar_json()
+        if raw is not None:
+            return Response(content=raw, media_type="application/json")
         return get_calendar_counts(db, window_start_date())
     except Exception as e:
         logger.warning("calendar-counts failed: %s", e, exc_info=True)
@@ -987,27 +992,34 @@ async def list_just_opened(
     debug: str | None = None,
 ):
     """Just opened + still open. Serves from pre-computed snapshot (zero DB queries). Optional: dates, party_sizes."""
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
     try:
+        is_debug = debug and str(debug).strip() in ("1", "true", "yes")
         date_filter = [s.strip() for s in dates.split(",") if s.strip()] if dates else None
         party_size_list = _parse_ints(party_sizes)
+        has_filters = date_filter or party_size_list
 
-        # Serve from pre-computed snapshot — no DB queries
+        # Fast path: no filters → return pre-serialized JSON bytes directly
+        # (skips deepcopy, jsonable_encoder, json.dumps — sub-millisecond)
+        if not has_filters and not is_debug:
+            raw = get_snapshot_json()
+            if raw is not None:
+                return Response(
+                    content=raw,
+                    media_type="application/json",
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+                )
+
+        # Filtered path: lightweight in-memory filtering on shared snapshot (no deepcopy)
         snap = get_snapshot()
-        if snap is not None and not (debug and str(debug).strip() in ("1", "true", "yes")):
-            snap = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list)
-            snap["next_scan_at"] = _next_scan_iso(request)
-            if (snap.get("total_venues_scanned") or 0) == 0:
-                snap["zero_venues_hint"] = (
+        if snap is not None and not is_debug:
+            filtered = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list)
+            filtered["next_scan_at"] = _next_scan_iso(request)
+            if (filtered.get("total_venues_scanned") or 0) == 0:
+                filtered["zero_venues_hint"] = (
                     "Resy returned no open slots for the scanned dates/times. "
                     "Check GET /chat/watches/resy-test?days_ahead=7 and RESY_API_KEY / RESY_AUTH_TOKEN in .env."
                 )
-            snap.pop("rolling_by_name", None)
-            snap.pop("bucket_health", None)
-            snap.pop("calendar_counts", None)
-            snap.pop("computed_at", None)
-            return snap
+            return filtered
 
         # Fallback: first startup before snapshot is built, or debug mode — query DB directly
         today = window_start_date()
