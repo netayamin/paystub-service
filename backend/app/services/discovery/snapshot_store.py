@@ -19,7 +19,7 @@ from __future__ import annotations
 import json as _json
 import logging
 import threading
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -77,6 +77,7 @@ def rebuild_snapshot(db: Session) -> None:
     )
     from app.services.discovery.feed import attach_likely_open_labels, build_feed
     from app.models.venue_rolling_metrics import VenueRollingMetrics
+    from app.models.venue_metrics import VenueMetrics
 
     try:
         today = window_start_date()
@@ -122,7 +123,36 @@ def rebuild_snapshot(db: Session) -> None:
                     "availability_rate_14d": rm.availability_rate_14d,
                     "days_with_drops": rm.days_with_drops,
                     "drop_frequency_per_day": rm.drop_frequency_per_day,
+                    "trend_pct": rm.trend_pct,
                 }
+
+        # Enrich with avg_drop_duration_seconds from VenueMetrics (recent 14 days)
+        try:
+            start_date = today - timedelta(days=14)
+            vm_rows = (
+                db.query(
+                    VenueMetrics.venue_name,
+                    VenueMetrics.avg_drop_duration_seconds,
+                )
+                .filter(
+                    VenueMetrics.window_date >= start_date,
+                    VenueMetrics.venue_name.isnot(None),
+                    VenueMetrics.avg_drop_duration_seconds.isnot(None),
+                )
+                .all()
+            )
+            # Average per venue (by name)
+            from collections import defaultdict
+            duration_by_name: dict[str, list[float]] = defaultdict(list)
+            for row in vm_rows:
+                key = (row.venue_name or "").strip().lower()
+                if key and row.avg_drop_duration_seconds is not None:
+                    duration_by_name[key].append(row.avg_drop_duration_seconds)
+            for key, values in duration_by_name.items():
+                if key in rolling_by_name and values:
+                    rolling_by_name[key]["avg_drop_duration_seconds"] = sum(values) / len(values)
+        except Exception:
+            pass  # non-fatal
 
         def _attach_metrics_to_days(days: list[dict]) -> None:
             """Attach rolling metrics to raw venue dicts (before build_feed)."""

@@ -22,15 +22,12 @@
 		A100002E /* StaggeredAppearModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002F /* StaggeredAppearModifier.swift */; };
 		A1000037 /* ShimmerModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000038 /* ShimmerModifier.swift */; };
 		A1000039 /* FeedSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003A /* FeedSkeletonView.swift */; };
-		A100003B /* AllDropsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003C /* AllDropsListView.swift */; };
 		A1000042 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000041 /* AppTheme.swift */; };
 		A1000044 /* DateTimeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000045 /* DateTimeFilterSheet.swift */; };
-		A1000046 /* NewDropsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000047 /* NewDropsView.swift */; };
 		A1000048 /* ProfilePlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000049 /* ProfilePlaceholderView.swift */; };
 		A100004A /* CustomTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004B /* CustomTabBar.swift */; };
 		A100004C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004D /* AppDelegate.swift */; };
 		A100004E /* LocalNotificationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004F /* LocalNotificationHelper.swift */; };
-		A1000054 /* LiveUpdateTrainBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000052 /* LiveUpdateTrainBar.swift */; };
 		A2000011 /* SavedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* SavedViewModel.swift */; };
 		A2000012 /* AlertsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002 /* AlertsViewModel.swift */; };
 		A2000013 /* PremiumManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003 /* PremiumManager.swift */; };
@@ -40,6 +37,7 @@
 		A2000017 /* SavedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000007 /* SavedView.swift */; };
 		A2000018 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008 /* AlertsView.swift */; };
 		A2000019 /* PremiumPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* PremiumPaywallView.swift */; };
+		A200001A /* YouView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A /* YouView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,16 +58,13 @@
 		A1000036 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1000038 /* ShimmerModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShimmerModifier.swift; sourceTree = "<group>"; };
 		A100003A /* FeedSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedSkeletonView.swift; sourceTree = "<group>"; };
-		A100003C /* AllDropsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllDropsListView.swift; sourceTree = "<group>"; };
 		A1000041 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		A1000045 /* DateTimeFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateTimeFilterSheet.swift; sourceTree = "<group>"; };
-		A1000047 /* NewDropsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewDropsView.swift; sourceTree = "<group>"; };
 		A1000049 /* ProfilePlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePlaceholderView.swift; sourceTree = "<group>"; };
 		A100004B /* CustomTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomTabBar.swift; sourceTree = "<group>"; };
 		A100004D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A100004F /* LocalNotificationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationHelper.swift; sourceTree = "<group>"; };
 		A1000050 /* DropFeed.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DropFeed.entitlements; sourceTree = "<group>"; };
-		A1000052 /* LiveUpdateTrainBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveUpdateTrainBar.swift; sourceTree = "<group>"; };
 		A2000001 /* SavedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedViewModel.swift; sourceTree = "<group>"; };
 		A2000002 /* AlertsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsViewModel.swift; sourceTree = "<group>"; };
 		A2000003 /* PremiumManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumManager.swift; sourceTree = "<group>"; };
@@ -79,6 +74,7 @@
 		A2000007 /* SavedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedView.swift; sourceTree = "<group>"; };
 		A2000008 /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
 		A2000009 /* PremiumPaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumPaywallView.swift; sourceTree = "<group>"; };
+		A200000A /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -134,22 +130,20 @@
 				A2000004 /* HeroCardView.swift */,
 				A1000019 /* TopOpportunityCardView.swift */,
 				A100002B /* AnimatedLiveDot.swift */,
-				A1000052 /* LiveUpdateTrainBar.swift */,
 				A100002D /* ScaleButtonStyle.swift */,
 				A100002F /* StaggeredAppearModifier.swift */,
 				A1000038 /* ShimmerModifier.swift */,
 				A100003A /* FeedSkeletonView.swift */,
-				A100003C /* AllDropsListView.swift */,
 				A2000005 /* DateStripView.swift */,
 				A1000045 /* DateTimeFilterSheet.swift */,
 				A2000006 /* LikelyToOpenSection.swift */,
-				A1000047 /* NewDropsView.swift */,
 				A1000049 /* ProfilePlaceholderView.swift */,
 				A100004B /* CustomTabBar.swift */,
 				A1000016 /* FeedView.swift */,
 				A2000007 /* SavedView.swift */,
 				A2000008 /* AlertsView.swift */,
 				A2000009 /* PremiumPaywallView.swift */,
+				A200000A /* YouView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -258,17 +252,14 @@
 				A1000005 /* DropCardView.swift in Sources */,
 				A1000029 /* TopOpportunityCardView.swift in Sources */,
 				A100002A /* AnimatedLiveDot.swift in Sources */,
-				A1000054 /* LiveUpdateTrainBar.swift in Sources */,
 				A100002C /* ScaleButtonStyle.swift in Sources */,
 				A100002E /* StaggeredAppearModifier.swift in Sources */,
 				A1000037 /* ShimmerModifier.swift in Sources */,
 				A1000039 /* FeedSkeletonView.swift in Sources */,
-				A100003B /* AllDropsListView.swift in Sources */,
 				A1000006 /* FeedView.swift in Sources */,
 				A1000007 /* FeedViewModel.swift in Sources */,
 				A1000042 /* AppTheme.swift in Sources */,
 				A1000044 /* DateTimeFilterSheet.swift in Sources */,
-				A1000046 /* NewDropsView.swift in Sources */,
 				A1000048 /* ProfilePlaceholderView.swift in Sources */,
 				A100004A /* CustomTabBar.swift in Sources */,
 				A2000011 /* SavedViewModel.swift in Sources */,
@@ -280,6 +271,7 @@
 				A2000017 /* SavedView.swift in Sources */,
 				A2000018 /* AlertsView.swift in Sources */,
 				A2000019 /* PremiumPaywallView.swift in Sources */,
+				A200001A /* YouView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

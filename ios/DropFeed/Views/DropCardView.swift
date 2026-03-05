@@ -86,7 +86,7 @@ struct DropCardView: View {
                         }
                         
                         HStack(spacing: 4) {
-                            if let loc = drop.location, !loc.isEmpty {
+                            if let loc = drop.neighborhood ?? drop.location, !loc.isEmpty {
                                 Text(loc)
                                     .font(.system(size: 12))
                                     .foregroundColor(AppTheme.textTertiary)
@@ -114,7 +114,7 @@ struct DropCardView: View {
                     }
                 }
                 
-                // Scarcity + freshness
+                // Scarcity + trend + freshness
                 HStack(spacing: 8) {
                     if let label = drop.scarcityLabel {
                         HStack(spacing: 4) {
@@ -128,6 +128,20 @@ struct DropCardView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(AppTheme.scarcityBackground(for: drop.scarcityTier))
+                        .cornerRadius(6)
+                    }
+                    
+                    if let trend = drop.trendLabel, let up = drop.trendUp {
+                        HStack(spacing: 3) {
+                            Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(trend)
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .foregroundColor(up ? AppTheme.accent : AppTheme.textTertiary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.surfaceElevated)
                         .cornerRadius(6)
                     }
                     

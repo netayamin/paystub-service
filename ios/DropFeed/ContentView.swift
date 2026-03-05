@@ -16,7 +16,14 @@ struct ContentView: View {
             let bottomInset = geo.safeAreaInsets.bottom
             VStack(spacing: 0) {
                 TabView(selection: $selectedTab) {
-                    FeedView(feedVM: feedVM, savedVM: savedVM, premium: premium)
+                    FeedView(
+                        feedVM: feedVM,
+                        savedVM: savedVM,
+                        premium: premium,
+                        onOpenSearch: { selectedTab = 1 },
+                        onOpenAlerts: { selectedTab = 2 },
+                        alertBadgeCount: alertsVM.unreadCount
+                    )
                         .applyBG()
                         .tag(0)
                     SavedView(savedVM: savedVM, feedVM: feedVM, premium: premium)
@@ -25,7 +32,7 @@ struct ContentView: View {
                     AlertsView(alertsVM: alertsVM)
                         .applyBG()
                         .tag(2)
-                    ProfilePlaceholderView()
+                    YouView(savedVM: savedVM, feedVM: feedVM, premium: premium)
                         .applyBG()
                         .tag(3)
                 }

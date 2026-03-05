@@ -14,6 +14,17 @@ final class PremiumManager: ObservableObject {
     
     private var updateListenerTask: Task<Void, Never>?
     
+    private var unlockAllForTesting: Bool {
+        if let flag = Bundle.main.object(forInfoDictionaryKey: "UNLOCK_ALL_FEATURES") as? Bool, flag {
+            return true
+        }
+#if DEBUG
+        return true
+#else
+        return false
+#endif
+    }
+    
     init() {
         updateListenerTask = listenForTransactions()
         Task { await checkEntitlements() }
@@ -26,6 +37,10 @@ final class PremiumManager: ObservableObject {
     // MARK: - Products
     
     func loadProducts() async {
+        if unlockAllForTesting {
+            isPremium = true
+            return
+        }
         do {
             products = try await Product.products(for: [Self.productId])
         } catch {
@@ -44,6 +59,10 @@ final class PremiumManager: ObservableObject {
     // MARK: - Purchase
     
     func purchase() async {
+        if unlockAllForTesting {
+            isPremium = true
+            return
+        }
         guard let product = monthlyProduct else {
             await loadProducts()
             guard let product = monthlyProduct else { return }
@@ -78,6 +97,10 @@ final class PremiumManager: ObservableObject {
     }
     
     func restore() async {
+        if unlockAllForTesting {
+            isPremium = true
+            return
+        }
         try? await AppStore.sync()
         await checkEntitlements()
     }
@@ -85,6 +108,10 @@ final class PremiumManager: ObservableObject {
     // MARK: - Entitlements
     
     func checkEntitlements() async {
+        if unlockAllForTesting {
+            isPremium = true
+            return
+        }
         for await result in Transaction.currentEntitlements {
             if let transaction = try? checkVerified(result) {
                 if transaction.productID == Self.productId {
@@ -99,7 +126,10 @@ final class PremiumManager: ObservableObject {
     private func listenForTransactions() -> Task<Void, Never> {
         Task.detached { [weak self] in
             for await result in Transaction.updates {
-                if let transaction = try? self?.checkVerified(result) {
+                let transaction = await MainActor.run { [weak self] in
+                    try? self?.checkVerified(result)
+                }
+                if let transaction {
                     await transaction.finish()
                     await self?.checkEntitlements()
                 }

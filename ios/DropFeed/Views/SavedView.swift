@@ -180,7 +180,7 @@ struct SavedView: View {
                 .foregroundColor(AppTheme.textTertiary)
                 .tracking(1)
             
-            FlowLayout(spacing: 6) {
+            ChipFlowLayout(spacing: 6) {
                 ForEach(savedVM.watchedVenues.sorted(), id: \.self) { name in
                     HStack(spacing: 4) {
                         Text(name.capitalized)
@@ -331,9 +331,9 @@ struct SavedView: View {
     }
 }
 
-// MARK: - FlowLayout (horizontal wrapping)
+// MARK: - ChipFlowLayout (horizontal wrapping for saved chips)
 
-struct FlowLayout: Layout {
+private struct ChipFlowLayout: Layout {
     var spacing: CGFloat = 6
     
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

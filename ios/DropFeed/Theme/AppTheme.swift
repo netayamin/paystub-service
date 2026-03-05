@@ -15,6 +15,8 @@ enum AppTheme {
     // Accents
     static let accent = Color(red: 0.23, green: 0.51, blue: 0.96)   // Blue
     static let accentRed = Color(red: 0.95, green: 0.35, blue: 0.25)
+    /// Orange for primary CTAs (Reserve, SET ALERT, EXCLUSIVE badge) — matches screenshot
+    static let accentOrange = Color(red: 1.0, green: 0.55, blue: 0.15)
     static let liveDot = Color(red: 0.4, green: 0.9, blue: 0.5)
     
     // Pills / chips

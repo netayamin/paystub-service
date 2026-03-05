@@ -1185,7 +1185,14 @@ def get_just_opened_from_buckets(
             by_venue[date_str] = {}
         payload = json.loads(r.payload_json) if r.payload_json else {}
         if not isinstance(payload, dict):
-            continue
+            payload = {}
+        # Enrich from row when payload is empty (we no longer store payload_json)
+        if not payload.get("venue_id") and r.venue_id:
+            payload["venue_id"] = r.venue_id
+        if not payload.get("name") and r.venue_name:
+            payload["name"] = r.venue_name
+        if getattr(r, "image_url", None) and not payload.get("image_url"):
+            payload["image_url"] = r.image_url
         venue_key = str(payload.get("venue_id") or payload.get("name") or "").strip() or "unknown"
         if not _venue_matches_party_sizes(payload, party_sizes):
             continue

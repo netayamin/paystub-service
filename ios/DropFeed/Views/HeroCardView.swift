@@ -5,41 +5,19 @@ struct HeroCardView: View {
     let isWatched: Bool
     var onToggleWatch: ((String) -> Void)?
     
-    private var scarcity: (label: String, color: Color, bg: Color)? {
-        guard let label = drop.scarcityLabel else { return nil }
-        return (
-            label,
-            AppTheme.scarcityColor(for: drop.scarcityTier),
-            AppTheme.scarcityBackground(for: drop.scarcityTier)
-        )
-    }
-    
     private var slots: [DropSlot] { Array(drop.slots.prefix(5)) }
-    
-    private var dateLabel: String {
-        guard let ds = drop.dateStr ?? drop.slots.first?.dateStr else { return "" }
-        let cal = Calendar.current
-        let today = Date()
-        let todayStr = String(format: "%04d-%02d-%02d",
-                              cal.component(.year, from: today),
-                              cal.component(.month, from: today),
-                              cal.component(.day, from: today))
-        if ds == todayStr { return "Today" }
-        if let tom = cal.date(byAdding: .day, value: 1, to: today) {
-            let tomStr = String(format: "%04d-%02d-%02d",
-                                cal.component(.year, from: tom),
-                                cal.component(.month, from: tom),
-                                cal.component(.day, from: tom))
-            if ds == tomStr { return "Tomorrow" }
+    private var rarityScoreInt: Int {
+        guard let r = drop.rarityScore else { return 0 }
+        let value = r <= 1 ? Int(r * 100) : Int(r.rounded())
+        return min(100, max(0, value))
+    }
+    private var heroDescription: String {
+        let party = drop.partySizesAvailable.sorted().first.map { "\($0)" } ?? "2"
+        let time = slots.first.flatMap { formatTime($0.time ?? "") } ?? "tonight"
+        if (drop.ratingCount ?? 0) > 500 || drop.rarityScore ?? 0 > 0.7 {
+            return "Rare table for \(party) available \(time). Usually books 30 days in advance."
         }
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
-        if let d = fmt.date(from: ds) {
-            let display = DateFormatter()
-            display.dateFormat = "EEEE, MMM d"
-            return display.string(from: d)
-        }
-        return ds
+        return "Table for \(party) available \(time)."
     }
     
     var body: some View {
@@ -61,33 +39,29 @@ struct HeroCardView: View {
                     gradientFallback
                 }
             }
-            .frame(height: 280)
+            .frame(height: 300)
             
-            // Gradient overlay
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
                     .init(color: .black.opacity(0.3), location: 0.4),
-                    .init(color: .black.opacity(0.85), location: 1.0)
+                    .init(color: .black.opacity(0.9), location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 280)
+            .frame(height: 300)
             
-            // Top badges
+            // Top: EXCLUSIVE badge (orange pill) + bookmark
             VStack {
                 HStack(alignment: .top) {
-                    if let freshness = drop.freshnessLabel {
-                        Text(freshness)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(.ultraThinMaterial)
-                            .environment(\.colorScheme, .dark)
-                            .cornerRadius(8)
-                    }
+                    Text("EXCLUSIVE")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(AppTheme.accentOrange)
+                        .cornerRadius(8)
                     Spacer()
                     Button {
                         onToggleWatch?(drop.name)
@@ -96,79 +70,63 @@ struct HeroCardView: View {
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white)
                             .frame(width: 36, height: 36)
-                            .background(isWatched ? AppTheme.accentRed.opacity(0.8) : Color.white.opacity(0.2))
+                            .background(isWatched ? AppTheme.accentOrange.opacity(0.9) : Color.white.opacity(0.2))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
-                
                 Spacer()
             }
-            .frame(height: 280)
+            .frame(height: 300)
             
-            // Bottom content
+            // Bottom: #1 TOP OPPORTUNITY, name, Rarity Score, description, orange CTA
             VStack(alignment: .leading, spacing: 8) {
-                if let sc = scarcity {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10))
-                        Text(sc.label)
-                            .font(.system(size: 11, weight: .semibold))
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("#1 TOP OPPORTUNITY")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                        Text(drop.name)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
                     }
-                    .foregroundColor(sc.color)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(sc.bg.opacity(0.9))
-                    .cornerRadius(8)
+                    Spacer()
+                    Text("Rarity Score \(rarityScoreInt)/100")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.95))
                 }
                 
-                Text(drop.name)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                
-                Text("\(drop.location ?? "NYC")\(dateLabel.isEmpty ? "" : " · \(dateLabel)")")
+                Text(heroDescription)
                     .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
                 
-                // Time slot pills
-                if !slots.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
-                                slotPill(slot)
-                            }
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-                
-                // Reserve CTA
-                if let firstUrl = slots.first?.resyUrl, let url = URL(string: firstUrl) {
+                if let firstUrl = drop.resyUrl ?? slots.first?.resyUrl, let url = URL(string: firstUrl) {
                     Button {
                         UIApplication.shared.open(url)
                     } label: {
                         HStack(spacing: 8) {
                             Text("Reserve on Resy")
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 16, weight: .bold))
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 12, weight: .bold))
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(AppTheme.accentRed)
+                        .frame(height: 50)
+                        .background(AppTheme.accentOrange)
                         .cornerRadius(14)
                     }
                     .buttonStyle(ScaleButtonStyle())
-                    .padding(.top, 4)
+                    .padding(.top, 6)
                 }
             }
             .padding(16)
         }
-        .frame(height: 280)
+        .frame(height: 300)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -176,38 +134,15 @@ struct HeroCardView: View {
         )
     }
     
-    private func slotPill(_ slot: DropSlot) -> some View {
-        Group {
-            if let urlStr = slot.resyUrl, let url = URL(string: urlStr) {
-                Button {
-                    UIApplication.shared.open(url)
-                } label: {
-                    slotLabel(slot)
-                        .background(Color.white)
-                        .foregroundColor(.black)
-                }
-                .buttonStyle(.plain)
-            } else {
-                slotLabel(slot)
-                    .background(Color.white.opacity(0.2))
-                    .foregroundColor(.white)
-            }
-        }
-    }
-    
-    private func slotLabel(_ slot: DropSlot) -> some View {
-        HStack(spacing: 4) {
-            Text(formatTime(slot.time ?? ""))
-                .font(.system(size: 13, weight: .semibold))
-            if slot.resyUrl != nil {
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .opacity(0.4)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .cornerRadius(12)
+    private func formatTime(_ time: String) -> String {
+        let t = time.split(separator: "–").first.map(String.init) ?? time
+        let parts = t.trimmingCharacters(in: .whitespaces).split(separator: ":")
+        guard let h = parts.first.flatMap({ Int($0) }) else { return "tonight" }
+        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
+        let hour12 = h % 12 == 0 ? 12 : h % 12
+        let ampm = h < 12 ? "AM" : "PM"
+        if m > 0 { return "tonight at \(hour12):\(String(format: "%02d", m)) \(ampm)" }
+        return "tonight at \(hour12) \(ampm)"
     }
     
     private var gradientFallback: some View {
@@ -216,16 +151,6 @@ struct HeroCardView: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-    }
-    
-    private func formatTime(_ time: String) -> String {
-        let t = time.split(separator: "–").first.map(String.init) ?? time
-        let parts = t.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        guard let h = parts.first.flatMap({ Int($0) }) else { return String(t.prefix(8)) }
-        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
-        let hour12 = h % 12 == 0 ? 12 : h % 12
-        let ampm = h < 12 ? "am" : "pm"
-        return m > 0 ? "\(hour12):\(String(format: "%02d", m))\(ampm)" : "\(hour12)\(ampm)"
     }
 }
 

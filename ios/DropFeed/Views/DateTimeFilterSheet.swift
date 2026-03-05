@@ -49,18 +49,29 @@ struct DateTimeFilterSheet: View {
                 .textCase(.uppercase)
             
             FlowLayout(spacing: 8) {
-                ForEach(vm.dateOptions, id: \.self) { dateStr in
-                    dateChip(dateStr)
+                Button {
+                    vm.selectedDates = []
+                } label: {
+                    Text("All dates")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(vm.selectedDates.isEmpty ? .white : AppTheme.textSecondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(vm.selectedDates.isEmpty ? AppTheme.pillSelected : AppTheme.pillUnselected)
+                        .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+                ForEach(vm.dateOptions, id: \.dateStr) { opt in
+                    dateChip(opt.dateStr, dayLabel: opt.dayName, monthDay: opt.dayNum)
                 }
             }
         }
     }
     
-    private func dateChip(_ dateStr: String) -> some View {
-        let isSelected = vm.selectedDate == dateStr || (vm.selectedDate.isEmpty && dateStr == vm.dateOptions.first)
-        let (dayLabel, monthDay) = formatDate(dateStr)
+    private func dateChip(_ dateStr: String, dayLabel: String, monthDay: String) -> some View {
+        let isSelected = vm.selectedDates.contains(dateStr)
         return Button {
-            vm.selectedDate = dateStr
+            vm.selectedDates = [dateStr]
         } label: {
             Text("\(dayLabel) \(monthDay)")
                 .font(.system(size: 14, weight: .medium))
@@ -104,21 +115,6 @@ struct DateTimeFilterSheet: View {
         .buttonStyle(.plain)
     }
     
-    private func formatDate(_ dateStr: String) -> (day: String, monthDay: String) {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone.current
-        guard let d = formatter.date(from: dateStr) else { return ("", dateStr) }
-        let cal = Calendar.current
-        let day: String = {
-            let weekday = cal.component(.weekday, from: d)
-            let symbols = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-            return weekday >= 1 && weekday <= 7 ? symbols[weekday] : ""
-        }()
-        let month = cal.shortMonthSymbols[cal.component(.month, from: d) - 1]
-        let dayNum = cal.component(.day, from: d)
-        return (day, "\(month) \(dayNum)")
-    }
 }
 
 /// Simple wrapping layout for filter chips (date/time).

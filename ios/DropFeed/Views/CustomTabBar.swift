@@ -10,10 +10,10 @@ struct CustomTabBar: View {
     
     var body: some View {
         HStack(spacing: 0) {
-            tabItem(tag: 0, icon: "bolt.fill", label: "Feed")
-            tabItem(tag: 1, icon: "bookmark", label: "Saved")
+            tabItem(tag: 0, icon: "antenna.radiowaves.left.and.right", label: "Live")
+            tabItem(tag: 1, icon: "magnifyingglass", label: "Search")
             tabItem(tag: 2, icon: "bell", label: "Alerts", badge: alertBadgeCount)
-            tabItem(tag: 3, icon: "person", label: "You")
+            tabItem(tag: 3, icon: "person", label: "Profile")
         }
         .frame(height: barHeight)
         .padding(.horizontal, 2)

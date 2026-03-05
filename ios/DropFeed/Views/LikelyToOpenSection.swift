@@ -3,6 +3,8 @@ import SwiftUI
 struct LikelyToOpenSection: View {
     let venues: [LikelyToOpenVenue]
     @ObservedObject var premium: PremiumManager
+    var onNotifyMe: ((String) -> Void)? = nil
+    var isWatched: ((String) -> Bool)? = nil
     @State private var expanded = false
     @State private var showPaywall = false
     
@@ -22,11 +24,11 @@ struct LikelyToOpenSection: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Likely to Open Soon")
-                                .font(.system(size: 16, weight: .bold))
+                            Text("Likely to Open")
+                                .font(.system(size: 18, weight: .bold))
                                 .foregroundColor(AppTheme.textPrimary)
-                            Text("Based on 14-day drop patterns")
-                                .font(.system(size: 11))
+                            Text("Predictive alerts based on cancellation patterns")
+                                .font(.system(size: 12))
                                 .foregroundColor(AppTheme.textTertiary)
                         }
                         Spacer()
@@ -46,47 +48,30 @@ struct LikelyToOpenSection: View {
                 .buttonStyle(.plain)
                 
                 if expanded {
-                    VStack(spacing: 0) {
-                        ForEach(allVisible) { venue in
-                            venueRow(venue)
-                        }
-                        
-                        // Premium gate
-                        if !lockedVenues.isEmpty {
-                            ZStack {
-                                VStack(spacing: 0) {
-                                    ForEach(lockedVenues.prefix(2)) { venue in
-                                        venueRow(venue)
-                                            .opacity(0.3)
-                                            .blur(radius: 2)
-                                    }
-                                }
-                                
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(allVisible) { venue in
+                                likelyToOpenCard(venue)
+                            }
+                            if !lockedVenues.isEmpty {
                                 Button {
                                     showPaywall = true
                                 } label: {
-                                    HStack(spacing: 8) {
+                                    VStack(spacing: 8) {
                                         Image(systemName: "lock.fill")
-                                            .font(.system(size: 14))
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("\(lockedVenues.count) more — Unlock with Premium")
-                                                .font(.system(size: 13, weight: .semibold))
-                                            Text("Get instant alerts the second these tables drop")
-                                                .font(.system(size: 11))
-                                                .foregroundColor(AppTheme.textTertiary)
-                                        }
+                                            .font(.system(size: 20))
+                                        Text("\(lockedVenues.count) more")
+                                            .font(.system(size: 12, weight: .semibold))
                                     }
                                     .foregroundColor(AppTheme.premiumGold)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .frame(maxWidth: .infinity)
+                                    .frame(width: 140, height: 120)
                                     .background(AppTheme.premiumGoldBg)
-                                    .cornerRadius(12)
-                                    .padding(.horizontal, 16)
+                                    .cornerRadius(14)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(.horizontal, 16)
                     }
                     .padding(.bottom, 12)
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -104,16 +89,71 @@ struct LikelyToOpenSection: View {
         }
     }
     
+    private func likelyToOpenCard(_ venue: LikelyToOpenVenue) -> some View {
+        let confidence = Int((venue.availabilityRate14d ?? 0) * 100)
+        let watched = isWatched?(venue.name) ?? false
+        let predictedTime = venue.lastSeenDescription ?? (venue.daysWithDrops.map { "Open \($0)/14 days" } ?? "Often opens this week")
+        
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(venue.name)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(AppTheme.textPrimary)
+                .lineLimit(1)
+            Text(predictedTime)
+                .font(.system(size: 12))
+                .foregroundColor(AppTheme.textTertiary)
+                .lineLimit(1)
+            Text("\(min(100, confidence))% CONFIDENCE")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(AppTheme.textTertiary)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(AppTheme.surfaceElevated)
+                        .frame(height: 4)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(AppTheme.accentOrange)
+                        .frame(width: geo.size.width * CGFloat(confidence) / 100, height: 4)
+                }
+            }
+            .frame(height: 4)
+            
+            if let onNotify = onNotifyMe {
+                Button {
+                    onNotify(venue.name)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: watched ? "bell.fill" : "bell.badge")
+                            .font(.system(size: 11))
+                        Text(watched ? "Watching" : "SET ALERT")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(watched ? AppTheme.textTertiary : .white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(watched ? AppTheme.surfaceElevated : AppTheme.accentOrange)
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .frame(width: 160, alignment: .leading)
+        .background(AppTheme.surfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppTheme.border, lineWidth: 0.5)
+        )
+    }
+    
     private func venueRow(_ venue: LikelyToOpenVenue) -> some View {
         HStack(spacing: 12) {
-            // Image
             ZStack {
                 if let urlStr = venue.imageUrl, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        default: rowImageFallback(venue.name)
-                        }
+                        if case .success(let img) = phase { img.resizable().scaledToFill() }
+                        else { rowImageFallback(venue.name) }
                     }
                 } else {
                     rowImageFallback(venue.name)
@@ -127,19 +167,28 @@ struct LikelyToOpenSection: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(AppTheme.textPrimary)
                     .lineLimit(1)
-                if let desc = venue.lastSeenDescription, !desc.isEmpty {
-                    Text(desc)
-                        .font(.system(size: 11))
-                        .foregroundColor(AppTheme.textTertiary)
-                        .lineLimit(1)
-                } else if let days = venue.daysWithDrops {
-                    Text("Had tables \(days) of last 14 days")
+                if let days = venue.daysWithDrops {
+                    Text("Open \(days) of last 14 days")
                         .font(.system(size: 11))
                         .foregroundColor(AppTheme.textTertiary)
                 }
             }
-            
             Spacer(minLength: 0)
+            if let onNotify = onNotifyMe {
+                let watched = isWatched?(venue.name) ?? false
+                Button { onNotify(venue.name) } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: watched ? "bell.fill" : "bell.badge").font(.system(size: 11))
+                        Text(watched ? "Watching" : "SET ALERT").font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(watched ? AppTheme.textTertiary : .white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(watched ? AppTheme.surfaceElevated : AppTheme.accentOrange)
+                    .cornerRadius(10)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

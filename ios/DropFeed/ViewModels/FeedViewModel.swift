@@ -13,17 +13,9 @@ final class FeedViewModel: ObservableObject {
     @Published var lastScanAt: Date?
     @Published var totalVenuesScanned: Int = 0
     
-    @Published var selectedDates: Set<String> = [] {
-        didSet { applyFilters() }
-    }
-    @Published var selectedPartySizes: Set<Int> = [] {
-        didSet { applyFilters() }
-    }
+    @Published var selectedDates: Set<String> = []
+    @Published var selectedPartySizes: Set<Int> = []
     @Published var selectedTimeFilter: String = "all"
-    
-    private var allRankedBoard: [Drop] = []
-    private var allTopOpportunities: [Drop] = []
-    private var allHotRightNow: [Drop] = []
     
     private let service = APIService.shared
     
@@ -36,38 +28,6 @@ final class FeedViewModel: ObservableObject {
     var feedCards: [Drop] {
         guard drops.count > 1 else { return [] }
         return Array(drops.dropFirst())
-    }
-    
-    // MARK: - Filtering
-    
-    private func applyFilters() {
-        let dateSet = selectedDates
-        let partySet = selectedPartySizes
-        
-        func matchesDrop(_ d: Drop) -> Bool {
-            if !dateSet.isEmpty {
-                let cardDate = d.dateStr ?? ""
-                let slotDates = Set(d.slots.compactMap(\.dateStr))
-                if !dateSet.contains(cardDate) && dateSet.isDisjoint(with: slotDates) {
-                    return false
-                }
-            }
-            if !partySet.isEmpty {
-                let available = Set(d.partySizesAvailable)
-                if !available.isEmpty && partySet.isDisjoint(with: available) {
-                    return false
-                }
-            }
-            return true
-        }
-        
-        let filtered = allRankedBoard.filter(matchesDrop)
-        let filteredTop = allTopOpportunities.filter(matchesDrop)
-        let filteredHot = allHotRightNow.filter(matchesDrop)
-        
-        drops = filtered
-        topOpportunities = filteredTop.isEmpty ? nil : filteredTop
-        hotRightNow = filteredHot.isEmpty ? nil : filteredHot
     }
     
     /// Next 14 days for date picker (YYYY-MM-DD)
@@ -128,12 +88,13 @@ final class FeedViewModel: ObservableObject {
         error = nil
         defer { isLoading = false }
         
+        let timeAPI = timeFilterAPI
         do {
             let resp = try await service.fetchJustOpened(
-                dates: nil,
-                partySizes: nil,
-                timeAfter: nil,
-                timeBefore: nil
+                dates: selectedDates.isEmpty ? nil : Array(selectedDates),
+                partySizes: selectedPartySizes.isEmpty ? nil : Array(selectedPartySizes),
+                timeAfter: timeAPI.after,
+                timeBefore: timeAPI.before
             )
             
             var ranked = resp.rankedBoard ?? []
@@ -149,13 +110,11 @@ final class FeedViewModel: ObservableObject {
                 }
             }
             
-            allRankedBoard = ranked
-            allTopOpportunities = top
-            allHotRightNow = hot
+            drops = ranked
+            topOpportunities = top.isEmpty ? nil : top
+            hotRightNow = hot.isEmpty ? nil : hot
             totalVenuesScanned = scanned
             likelyToOpen = resp.likelyToOpen ?? []
-            
-            applyFilters()
             
             if let iso = resp.lastScanAt {
                 lastScanAt = Drop.parseISO(iso)
@@ -172,7 +131,24 @@ final class FeedViewModel: ObservableObject {
         } catch is CancellationError {
             // Ignore
         } catch {
-            self.error = error.localizedDescription
+            self.error = Self.userFacingError(error)
         }
+    }
+    
+    /// User-friendly message when backend is unreachable or request fails.
+    private static func userFacingError(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost:
+                return "You're offline. Check your connection and try again."
+            case .timedOut:
+                return "Request timed out. The server may be busy — try again in a moment."
+            case .cannotFindHost, .cannotConnectToHost:
+                return "Can't reach the server. Check your connection or try again later."
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
     }
 }

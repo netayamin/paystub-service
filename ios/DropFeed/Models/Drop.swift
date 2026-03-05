@@ -59,6 +59,8 @@ struct Drop: Codable, Identifiable {
     let dropFrequencyPerDay: Double?
     let isHotspot: Bool?
     let neighborhood: String?
+    let trendPct: Double?
+    let avgDropDurationSeconds: Double?
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -85,6 +87,8 @@ struct Drop: Codable, Identifiable {
         dropFrequencyPerDay = try c.decodeIfPresent(Double.self, forKey: .dropFrequencyPerDay)
         isHotspot = try c.decodeIfPresent(Bool.self, forKey: .isHotspot)
         neighborhood = try c.decodeIfPresent(String.self, forKey: .neighborhood)
+        trendPct = try c.decodeIfPresent(Double.self, forKey: .trendPct)
+        avgDropDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .avgDropDurationSeconds)
     }
     
     /// Memberwise init for previews and tests.
@@ -109,7 +113,9 @@ struct Drop: Codable, Identifiable {
         daysWithDrops: Int? = nil,
         dropFrequencyPerDay: Double? = nil,
         isHotspot: Bool? = nil,
-        neighborhood: String? = nil
+        neighborhood: String? = nil,
+        trendPct: Double? = nil,
+        avgDropDurationSeconds: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -132,6 +138,22 @@ struct Drop: Codable, Identifiable {
         self.dropFrequencyPerDay = dropFrequencyPerDay
         self.isHotspot = isHotspot
         self.neighborhood = neighborhood
+        self.trendPct = trendPct
+        self.avgDropDurationSeconds = avgDropDurationSeconds
+    }
+    
+    /// "Trending" when trend_pct > 0, "Cooling" when < 0, nil otherwise
+    var trendLabel: String? {
+        guard let pct = trendPct else { return nil }
+        if pct > 0.05 { return "Trending" }
+        if pct < -0.05 { return "Cooling" }
+        return nil
+    }
+    
+    var trendUp: Bool? {
+        guard let pct = trendPct else { return nil }
+        if abs(pct) < 0.05 { return nil }
+        return pct > 0
     }
     
     enum CodingKeys: String, CodingKey {
@@ -154,6 +176,8 @@ struct Drop: Codable, Identifiable {
         case dropFrequencyPerDay = "drop_frequency_per_day"
         case isHotspot = "is_hotspot"
         case neighborhood
+        case trendPct = "trend_pct"
+        case avgDropDurationSeconds = "avg_drop_duration_seconds"
     }
     
     // MARK: - Scarcity helpers

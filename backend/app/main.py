@@ -178,10 +178,12 @@ def root():
 
 
 def _health_version() -> str:
-    """Version for /health: APP_VERSION or GIT_SHA env, else package version."""
+    """Version for /health: APP_VERSION or GIT_SHA env, else package version.
+    Treat empty or literal 'unknown' (Dockerfile default when GIT_SHA not passed) as unset."""
+    _skip = {"", "unknown"}
     for env in ("APP_VERSION", "GIT_SHA"):
-        v = os.getenv(env, "").strip()
-        if v:
+        v = (os.getenv(env) or "").strip()
+        if v and v.lower() not in _skip:
             return v
     try:
         from importlib.metadata import version
