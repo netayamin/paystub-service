@@ -1049,20 +1049,7 @@ async def list_just_opened(
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"))
 
-        feed = build_feed(just_opened, [])
-        ranked_board = feed["ranked_board"]
-        top_opportunities = feed["top_opportunities"]
-        hot_right_now = feed["hot_right_now"]
-
-        try:
-            from zoneinfo import ZoneInfo
-            tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
-            today_calendar = datetime.now(tz).date()
-        except Exception:
-            today_calendar = date.today()
-        attach_likely_open_labels(ranked_board, today_calendar)
-        likely_to_open = get_likely_to_open_venues(db, today)
-
+        # Load rolling metrics FIRST so build_feed ranks by rarity_score
         rolling_rows = (
             db.query(VenueRollingMetrics)
             .filter(VenueRollingMetrics.venue_name.isnot(None))
@@ -1075,6 +1062,35 @@ async def list_just_opened(
             key = (rm.venue_name or "").strip().lower()
             if key and key not in rolling_by_name:
                 rolling_by_name[key] = rm
+
+        def _attach_metrics_raw(days: list[dict]) -> None:
+            for day in days:
+                for v in day.get("venues") or []:
+                    nm = (v.get("name") or "").strip().lower()
+                    rm = rolling_by_name.get(nm)
+                    if rm:
+                        v["rarity_score"] = rm.rarity_score
+                        v["availability_rate_14d"] = rm.availability_rate_14d
+                        v["days_with_drops"] = rm.days_with_drops
+                        v["drop_frequency_per_day"] = rm.drop_frequency_per_day
+
+        _attach_metrics_raw(just_opened)
+        _attach_metrics_raw(still_open)
+
+        # Pass still_open so ranked_board always has bookable venues, not only 10-min-fresh ones
+        feed = build_feed(just_opened, still_open)
+        ranked_board = feed["ranked_board"]
+        top_opportunities = feed["top_opportunities"]
+        hot_right_now = feed["hot_right_now"]
+
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
+            today_calendar = datetime.now(tz).date()
+        except Exception:
+            today_calendar = date.today()
+        attach_likely_open_labels(ranked_board, today_calendar)
+        likely_to_open = get_likely_to_open_venues(db, today)
 
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:

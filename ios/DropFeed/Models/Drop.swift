@@ -1,6 +1,6 @@
 import Foundation
 
-/// Single time slot (date + time + Resy URL)
+/// Single time slot (date + time + Resy URL). Decodes both "resyUrl" and "resy_url".
 struct DropSlot: Codable {
     let dateStr: String?
     let time: String?
@@ -10,6 +10,28 @@ struct DropSlot: Codable {
         case dateStr = "date_str"
         case time
         case resyUrl = "resyUrl"
+        case resyUrlSnake = "resy_url"
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        dateStr = try c.decodeIfPresent(String.self, forKey: .dateStr)
+        time = try c.decodeIfPresent(String.self, forKey: .time)
+        resyUrl = (try? c.decodeIfPresent(String.self, forKey: .resyUrl)).flatMap { $0 }
+            ?? (try? c.decodeIfPresent(String.self, forKey: .resyUrlSnake)).flatMap { $0 }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(dateStr, forKey: .dateStr)
+        try c.encodeIfPresent(time, forKey: .time)
+        try c.encodeIfPresent(resyUrl, forKey: .resyUrl)
+    }
+    
+    init(dateStr: String?, time: String?, resyUrl: String?) {
+        self.dateStr = dateStr
+        self.time = time
+        self.resyUrl = resyUrl
     }
 }
 
@@ -40,8 +62,10 @@ struct Drop: Codable, Identifiable {
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(String.self, forKey: .id)
-        name = try c.decode(String.self, forKey: .name)
+        id = (try? c.decode(String.self, forKey: .id))
+            ?? (try? c.decode(Int.self, forKey: .id)).map { "\($0)" }
+            ?? UUID().uuidString
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Venue"
         venueKey = try c.decodeIfPresent(String.self, forKey: .venueKey)
         location = try c.decodeIfPresent(String.self, forKey: .location)
         dateStr = try c.decodeIfPresent(String.self, forKey: .dateStr)
@@ -246,6 +270,7 @@ struct JustOpenedResponse: Codable {
     }
     
     /// Decode response, skipping any feed cards that fail to decode so one bad card doesn't empty the feed.
+    /// When ranked_board is empty but the API returned just_opened, build drops from just_opened so the feed shows results.
     static func decodeLenient(from data: Data, decoder: JSONDecoder) throws -> JustOpenedResponse {
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         func decodeDrops(_ key: String) -> [Drop] {
@@ -268,8 +293,12 @@ struct JustOpenedResponse: Codable {
                 return v
             }
         }
+        var rankedBoard = decodeDrops("ranked_board")
+        if rankedBoard.isEmpty, let justOpenedDays = json["just_opened"] as? [[String: Any]] {
+            rankedBoard = Self.dropsFromJustOpened(justOpenedDays)
+        }
         return JustOpenedResponse(
-            rankedBoard: decodeDrops("ranked_board"),
+            rankedBoard: rankedBoard.isEmpty ? nil : rankedBoard,
             topOpportunities: decodeDrops("top_opportunities"),
             hotRightNow: decodeDrops("hot_right_now"),
             likelyToOpen: likelyVenues.isEmpty ? nil : likelyVenues,
@@ -277,6 +306,52 @@ struct JustOpenedResponse: Codable {
             totalVenuesScanned: intValue("total_venues_scanned"),
             nextScanAt: json["next_scan_at"] as? String
         )
+    }
+    
+    /// Build [Drop] from backend just_opened shape: [{ date_str, venues: [{ name, availability_times, detected_at, resy_url, ... }] }]
+    private static func dropsFromJustOpened(_ days: [[String: Any]]) -> [Drop] {
+        var result: [Drop] = []
+        for day in days {
+            guard let dateStr = day["date_str"] as? String,
+                  let venues = day["venues"] as? [[String: Any]] else { continue }
+            for venue in venues {
+                guard let name = (venue["name"] as? String)?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { continue }
+                let venueKey = (venue["venue_id"] as? String).map { "\($0)" } ?? (venue["name"] as? String) ?? name
+                let times = venue["availability_times"] as? [String] ?? []
+                let resyUrl = venue["resy_url"] as? String ?? venue["resyUrl"] as? String
+                let slots: [DropSlot] = times.isEmpty
+                    ? [DropSlot(dateStr: dateStr, time: nil, resyUrl: resyUrl)]
+                    : times.map { DropSlot(dateStr: dateStr, time: $0, resyUrl: resyUrl) }
+                let detectedAt = venue["detected_at"] as? String ?? venue["detectedAt"] as? String
+                let partySizes = (venue["party_sizes_available"] as? [Int]) ?? (venue["party_sizes_available"] as? [NSNumber])?.map(\.intValue) ?? []
+                let id = "just-opened-\(dateStr)-\(name.replacingOccurrences(of: " ", with: "-"))"
+                let drop = Drop(
+                    id: id,
+                    name: name,
+                    venueKey: venueKey,
+                    location: venue["neighborhood"] as? String,
+                    dateStr: dateStr,
+                    slots: slots,
+                    partySizesAvailable: partySizes,
+                    imageUrl: venue["image_url"] as? String,
+                    createdAt: detectedAt,
+                    detectedAt: detectedAt,
+                    resyUrl: resyUrl,
+                    feedHot: nil,
+                    resyPopularityScore: venue["resy_popularity_score"] as? Double,
+                    ratingAverage: venue["rating_average"] as? Double,
+                    ratingCount: (venue["rating_count"] as? NSNumber)?.intValue,
+                    rarityScore: venue["rarity_score"] as? Double,
+                    availabilityRate14d: venue["availability_rate_14d"] as? Double,
+                    daysWithDrops: (venue["days_with_drops"] as? NSNumber)?.intValue,
+                    dropFrequencyPerDay: venue["drop_frequency_per_day"] as? Double,
+                    isHotspot: (venue["is_hotspot"] as? NSNumber)?.boolValue ?? (venue["is_hotspot"] as? Bool),
+                    neighborhood: venue["neighborhood"] as? String
+                )
+                result.append(drop)
+            }
+        }
+        return result
     }
 }
 
@@ -299,6 +374,26 @@ struct VenueWatchesResponse: Codable {
 
 struct HotlistResponse: Codable {
     let names: [String]
+    let hotlist: [String]?
+    
+    // Backend returns { "hotlist": [...] }; accept both keys for forwards compatibility
+    var allNames: [String] { names.isEmpty ? (hotlist ?? []) : names }
+    
+    enum CodingKeys: String, CodingKey {
+        case names, hotlist
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        names = (try? c.decodeIfPresent([String].self, forKey: .names)) ?? []
+        hotlist = try? c.decodeIfPresent([String].self, forKey: .hotlist)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(names, forKey: .names)
+        try c.encodeIfPresent(hotlist, forKey: .hotlist)
+    }
 }
 
 // MARK: - Preview helpers

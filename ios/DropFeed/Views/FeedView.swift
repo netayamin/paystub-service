@@ -32,23 +32,18 @@ struct FeedView: View {
                     feedContent
                 }
             }
-            .id(viewStateId)
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                removal: .opacity
-            ))
+            // Animate content transitions without tying .task to the changing id
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
-            .refreshable {
-                _ = await Task.detached(priority: .userInitiated) { @MainActor in
-                    await vm.refresh()
-                }.value
-            }
-            .task {
-                await vm.refresh()
-                vm.startPolling()
-            }
         }
         .background(AppTheme.background)
+        // task + refreshable live on the stable outer VStack so they never re-trigger on state change
+        .refreshable {
+            await vm.refresh()
+        }
+        .task {
+            await vm.refresh()
+            vm.startPolling()
+        }
     }
     
     // MARK: - Top bar
@@ -89,7 +84,7 @@ struct FeedView: View {
                 // Date strip
                 DateStripView(
                     dateOptions: vm.dateOptions,
-                    selectedDates: $vm.selectedDates,
+                    selectedDates: $feedVM.selectedDates,
                     calendarCounts: vm.calendarCounts
                 )
                 .padding(.bottom, 4)

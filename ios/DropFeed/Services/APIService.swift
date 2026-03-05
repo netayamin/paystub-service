@@ -12,7 +12,9 @@ final class APIService {
         #if targetEnvironment(simulator)
         return "http://127.0.0.1:8000"
         #else
-        return "http://127.0.0.1:8000"
+        // On a physical device without Info.plist URL, fall back to the known EC2 server.
+        // Update this if the backend moves. For local dev use ngrok and set API_BASE_URL in Info.plist.
+        return "http://18.118.55.231:8000"
         #endif
     }()
     
@@ -181,7 +183,7 @@ final class APIService {
             throw APIError.httpError
         }
         let decoded = try decoder.decode(HotlistResponse.self, from: data)
-        return decoded.names
+        return decoded.allNames
     }
     
     // MARK: - Push

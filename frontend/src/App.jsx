@@ -290,7 +290,15 @@ function buildDiscoveryDrops(snapshotList, _unusedTimeChip, options = {}) {
     const scannedAt = day.scanned_at;
     const venues = day.venues || [];
     for (const v of venues) {
-      const futureTimes = getFutureAvailabilityTimes(date_str, v.availability_times || []);
+      // Prefer availability_times; fallback to slots[].time when backend sends card-style venue
+      let availabilityTimes = v.availability_times || [];
+      if (availabilityTimes.length === 0 && Array.isArray(v.slots) && v.slots.length > 0) {
+        availabilityTimes = v.slots
+          .filter((s) => s && (s.date_str === date_str || !s.date_str))
+          .map((s) => s.time || (s.date_str && s.date_str !== date_str ? null : s.time))
+          .filter(Boolean);
+      }
+      const futureTimes = getFutureAvailabilityTimes(date_str, availabilityTimes);
       if (futureTimes.length === 0) continue;
       const timeStr = formatAvailabilityTimeRange(futureTimes);
       // Release time: backend sends detected_at (or opened_at). Support snake_case and camelCase.
@@ -307,7 +315,7 @@ function buildDiscoveryDrops(snapshotList, _unusedTimeChip, options = {}) {
         likely_open_label: getLikelyOpenLabel(date_str, todayStr),
         subtitle: scannedAt ? `Scanned ${formatTimeAgoSentence(scannedAt)}` : "Available",
         isTableJustReleased: false, // Not used anymore
-        resyUrl: v.resy_url ?? null,
+        resyUrl: v.resy_url ?? v.resyUrl ?? (v.slots?.[0]?.resyUrl) ?? null,
         image_url: v.image_url ?? null,
         created_at: createdAt,
         detected_at: createdAt,
@@ -460,11 +468,12 @@ export default function App() {
       if (res.ok) {
         setJustOpened(Array.isArray(data.just_opened) ? data.just_opened : []);
         setStillOpen(Array.isArray(data.still_open) ? data.still_open : []);
-        if (Array.isArray(data.ranked_board) && Array.isArray(data.top_opportunities) && Array.isArray(data.hot_right_now)) {
+        // Use feed segments when ranked_board is present (allow missing top_opportunities/hot_right_now for older backends)
+        if (Array.isArray(data.ranked_board)) {
           setApiFeed({
             ranked_board: data.ranked_board,
-            top_opportunities: data.top_opportunities,
-            hot_right_now: data.hot_right_now,
+            top_opportunities: Array.isArray(data.top_opportunities) ? data.top_opportunities : [],
+            hot_right_now: Array.isArray(data.hot_right_now) ? data.hot_right_now : [],
             likely_to_open: Array.isArray(data.likely_to_open) ? data.likely_to_open : [],
             likely_open_today: Array.isArray(data.likely_open_today) ? data.likely_open_today : [],
             likely_open_tomorrow: Array.isArray(data.likely_open_tomorrow) ? data.likely_open_tomorrow : [],

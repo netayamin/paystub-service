@@ -61,15 +61,9 @@ final class FeedViewModel: ObservableObject {
             return true
         }
         
-        var filtered = allRankedBoard.filter(matchesDrop)
-        var filteredTop = allTopOpportunities.filter(matchesDrop)
-        var filteredHot = allHotRightNow.filter(matchesDrop)
-        
-        if filtered.isEmpty && !allRankedBoard.isEmpty && !dateSet.isEmpty {
-            filtered = allRankedBoard
-            filteredTop = allTopOpportunities
-            filteredHot = allHotRightNow
-        }
+        let filtered = allRankedBoard.filter(matchesDrop)
+        let filteredTop = allTopOpportunities.filter(matchesDrop)
+        let filteredHot = allHotRightNow.filter(matchesDrop)
         
         drops = filtered
         topOpportunities = filteredTop.isEmpty ? nil : filteredTop
@@ -147,7 +141,8 @@ final class FeedViewModel: ObservableObject {
             let hot = resp.hotRightNow ?? []
             let scanned = resp.totalVenuesScanned ?? 0
             
-            if ranked.isEmpty && scanned == 0 {
+            // If main feed is empty but we have scan data (or no scan yet), fall back to new-drops so feed isn't blank
+            if ranked.isEmpty {
                 let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
                 if !newDrops.isEmpty {
                     ranked = newDrops

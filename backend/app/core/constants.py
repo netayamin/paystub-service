@@ -19,8 +19,10 @@ PUSH_INTERVAL_SECONDS = 60
 # Discovery tick from .env (discovery_config); legacy name for "next scan" fallback
 DISCOVERY_POLL_INTERVAL_SECONDS = DISCOVERY_TICK_SECONDS
 
-# Drops opened within this many minutes appear in JUST OPENED; older drops appear in STILL OPEN only
-JUST_OPENED_WITHIN_MINUTES = 10
+# Drops opened within this many minutes appear in JUST OPENED; older drops appear in STILL OPEN only.
+# Override via env var JUST_OPENED_WITHIN_MINUTES (default 30).
+import os as _os
+JUST_OPENED_WITHIN_MINUTES: int = int(_os.environ.get("JUST_OPENED_WITHIN_MINUTES", "30") or "30")
 
 # Scalability: hard caps so DB and response size stay bounded (avoid timeouts)
 DISCOVERY_JUST_OPENED_LIMIT = 2000  # max slot_availability rows per just-opened request
