@@ -25,7 +25,7 @@ from app.services.discovery.buckets import (
     window_start_date,
 )
 from app.services.discovery.buckets import _poll_one_bucket
-from app.services.discovery.scan import set_discovery_job_heartbeat
+from app.services.discovery.scan import set_discovery_job_heartbeat, set_discovery_sliding_window_finished_at
 
 logger = logging.getLogger(__name__)
 
@@ -193,5 +193,6 @@ def run_sliding_window_job() -> None:
             len(all_bucket_ids(today)),
             new_day_str,
         )
+        set_discovery_sliding_window_finished_at(datetime.now(timezone.utc))
     finally:
         db.close()

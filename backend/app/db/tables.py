@@ -23,10 +23,10 @@ ALL_TABLE_NAMES = (
 )
 
 # Tables cleared when resetting discovery state (TRUNCATE). Order matters for FK if any.
+# availability_sessions omitted (legacy; may be dropped in some DBs; we use availability_state).
 DISCOVERY_TABLE_NAMES = (
     "drop_events",
     "slot_availability",
-    "availability_sessions",
     "availability_state",
     "discovery_buckets",
 )
@@ -35,7 +35,6 @@ DISCOVERY_TABLE_NAMES = (
 FULL_RESET_TABLE_NAMES = (
     "drop_events",
     "slot_availability",
-    "availability_sessions",
     "availability_state",
     "feed_cache",
     "venue_metrics",

@@ -65,6 +65,7 @@ from app.models.drop_event import DropEvent
 from app.models.slot_availability import SlotAvailability
 from app.models.user_notification import UserNotification
 from app.models.venue import Venue
+from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.aggregation import aggregate_closed_events_into_metrics
 from app.services.providers import get_provider
 
@@ -828,6 +829,50 @@ def prune_old_venues(db: Session, keep_days: int | None = None) -> int:
     return n
 
 
+LIKELY_TO_OPEN_LIMIT = 25
+
+
+def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_OPEN_LIMIT) -> list[dict]:
+    """
+    Venues that have NO open slots right now but have strong drop history (high availability_rate_14d).
+    For "Likely to open" / "Often has drops — nothing open yet" section.
+    """
+    bucket_ids = [bid for bid, _d, _t in all_bucket_ids(today)]
+    open_venue_ids = set(
+        r[0]
+        for r in db.query(SlotAvailability.venue_id)
+        .filter(
+            SlotAvailability.bucket_id.in_(bucket_ids),
+            SlotAvailability.state == "open",
+            SlotAvailability.venue_id.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+    latest = db.query(func.max(VenueRollingMetrics.as_of_date)).scalar()
+    if not latest:
+        return []
+    q = (
+        db.query(VenueRollingMetrics)
+        .filter(
+            VenueRollingMetrics.as_of_date == latest,
+            VenueRollingMetrics.venue_id.notin_(open_venue_ids) if open_venue_ids else True,
+        )
+        .order_by(VenueRollingMetrics.availability_rate_14d.desc().nullslast())
+        .limit(limit)
+    )
+    return [
+        {
+            "venue_id": r.venue_id,
+            "venue_name": r.venue_name or "",
+            "availability_rate_14d": r.availability_rate_14d,
+            "days_with_drops": r.days_with_drops,
+            "rarity_score": r.rarity_score,
+        }
+        for r in q.all()
+    ]
+
+
 def _poll_one_bucket(bid: str, date_str: str, time_slot: str) -> tuple[int, dict, str | None]:
     """
     Poll a single bucket in its own DB session (for use in thread pool).
@@ -1095,9 +1140,8 @@ def get_just_opened_from_buckets(
     opened_since: datetime | None = None,
 ) -> list[dict]:
     """
-    Just opened: slots we actually detected as new (curr - prev), still open.
-    We base this on DropEvent, not SlotAvailability.opened_at, so bootstrap/first-poll
-    slots (which never get a DropEvent) do not appear as "new" — only real new drops do.
+    Just opened: only venues that had ZERO slots in the previous poll and now have some (true drops).
+    Uses DropEvent so we only show "fully booked → spots opened up", not venues that already had slots and gained more.
     Returns list of { date_str, venues, scanned_at }. Optional filters: date_filter, time_slots (bucket), party_sizes.
     """
     now = datetime.now(timezone.utc)
@@ -1109,17 +1153,17 @@ def get_just_opened_from_buckets(
         cutoff = now - timedelta(minutes=opened_within_minutes)
     else:
         cutoff = now - timedelta(minutes=10)
-    # Only slots we emitted as "new" (have a DropEvent in the window); then require still open in SlotAvailability
-    drop_q = (
-        db.query(DropEvent.bucket_id, DropEvent.slot_id)
+    # Only slots that are "venue had 0 before" drops (have a DropEvent in the window) and are still open
+    drop_pairs = [
+        (r.bucket_id, r.slot_id)
+        for r in db.query(DropEvent.bucket_id, DropEvent.slot_id)
         .filter(DropEvent.opened_at >= cutoff)
         .distinct()
         .limit(limit_events)
-    )
-    drop_pairs = [(r.bucket_id, r.slot_id) for r in drop_q.all()]
+        .all()
+    ]
     if not drop_pairs:
         return []
-    # Resolve to SlotAvailability rows that are still open (slot may have closed since drop)
     events = (
         db.query(SlotAvailability)
         .filter(
@@ -1198,23 +1242,22 @@ def get_still_open_from_buckets(
     exclude_opened_within_minutes: int | None = None,
 ) -> list[dict]:
     """
-    Still open: slots that are currently open but not in "just opened" (no recent DropEvent).
-    Includes bootstrap slots (no DropEvent) and slots that dropped more than N min ago.
+    Still open: slots that are currently open but not in "just opened" (no recent DropEvent for this slot).
+    Excludes (bucket_id, slot_id) that have a DropEvent in the window so the two lists are disjoint.
     Same shape as get_just_opened. Optional filters: date_filter, time_slots, party_sizes.
     """
     q = db.query(SlotAvailability).filter(SlotAvailability.state == "open").order_by(SlotAvailability.opened_at.desc())
     if exclude_opened_within_minutes is not None and exclude_opened_within_minutes > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=exclude_opened_within_minutes)
-        # Exclude slots that have a DropEvent in the window (those appear in "just opened")
-        recent_drop_pairs = (
-            db.query(DropEvent.bucket_id, DropEvent.slot_id)
+        recent_drop_pairs = [
+            (r.bucket_id, r.slot_id)
+            for r in db.query(DropEvent.bucket_id, DropEvent.slot_id)
             .filter(DropEvent.opened_at >= cutoff)
             .distinct()
             .all()
-        )
-        recent_set = [(r.bucket_id, r.slot_id) for r in recent_drop_pairs]
-        if recent_set:
-            q = q.filter(~tuple_(SlotAvailability.bucket_id, SlotAvailability.slot_id).in_(recent_set))
+        ]
+        if recent_drop_pairs:
+            q = q.filter(~tuple_(SlotAvailability.bucket_id, SlotAvailability.slot_id).in_(recent_drop_pairs))
     events = q.limit(STILL_OPEN_EVENTS_LIMIT).all()
 
     by_date: dict[str, dict] = {}

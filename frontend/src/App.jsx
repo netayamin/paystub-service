@@ -11,6 +11,7 @@ import {
   Bell,
   Bookmark,
   Clock,
+  CalendarClock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -43,40 +44,23 @@ function minsToTime(m) {
   return `${h}:${String(min).padStart(2, "0")}`;
 }
 
-/** Curated list of notoriously hard-to-book, high-demand NYC restaurants */
+/** Curated list: Alex Reichek top NYC restaurants (alexreichek.com/top-nyc-restaurants) + classics */
 const HOT_RESTAURANTS = new Set([
-  // Italian
-  "Carbone", "I Sodi", "Don Angie", "Lilia", "Torrisi", "Parm", "Via Carota",
-  "L'Artusi", "Rezdôra", "Cecconi's", "Barbuto", "Marea",
-  // Fine Dining / Contemporary
-  "4 Charles Prime Rib", "Le Bernardin", "Eleven Madison Park", "Per Se",
-  "The Grill", "The Pool", "Balthazar", "Daniel", "Jean-Georges",
-  "Monkey Bar",
-  // Sushi / Japanese
-  "Sushi Nakazawa", "Cote", "Odo", "Yoshino", "Noda", "Sushi Noz",
-  "Torien", "BONDST", "Blue Ribbon Sushi",
-  // French
-  "Le Coucou", "Frenchette", "Buvette", "La Mercerie", "Chez Zou",
-  "Claudette", "La Pecora Bianca",
-  // Steakhouse
-  "Peter Luger", "Cote", "Quality Meats", "The Grill", "Sparks",
-  // Other / Trendy
-  "Altro Paradiso", "Laser Wolf", "The Four Horsemen", "Sailor",
-  "Penny", "HAGS", "Joji", "Claud", "Dame", "The River Café",
-  "Cervo's", "Misi", "Pastis", "Minetta Tavern", "Scarr's Pizza",
-  "Rosella", "Gaia", "Tatiana", "Gramercy Tavern", "The Spotted Pig",
-  "Gage & Tollner", "Francie", "Gem", "Nura", "Place des Fêtes",
-  "Superiority Burger", "Estela", "King",
-  // Brooklyn
-  "Gage & Tollner", "Francie", "Lilia", "Misi", "Aska", "Oxalis",
-  "Olmsted", "Al Di Là", "Hometown BBQ",
+  "Theodora", "The Corner Store", "Zou Zou", "Thai Diner", "Lilia", "Russ & Daughters",
+  "Ha's Snack Bar", "Via Carota", "Rule of Thirds", "Coqodaq", "Ippudo", "Di An Di",
+  "Leo", "Balthazar", "Laser Wolf", "Gupshup", "Planta Queen", "Bangkok Supper Club",
+  "Nami Nori", "Margot", "Mokbar", "Saigon Social", "Blue Ribbon Sushi", "L'Industrie",
+  "Shuka", "Pastis", "Minetta Tavern", "Don Angie", "Cafe Spaghetti", "Chez Ma Tante",
+  "Misi", "Twin Tails", "Dame", "Babbo", "Wu's Wonton", "Miss Ada",
+  "Carbone", "Cote", "Le Bernardin", "I Sodi", "Tatiana", "Atomix",
+  "4 Charles Prime Rib", "Eleven Madison Park", "Per Se",
 ]);
 
 /** Sorted array of HOT_RESTAURANTS names for search suggestions */
 const HOT_RESTAURANT_NAMES = Array.from(HOT_RESTAURANTS).sort((a, b) => a.localeCompare(b));
 
 /** Names that always get a slot in Top Opportunities when they exist in the feed */
-const TOP_OPPORTUNITY_PRIORITY_NAMES = ["Monkey Bar", "I Sodi", "Tatiana"];
+const TOP_OPPORTUNITY_PRIORITY_NAMES = ["Don Angie", "I Sodi", "Tatiana", "Lilia", "Via Carota"];
 
 function isHotRestaurant(name) {
   if (!name) return false;
@@ -278,6 +262,22 @@ function formatSlotLabel(slot, sameDateOnly) {
   return `${formatDayShort(slot.date_str)} ${formatMonthDay(slot.date_str)} · ${timeStr}`;
 }
 
+/** Label from reservation date: "Will likely open today" / "tomorrow" / "soon" (match backend feed.py) */
+function getLikelyOpenLabel(dateStr, todayStr) {
+  if (!dateStr || !todayStr) return null;
+  try {
+    const d = new Date(dateStr);
+    const t = new Date(todayStr);
+    d.setHours(0, 0, 0, 0);
+    t.setHours(0, 0, 0, 0);
+    const daysDiff = Math.round((d - t) / (24 * 60 * 60 * 1000));
+    if (daysDiff === 0) return "Will likely open today";
+    if (daysDiff === 1) return "Will likely open tomorrow";
+    if (daysDiff >= 2 && daysDiff <= 7) return "Will likely open soon";
+  } catch (_) {}
+  return null;
+}
+
 /**
  * Build cards from API snapshot (just-opened or current_snapshot). Same shape: list of { date_str, venues, scanned_at }.
  * No time filter: show all venues and times returned by the backend.
@@ -296,6 +296,7 @@ function buildDiscoveryDrops(snapshotList, _unusedTimeChip, options = {}) {
       // Release time: backend sends detected_at (or opened_at). Support snake_case and camelCase.
       const createdAt = v.detected_at ?? v.opened_at ?? v.detectedAt ?? v.openedAt ?? null;
       const venueKey = String(v.venue_id ?? v.name ?? "").trim() || "Venue";
+      const todayStr = new Date().toISOString().slice(0, 10);
       cards.push({
         id: `just-opened-${date_str}-${(v.name || "").replace(/\s+/g, "-")}`,
         name: v.name || "Venue",
@@ -303,6 +304,7 @@ function buildDiscoveryDrops(snapshotList, _unusedTimeChip, options = {}) {
         time: timeStr !== "—" ? timeStr : null,
         location: v.neighborhood || "NYC", // Show actual neighborhood
         date_str,
+        likely_open_label: getLikelyOpenLabel(date_str, todayStr),
         subtitle: scannedAt ? `Scanned ${formatTimeAgoSentence(scannedAt)}` : "Available",
         isTableJustReleased: false, // Not used anymore
         resyUrl: v.resy_url ?? null,
@@ -463,6 +465,10 @@ export default function App() {
             ranked_board: data.ranked_board,
             top_opportunities: data.top_opportunities,
             hot_right_now: data.hot_right_now,
+            likely_to_open: Array.isArray(data.likely_to_open) ? data.likely_to_open : [],
+            likely_open_today: Array.isArray(data.likely_open_today) ? data.likely_open_today : [],
+            likely_open_tomorrow: Array.isArray(data.likely_open_tomorrow) ? data.likely_open_tomorrow : [],
+            likely_open_soon: Array.isArray(data.likely_open_soon) ? data.likely_open_soon : [],
           });
         } else {
           setApiFeed(null);
@@ -1102,6 +1108,24 @@ export default function App() {
     return list.slice(0, TOP_OPPORTUNITIES_MAX);
   }, [apiFeed, rankedBoard, hotItems, nonHotItems]);
   const topZoneIds = useMemo(() => new Set(topOpportunities.map((d) => d.id)), [topOpportunities]);
+  /** Will likely open today / tomorrow / soon: from API or filter rankedBoard by likely_open_label */
+  const likelyOpenToday = useMemo(() => {
+    if (apiFeed && Array.isArray(apiFeed.likely_open_today)) return apiFeed.likely_open_today;
+    return rankedBoard.filter((d) => d.likely_open_label === "Will likely open today");
+  }, [apiFeed, rankedBoard]);
+  const likelyOpenTomorrow = useMemo(() => {
+    if (apiFeed && Array.isArray(apiFeed.likely_open_tomorrow)) return apiFeed.likely_open_tomorrow;
+    return rankedBoard.filter((d) => d.likely_open_label === "Will likely open tomorrow");
+  }, [apiFeed, rankedBoard]);
+  const likelyOpenSoon = useMemo(() => {
+    if (apiFeed && Array.isArray(apiFeed.likely_open_soon)) return apiFeed.likely_open_soon;
+    return rankedBoard.filter((d) => d.likely_open_label === "Will likely open soon");
+  }, [apiFeed, rankedBoard]);
+  /** Venues with no open slots now but strong drop history — "Likely to open" section */
+  const likelyToOpen = useMemo(
+    () => (apiFeed && Array.isArray(apiFeed.likely_to_open) ? apiFeed.likely_to_open : []),
+    [apiFeed]
+  );
   const hotRightNowRest = useMemo(() => hotItems.slice(TOP_OPPORTUNITIES_MAX), [hotItems]);
   const hotRightNowForHome = useMemo(() => hotRightNowRest.slice(0, HOT_RIGHT_NOW_HOME_MAX), [hotRightNowRest]);
   /** Hot Right Now: from backend when present, else computed client-side (deduped, padded, brand-new first) */
@@ -2239,6 +2263,41 @@ export default function App() {
                                       </div>
                                     )}
                                   </div>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Likely to open — no spots right now, but often have drops (from venue_rolling_metrics) */}
+                  {likelyToOpen.length > 0 && (
+                    <section className="mb-8 -mx-6 sm:-mx-8 md:-mx-10 px-6 sm:px-8 md:px-10">
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-5 sm:px-6 py-4">
+                        <h2 className="flex items-center gap-3 text-[12px] font-semibold text-amber-800 uppercase tracking-widest mb-4">
+                          <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-amber-500 text-white shrink-0 shadow-md">
+                            <CalendarClock className="w-4 h-4" strokeWidth={2} />
+                          </span>
+                          <span>Likely to open</span>
+                        </h2>
+                        <p className="text-[11px] text-amber-700/90 mb-3">No spots right now — these places often get drops. Worth watching.</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                          {likelyToOpen.map((venue, idx) => {
+                            const daysText = venue.days_with_drops != null ? `Had drops ${venue.days_with_drops} of 14 days` : "Often has drops";
+                            return (
+                              <motion.div
+                                key={venue.venue_id || idx}
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.25, delay: Math.min(idx * 0.03, 0.3), ease: "easeOut" }}
+                                className="rounded-xl overflow-hidden bg-white border border-amber-100 shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col min-w-0 w-full"
+                              >
+                                <div className="relative h-20 sm:h-24 bg-gradient-to-br from-amber-700 to-amber-900" />
+                                <div className="p-3 flex flex-col gap-1">
+                                  <h4 className="text-[14px] font-bold text-slate-900 truncate">{venue.venue_name || "Venue"}</h4>
+                                  <p className="text-[11px] text-slate-500">{daysText}</p>
                                 </div>
                               </motion.div>
                             );

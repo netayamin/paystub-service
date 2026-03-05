@@ -5,31 +5,22 @@ Moves logic from frontend to backend so the API returns ready-to-render segments
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
-# High-demand NYC restaurants (match frontend HOT_RESTAURANTS for is_hot)
+# High-demand NYC restaurants (Alex Reichek top list + classics; match frontend HOT_RESTAURANTS for is_hot)
 HOT_RESTAURANTS = frozenset([
-    "carbone", "i sodi", "don angie", "lilia", "torrisi", "parm", "via carota",
-    "l'artusi", "rezdôra", "cecconi's", "barbuto", "marea",
-    "4 charles prime rib", "le bernardin", "eleven madison park", "per se",
-    "the grill", "the pool", "balthazar", "daniel", "jean-georges",
-    "monkey bar",
-    "sushi nakazawa", "cote", "odo", "yoshino", "noda", "sushi noz",
-    "torien", "bondst", "blue ribbon sushi",
-    "le coucou", "frenchette", "buvette", "la mercerie", "chez zou",
-    "claudette", "la pecora bianca",
-    "peter luger", "quality meats", "sparks",
-    "altro paradiso", "laser wolf", "the four horsemen", "sailor",
-    "penny", "hags", "joji", "claud", "dame", "the river café",
-    "cervo's", "misi", "pastis", "minetta tavern", "scarr's pizza",
-    "rosella", "gaia", "tatiana", "gramercy tavern", "the spotted pig",
-    "gage & tollner", "francie", "gem", "nura", "place des fêtes",
-    "superiority burger", "estela", "king",
-    "aska", "oxalis", "olmsted", "al di là", "hometown bbq",
+    "theodora", "the corner store", "zou zou", "thai diner", "lilia", "russ & daughters",
+    "ha's snack bar", "via carota", "rule of thirds", "coqodaq", "ippudo", "di an di",
+    "leo", "balthazar", "laser wolf", "gupshup", "planta queen", "bangkok supper club",
+    "nami nori", "margot", "mokbar", "saigon social", "blue ribbon sushi", "l'industrie",
+    "shuka", "pastis", "minetta tavern", "don angie", "cafe spaghetti", "chez ma tante",
+    "misi", "twin tails", "dame", "babbo", "wu's wonton", "miss ada",
+    "carbone", "cote", "le bernardin", "i sodi", "tatiana", "atomix",
+    "4 charles prime rib", "eleven madison park", "per se",
 ])
 
 # Names that get a slot in Top Opportunities when present (match frontend)
-TOP_OPPORTUNITY_PRIORITY_NAMES = ("monkey bar", "i sodi", "tatiana")
+TOP_OPPORTUNITY_PRIORITY_NAMES = ("don angie", "i sodi", "tatiana", "lilia", "via carota")
 
 TOP_OPPORTUNITIES_MAX = 4
 HOT_RIGHT_NOW_MAX = 12
@@ -64,6 +55,47 @@ def _is_top_priority(name: str | None) -> bool:
 
 def _venue_key(v: dict) -> str:
     return str(v.get("venue_id") or v.get("name") or "").strip() or "Venue"
+
+
+def _earliest_slot_date(card: dict) -> date | None:
+    """Earliest reservation date for this card (from date_str or slots)."""
+    dates: list[str] = []
+    if card.get("date_str"):
+        dates.append(card["date_str"])
+    for s in card.get("slots") or []:
+        if isinstance(s, dict) and s.get("date_str"):
+            dates.append(s["date_str"])
+    if not dates:
+        return None
+    try:
+        return min(date.fromisoformat(d.strip()) for d in dates if d and isinstance(d, str))
+    except (ValueError, TypeError):
+        return None
+
+
+def likely_open_label(card: dict, today: date) -> str | None:
+    """
+    Return a short label for UI: "Will likely open today" / "Will likely open tomorrow" / "Will likely open soon"
+    based on the card's earliest reservation date. Uses our slot dates (no prediction model).
+    """
+    earliest = _earliest_slot_date(card)
+    if not earliest:
+        return None
+    if earliest == today:
+        return "Will likely open today"
+    tomorrow = today + timedelta(days=1)
+    if earliest == tomorrow:
+        return "Will likely open tomorrow"
+    days_ahead = (earliest - today).days
+    if 2 <= days_ahead <= 7:
+        return "Will likely open soon"
+    return None
+
+
+def attach_likely_open_labels(cards: list[dict], today: date) -> None:
+    """Set likely_open_label on each card in place."""
+    for c in cards:
+        c["likely_open_label"] = likely_open_label(c, today)
 
 
 def _time_only(dt_str: str) -> str:

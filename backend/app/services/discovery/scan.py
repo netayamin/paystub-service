@@ -23,6 +23,14 @@ _last_poll_invariants: dict | None = None
 # Queue model: buckets currently being polled; when any bucket completes we update this and last_bucket_completed_at
 _in_flight_count: int = 0
 _last_bucket_completed_at: datetime | None = None
+# When the daily sliding-window job last finished (full cleanup: drop_events, notifications, metrics, etc.)
+_last_sliding_window_finished_at: datetime | None = None
+
+
+def set_discovery_sliding_window_finished_at(finished_at: datetime) -> None:
+    """Call from run_sliding_window_job when the daily cleanup finishes. Exposed as last_cleanup_at."""
+    global _last_sliding_window_finished_at
+    _last_sliding_window_finished_at = finished_at
 
 
 def set_discovery_job_heartbeat(
@@ -58,7 +66,7 @@ def set_discovery_job_heartbeat(
 
 
 def get_discovery_job_heartbeat() -> dict:
-    """Return last job run times, error (if any), in_flight_count, last_bucket_completed_at, is_job_running, last_poll_invariants. In-memory only."""
+    """Return last job run times, error (if any), in_flight_count, last_bucket_completed_at, is_job_running, last_cleanup_at. In-memory only."""
     started_at = _job_last_completed_started_at if _job_last_completed_started_at is not None else _job_last_started_at
     finished_at = _job_last_completed_finished_at if _job_last_completed_finished_at is not None else _job_last_finished_at
     out = {
@@ -69,6 +77,7 @@ def get_discovery_job_heartbeat() -> dict:
         "is_job_running": _job_running,
         "in_flight_count": _in_flight_count,
         "last_bucket_completed_at": _last_bucket_completed_at.isoformat() if _last_bucket_completed_at is not None else None,
+        "last_cleanup_at": _last_sliding_window_finished_at.isoformat() if _last_sliding_window_finished_at is not None else None,
     }
     if started_at is not None and finished_at is not None:
         started = started_at

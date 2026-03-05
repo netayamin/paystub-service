@@ -100,8 +100,6 @@ final class FeedViewModel: ObservableObject {
         defer { isLoading = false }
         
         do {
-            let today = formatToday()
-            if selectedDate.isEmpty { selectedDate = today }
             // Fetch without date filter so we get all drops (match web). Filter by selectedDate for display.
             let resp = try await service.fetchJustOpened(
                 dates: nil,
@@ -110,13 +108,31 @@ final class FeedViewModel: ObservableObject {
                 timeBefore: nil
             )
             
-            allRankedBoard = resp.rankedBoard ?? []
-            allTopOpportunities = resp.topOpportunities ?? []
-            allHotRightNow = resp.hotRightNow ?? []
-            totalVenuesScanned = resp.totalVenuesScanned ?? 0
+            var ranked = resp.rankedBoard ?? []
+            var top = resp.topOpportunities ?? []
+            var hot = resp.hotRightNow ?? []
+            let scanned = resp.totalVenuesScanned ?? 0
+            // If just-opened is empty but we have no scan count, try new-drops as fallback (e.g. different API shape)
+            if ranked.isEmpty && scanned == 0 {
+                let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
+                if !newDrops.isEmpty {
+                    ranked = newDrops
+                    top = []
+                    hot = Array(newDrops.prefix(12))
+                }
+            }
+            allRankedBoard = ranked
+            allTopOpportunities = top.isEmpty ? [] : top
+            allHotRightNow = hot
+            totalVenuesScanned = scanned
             drops = allRankedBoard
             topOpportunities = allTopOpportunities.isEmpty ? nil : allTopOpportunities
             hotRightNow = allHotRightNow.isEmpty ? nil : allHotRightNow
+            
+            if selectedDate.isEmpty {
+                selectedDate = formatToday()
+            }
+            applyDateFilter()
             
             if let iso = resp.lastScanAt {
                 let fmt = ISO8601DateFormatter()

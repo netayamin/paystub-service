@@ -23,7 +23,11 @@ from app.core.constants import (
     DISCOVERY_ROLLING_METRICS_LIMIT,
     JUST_OPENED_WITHIN_MINUTES,
 )
-from app.core.discovery_config import DISCOVERY_PARTY_SIZES, DISCOVERY_TIME_SLOTS
+from app.core.discovery_config import (
+    DISCOVERY_DATE_TIMEZONE,
+    DISCOVERY_PARTY_SIZES,
+    DISCOVERY_TIME_SLOTS,
+)
 from app.core.nyc_hotspots import is_hotspot, list_hotspots
 from app.db.session import get_db, SessionLocal
 from app.models.discovery_bucket import DiscoveryBucket
@@ -33,7 +37,7 @@ from app.models.slot_availability import SlotAvailability
 from app.models.market_metrics import MarketMetrics
 from app.models.venue_metrics import VenueMetrics
 from app.models.venue_rolling_metrics import VenueRollingMetrics
-from app.services.admin_service import clear_resy_db, reset_discovery_buckets, reset_all_discovery_and_metrics
+from app.services.admin_service import clear_discovery_projection, clear_resy_db, reset_discovery_buckets, reset_all_discovery_and_metrics
 from app.services.resy import search_with_availability
 from app.services.resy.config import ResyConfig
 from app.services.discovery import get_discovery_debug, get_discovery_fast_checks, get_discovery_job_heartbeat, get_feed_item_debug
@@ -47,6 +51,7 @@ from app.services.discovery.buckets import (
     get_feed,
     get_just_opened_from_buckets,
     get_last_scan_info_buckets,
+    get_likely_to_open_venues,
     get_notifications_by_date,
     get_still_open_from_buckets,
     prune_old_availability_state,
@@ -62,7 +67,7 @@ from app.services.discovery.buckets import (
     window_start_date,
 )
 from app.services.providers import get_provider, list_providers
-from app.services.discovery.feed import build_feed
+from app.services.discovery.feed import attach_likely_open_labels, build_feed
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -288,6 +293,11 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
                 "just_opened_capped": just_opened_capped,
             },
             "job_running": heartbeat.get("is_job_running") is True,
+            "cleanup": {
+                "last_cleanup_at": heartbeat.get("last_cleanup_at"),
+                "next_daily_cleanup": "7:05 AM (cron; drop_events, notifications, metrics, venues)",
+                "light_prune_every_n_ticks": "slot_availability + availability_state every DISCOVERY_PRUNE_EVERY_N_TICKS ticks (~50s)",
+            },
             "discovery_buckets": {
                 "last_scan_at": bucket_info.get("last_scan_at"),
                 "total_venues_scanned": bucket_info.get("total_venues_scanned", 0),
@@ -299,7 +309,8 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
             "next_scan_at": _next_scan_iso(request),
             "hint": (
                 "Tick every 2s; all buckets in parallel; compare to prev only; TTL dedupe NOTIFIED_DEDUPE_MINUTES. "
-                "Feed-item-debug: GET /chat/watches/feed-item-debug?event_id=N or ?slot_id=&bucket_id= to see why an item is in the feed."
+                "Full cleanup (drop_events, notifications, etc.) runs daily at 7:05 AM; last run: job_heartbeat.last_cleanup_at. "
+                "To prune now: POST /chat/watches/prune-now. Feed-item-debug: GET /chat/watches/feed-item-debug?event_id=N or ?slot_id=&bucket_id=."
             ),
             "endpoints": {
                 "bucket_status": "GET /chat/watches/bucket-status",
@@ -312,6 +323,7 @@ async def db_debug(request: Request, db: Session = Depends(get_db)):
                 "just_opened": f"GET /chat/watches/just-opened (just_opened = last {JUST_OPENED_WITHIN_MINUTES} min only)",
                 "still_open": "GET /chat/watches/still-open",
                 "refresh_discovery_baselines": "POST /chat/watches/refresh-discovery-baselines",
+                "clear_discovery_projection": "POST /chat/watches/clear-discovery-projection (drop slot_availability, drop_events, availability_state; keep discovery_buckets)",
                 "reset_discovery_buckets": "POST /chat/watches/reset-discovery-buckets",
                 "reset_all": "POST /chat/watches/reset-all-discovery-and-metrics (full: discovery + metrics + cache + venues)",
                 "prune_now": "POST /chat/watches/prune-now (run retention prunes now to shrink DB)",
@@ -363,6 +375,23 @@ async def refresh_baselines():
         content='{"ok": true, "message": "Baseline refresh started in background. Takes 1-2 min. Check server logs for completion."}',
         media_type="application/json",
     )
+
+
+@router.post("/watches/clear-discovery-projection")
+async def clear_projection(db: Session = Depends(get_db)):
+    """
+    Clear only slot_availability, drop_events, availability_state. Keeps discovery_buckets (baseline/prev).
+    Use after a baseline reset to drop old projection data and speed up the DB; next poll only writes new drops.
+    """
+    try:
+        result = clear_discovery_projection(db)
+        return {
+            **result,
+            "message": "Projection cleared (slot_availability, drop_events, availability_state). discovery_buckets kept. Next poll will only write new drops.",
+        }
+    except Exception as e:
+        logger.warning("clear-discovery-projection failed: %s", e, exc_info=True)
+        return {"ok": False, "error": str(e)}
 
 
 @router.post("/watches/reset-discovery-buckets")
@@ -742,10 +771,12 @@ async def row_counts(db: Session = Depends(get_db)):
             out[t] = int(row[0]) if row and row[0] is not None else 0
         except Exception as e:
             out[t] = {"error": str(e)}
+    heartbeat = get_discovery_job_heartbeat()
     return {
         "row_counts": out,
         "approx": True,
-        "hint": "If counts are huge: POST /chat/watches/prune-now to run retention prunes and shrink DB (keeps current data). For full clear: POST /chat/watches/reset-discovery-buckets.",
+        "last_cleanup_at": heartbeat.get("last_cleanup_at"),
+        "hint": "Full cleanup runs daily at 7:05 AM. If counts are huge: POST /chat/watches/prune-now to run retention prunes now. For full clear: POST /chat/watches/reset-discovery-buckets.",
     }
 
 
@@ -987,6 +1018,21 @@ async def list_just_opened(
         top_opportunities = feed["top_opportunities"]
         hot_right_now = feed["hot_right_now"]
 
+        # Labels by reservation date (for card badges only; "likely open" sections use likely_to_open)
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
+            today_calendar = datetime.now(tz).date()
+        except Exception:
+            today_calendar = date.today()
+        attach_likely_open_labels(ranked_board, today_calendar)  # same card refs in top_opportunities / hot_right_now
+        # Venues with NO open slots now but strong drop history — for "Likely to open" section
+        likely_to_open = get_likely_to_open_venues(db, today)
+        # Deprecated: date-based sections now empty; frontend uses likely_to_open (no-spots semantics)
+        likely_open_today = []
+        likely_open_tomorrow = []
+        likely_open_soon = []
+
         # Enrich feed cards with venue scarcity metrics (rarity_score, availability_rate_14d, etc.)
         # Load most-recent rolling metrics per venue (capped for scalability)
         rolling_rows = (
@@ -1022,6 +1068,10 @@ async def list_just_opened(
             "ranked_board": ranked_board,
             "top_opportunities": top_opportunities,
             "hot_right_now": hot_right_now,
+            "likely_to_open": likely_to_open,
+            "likely_open_today": likely_open_today,
+            "likely_open_tomorrow": likely_open_tomorrow,
+            "likely_open_soon": likely_open_soon,
             **info,
             "next_scan_at": _next_scan_iso(request),
         }

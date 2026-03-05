@@ -21,13 +21,13 @@ This doc maps our implementation to the standard algorithm for polling an extern
 
 3. **Compare**  
    - `curr_set` = set(slot_id for each row from this poll).  
-   - **Added** = `curr_set - prev_set`. **Drops (for feed)** = only added slots whose venue had **zero slots** in the previous poll (venue went from no availability to some). We do not surface venues that already had other times and gained more times.
+   - **Added** = `curr_set - prev_set`. **Drops (for feed)** = only added slots whose venue had **zero slots** in the previous poll (drops_venue_zero). We do not surface venues that already had other times and gained more.
 
 4. **TTL dedupe**  
-   Before creating a `DropEvent`, check: already have one for (bucket_id, slot_id) with `opened_at` within last `NOTIFIED_DEDUPE_MINUTES`? If yes, skip new DropEvent. All added still go to `SlotAvailability`; only drops_venue_zero get a DropEvent (so "just opened" = venue had 0 before).
+   Before creating a `DropEvent`, check: already have one for (bucket_id, slot_id) with `opened_at` within last `NOTIFIED_DEDUPE_MINUTES`? If yes, skip new DropEvent. All **added** still go to `SlotAvailability`; only **drops_venue_zero minus recently_notified** get a `DropEvent`.
 
 5. **Emit**  
-   All **added** go to `SlotAvailability`. Only **drops_venue_zero minus recently_notified** get a new `DropEvent` (dedupe_key): i.e. only slots for venues that had **0 availability** in the previous poll. The **just-opened** API returns only slots that have a `DropEvent` in the time window (and are still open), so the feed shows only venues that went from fully booked to having availability — not venues that simply gained more time slots.
+   All **added** go to `SlotAvailability`. Only **drops_venue_zero minus recently_notified** get a new `DropEvent`. The **just-opened** API returns only slots that have a `DropEvent` in the time window (and are still open in `SlotAvailability`), so the feed shows only venues that were **fully booked and suddenly had spots open up** — not venues that simply gained more time slots.
 
 6. **Update state**  
    `prev_slot_ids = curr`. Baseline only for first prev or explicit refresh.
