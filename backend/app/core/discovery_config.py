@@ -97,9 +97,9 @@ DISCOVERY_PARTY_SIZES = _list_int("DISCOVERY_PARTY_SIZES", [2, 4])
 # -----------------------------------------------------------------------------
 DISCOVERY_MAX_CONCURRENT_BUCKETS = _int("DISCOVERY_MAX_CONCURRENT_BUCKETS", 7, min_val=1, max_val=28)
 DISCOVERY_BUCKET_COOLDOWN_SECONDS = _int(
-    "DISCOVERY_BUCKET_COOLDOWN_SECONDS", 10, min_val=5, max_val=300
+    "DISCOVERY_BUCKET_COOLDOWN_SECONDS", 30, min_val=5, max_val=300
 )
-DISCOVERY_TICK_SECONDS = _int("DISCOVERY_TICK_SECONDS", 2, min_val=1, max_val=60)
+DISCOVERY_TICK_SECONDS = _int("DISCOVERY_TICK_SECONDS", 5, min_val=1, max_val=60)
 # Don't create a new DropEvent (or re-notify) for the same (bucket_id, slot_id) within this many minutes (TTL dedupe).
 NOTIFIED_DEDUPE_MINUTES = _int("NOTIFIED_DEDUPE_MINUTES", 30, min_val=5, max_val=1440)
 

@@ -225,7 +225,7 @@ def _build_slot_availability_row(
         "last_seen_at": now,
         "venue_id": r.get("venue_id") if r else None,
         "venue_name": r.get("venue_name") if r else None,
-        "payload_json": json.dumps(r.get("payload") or {}) if r else "{}",
+        "payload_json": None,
         "run_id": run_id or str(uuid.uuid4()),
         "updated_at": now,
         "time_bucket": time_bucket_val,
@@ -269,7 +269,6 @@ def _bootstrap_slot_availability(
                 SlotAvailability.last_seen_at: ins.excluded.last_seen_at,
                 SlotAvailability.venue_id: ins.excluded.venue_id,
                 SlotAvailability.venue_name: ins.excluded.venue_name,
-                SlotAvailability.payload_json: ins.excluded.payload_json,
                 SlotAvailability.run_id: ins.excluded.run_id,
                 SlotAvailability.updated_at: ins.excluded.updated_at,
                 SlotAvailability.time_bucket: ins.excluded.time_bucket,
@@ -396,7 +395,6 @@ def run_poll_for_bucket(
     if not bucket_row:
         js = json.dumps(sorted(curr_set))
         db.add(DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, baseline_slot_ids_json=js, prev_slot_ids_json=js, scanned_at=now))
-        _bootstrap_slot_availability(db, bid, date_str, time_slot, rows, curr_set, now, provider)
         db.commit()
         return 0, len(curr_set), {"B": len(curr_set), "P": len(curr_set), "C": len(curr_set), "baseline_ready": True, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
 
@@ -408,8 +406,7 @@ def run_poll_for_bucket(
         bucket_row.scanned_at = now
         n = len(curr_set)
         if n > 0:
-            _bootstrap_slot_availability(db, bid, date_str, time_slot, rows, curr_set, now, provider)
-            logger.info("Bucket %s: initialized baseline (was None), %s slots, bootstrap wrote to slot_availability", bid, n)
+            logger.info("Bucket %s: initialized baseline (was None), %s slots (no bootstrap write to slot_availability)", bid, n)
         else:
             logger.warning(
                 "Bucket %s: initialized baseline with 0 slots — Resy returned no availability for date=%s time_slot=%s. Check GET /chat/watches/resy-test and RESY_API_KEY/RESY_AUTH_TOKEN.",
@@ -509,7 +506,6 @@ def run_poll_for_bucket(
                 SlotAvailability.last_seen_at: ins.excluded.last_seen_at,
                 SlotAvailability.venue_id: ins.excluded.venue_id,
                 SlotAvailability.venue_name: ins.excluded.venue_name,
-                SlotAvailability.payload_json: ins.excluded.payload_json,
                 SlotAvailability.run_id: ins.excluded.run_id,
                 SlotAvailability.updated_at: ins.excluded.updated_at,
                 SlotAvailability.time_bucket: ins.excluded.time_bucket,
@@ -590,16 +586,7 @@ def run_poll_for_bucket(
         db.query(SlotAvailability).filter(
             SlotAvailability.bucket_id == bid,
             SlotAvailability.slot_id.in_(closed_slot_ids),
-        ).update(
-            {
-                SlotAvailability.state: "closed",
-                SlotAvailability.closed_at: now,
-                SlotAvailability.last_seen_at: now,
-                SlotAvailability.run_id: run_id,
-                SlotAvailability.updated_at: now,
-            },
-            synchronize_session=False,
-        )
+        ).delete(synchronize_session=False)
         for row in closed_rows:
             opened_at_dt = row.opened_at.replace(tzinfo=timezone.utc) if row.opened_at and row.opened_at.tzinfo is None else row.opened_at
             duration_seconds = int((now - opened_at_dt).total_seconds()) if opened_at_dt else 0

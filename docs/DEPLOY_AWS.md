@@ -38,7 +38,7 @@ sudo docker-compose -f docker-compose.prod.yml logs --tail 80 backend
 
 ## Architecture
 
-- **EC2**: runs only the backend container (uvicorn). Use t3.micro or t3.small.
+- **EC2**: runs only the backend container (uvicorn). Use **t3.small** (2 GB). t3.micro (1 GB) will OOM under discovery load.
 - **RDS PostgreSQL**: managed database in the same region/VPC. EC2 connects via `DATABASE_URL`.
 
 ---
@@ -77,7 +77,7 @@ sudo docker-compose -f docker-compose.prod.yml logs --tail 80 backend
 1. **EC2** → **Launch instance**.
 2. **Name:** `paystub-backend`.
 3. **AMI:** Amazon Linux 2023.
-4. **Instance type:** **t3.micro** (1 GB) or **t3.small** (2 GB).
+4. **Instance type:** **t3.small** (2 GB). t3.micro (1 GB) will OOM with discovery polling.
 5. **Key pair:** Create or select; download the `.pem` file.
 6. **Network:** Same VPC as RDS. **Security group:** allow **SSH (22)** and **Custom TCP 8000** (source: 0.0.0.0/0 for testing; restrict later).
 7. **Storage:** 8 GB.
