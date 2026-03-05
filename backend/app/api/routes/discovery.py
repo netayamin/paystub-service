@@ -8,6 +8,8 @@ import json
 import logging
 import os
 import sys
+import threading
+import time as _time
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
@@ -71,6 +73,29 @@ from app.services.discovery.feed import attach_likely_open_labels, build_feed
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Lightweight in-memory response cache for just-opened (avoids repeat heavy
+# queries within the same discovery tick).  Keyed by (date_filter, time_slots,
+# party_sizes) tuple; entries expire after _JO_CACHE_TTL seconds.
+# ---------------------------------------------------------------------------
+_JO_CACHE_TTL = 8  # seconds — shorter than the 10s discovery tick
+_jo_cache: dict[tuple, tuple[float, dict]] = {}  # key → (expire_ts, payload)
+_jo_cache_lock = threading.Lock()
+
+
+def _jo_cache_get(key: tuple) -> dict | None:
+    with _jo_cache_lock:
+        entry = _jo_cache.get(key)
+        if entry and entry[0] > _time.monotonic():
+            return entry[1]
+        _jo_cache.pop(key, None)
+        return None
+
+
+def _jo_cache_set(key: tuple, payload: dict) -> None:
+    with _jo_cache_lock:
+        _jo_cache[key] = (_time.monotonic() + _JO_CACHE_TTL, payload)
 
 def _next_scan_iso(request: Request) -> str:
     """Next discovery bucket job run time (UTC ISO). Fallback if scheduler not ready."""
@@ -985,6 +1010,18 @@ async def list_just_opened(
             date_filter = [s.strip() for s in dates.split(",") if s.strip()]
         time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         party_size_list = _parse_ints(party_sizes)
+
+        cache_key = (
+            tuple(sorted(date_filter)) if date_filter else (),
+            tuple(sorted(time_slot_list)) if time_slot_list else (),
+            tuple(sorted(party_size_list)) if party_size_list else (),
+        )
+        if not debug:
+            cached = _jo_cache_get(cache_key)
+            if cached is not None:
+                cached["next_scan_at"] = _next_scan_iso(request)
+                return cached
+
         response.headers["X-Discovery-Today"] = today.isoformat()
         info = get_last_scan_info_buckets(db, today)
         just_opened = get_just_opened_from_buckets(
@@ -1103,6 +1140,8 @@ async def list_just_opened(
                 "buckets_with_empty_baseline": len(empty_baseline_buckets),
                 "buckets_with_empty_baseline_ids": empty_baseline_buckets[:5],
             }
+        if not debug:
+            _jo_cache_set(cache_key, payload)
         return payload
     except Exception as e:
         logger.warning("list_just_opened failed: %s", e, exc_info=True)

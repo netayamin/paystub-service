@@ -209,6 +209,7 @@ def _build_slot_availability_row(
     payload = r.get("payload") if r else {}
     slot_date_val, slot_time_val = _slot_date_time_from_payload(payload, date_str)
     neighborhood_val = price_range_val = None
+    image_url_val = None
     if isinstance(payload, dict):
         loc = payload.get("location")
         nh = payload.get("neighborhood") or (loc.get("neighborhood") if isinstance(loc, dict) else None)
@@ -217,6 +218,9 @@ def _build_slot_availability_row(
         pr = payload.get("price_range")
         if pr is not None:
             price_range_val = str(pr)[:32] or None
+        img = payload.get("image_url")
+        if isinstance(img, str) and img.strip():
+            image_url_val = img.strip()[:512] or None
     return {
         "bucket_id": bid,
         "slot_id": sid,
@@ -234,6 +238,7 @@ def _build_slot_availability_row(
         "provider": provider,
         "neighborhood": neighborhood_val,
         "price_range": price_range_val,
+        "image_url": image_url_val,
     }
 
 
@@ -277,6 +282,7 @@ def _bootstrap_slot_availability(
                 SlotAvailability.provider: ins.excluded.provider,
                 SlotAvailability.neighborhood: ins.excluded.neighborhood,
                 SlotAvailability.price_range: ins.excluded.price_range,
+                SlotAvailability.image_url: ins.excluded.image_url,
                 SlotAvailability.closed_at: None,
             },
             where=text("slot_availability.updated_at < excluded.updated_at"),
@@ -478,13 +484,15 @@ def run_poll_for_bucket(
             pr = payload.get("price_range")
             if pr is not None:
                 price_range_val = str(pr)[:32] or None
+        # Store full venue card so feed has image_url, resy_url, etc.
+        payload_to_store = dict(payload) if isinstance(payload, dict) else {}
         drop_rows.append({
             "bucket_id": bid,
             "slot_id": sid,
             "opened_at": now,
             "venue_id": r.get("venue_id") if r else None,
             "venue_name": r.get("venue_name") if r else None,
-            "payload_json": json.dumps(r["payload"]) if r else None,
+            "payload_json": json.dumps(payload_to_store) if payload_to_store else None,
             "dedupe_key": f"{bid}|{sid}|{now.strftime('%Y-%m-%dT%H:%M')}",
             "time_bucket": time_bucket_val,
             "slot_date": slot_date_val,
@@ -514,6 +522,7 @@ def run_poll_for_bucket(
                 SlotAvailability.provider: ins.excluded.provider,
                 SlotAvailability.neighborhood: ins.excluded.neighborhood,
                 SlotAvailability.price_range: ins.excluded.price_range,
+                SlotAvailability.image_url: ins.excluded.image_url,
                 SlotAvailability.closed_at: None,
             },
             where=text("slot_availability.updated_at < excluded.updated_at"),
@@ -1261,6 +1270,13 @@ def get_still_open_from_buckets(
         payload = json.loads(r.payload_json) if r.payload_json else {}
         if not isinstance(payload, dict):
             continue
+        # slot_availability no longer stores payload_json; ensure venue_id, name, image_url from row
+        if not payload.get("venue_id") and r.venue_id:
+            payload["venue_id"] = r.venue_id
+        if not payload.get("name") and r.venue_name:
+            payload["name"] = r.venue_name
+        if getattr(r, "image_url", None) and not payload.get("image_url"):
+            payload["image_url"] = r.image_url
         venue_key = str(payload.get("venue_id") or payload.get("name") or "").strip() or "unknown"
         if not _venue_matches_party_sizes(payload, party_sizes):
             continue

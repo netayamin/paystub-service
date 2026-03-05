@@ -22,8 +22,8 @@ import {
 
 // Backend URL from .env. Use localhost:8000 when running backend locally to avoid pending timeouts.
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const API_TIMEOUT_MS = 15000;
-const FEED_POLL_INTERVAL_MS = 5000;
+const API_TIMEOUT_MS = 25000;
+const FEED_POLL_INTERVAL_MS = 15000;
 
 function fetchWithTimeout(url, opts = {}, ms = API_TIMEOUT_MS) {
   const c = new AbortController();
@@ -498,18 +498,10 @@ export default function App() {
           setLastScanAt(Number.isNaN(d.getTime()) ? null : d);
         } else setLastScanAt(null);
         setTotalVenuesScanned(typeof data.total_venues_scanned === "number" ? data.total_venues_scanned : 0);
-        // Fetch just-opened for all dates (no date filter) so notifications appear for any date, not just selected
-        try {
-          const notifRes = await fetchWithTimeout(`${API_BASE}/chat/watches/just-opened?_t=${Date.now()}`);
-          const notifData = await notifRes.json().catch(() => ({}));
-          if (notifRes.ok && Array.isArray(notifData.just_opened)) {
-            const allDatesDrops = buildDiscoveryDrops(notifData.just_opened, "Anytime");
-            setNotificationDropsAllDates(allDatesDrops);
-          } else {
-            setNotificationDropsAllDates([]);
-          }
-        } catch (_) {
-          setNotificationDropsAllDates([]);
+        // Use main response for notification context (new-drops endpoint handles real-time all-dates notifications)
+        {
+          const allDatesDrops = buildDiscoveryDrops(Array.isArray(data.just_opened) ? data.just_opened : [], "Anytime");
+          setNotificationDropsAllDates(allDatesDrops);
         }
         // New-drops: backend returns only drops detected after last poll when since= is sent
         try {

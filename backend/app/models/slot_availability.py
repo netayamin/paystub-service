@@ -25,3 +25,4 @@ class SlotAvailability(Base):
     provider = Column(String(32), nullable=True, default="resy")
     neighborhood = Column(String(128), nullable=True)
     price_range = Column(String(32), nullable=True)
+    image_url = Column(String(512), nullable=True)
