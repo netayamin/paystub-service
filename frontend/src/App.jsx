@@ -22,7 +22,7 @@ import {
 
 // Backend URL from .env. Use localhost:8000 when running backend locally to avoid pending timeouts.
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const API_TIMEOUT_MS = 25000;
+const API_TIMEOUT_MS = 12000;
 const FEED_POLL_INTERVAL_MS = 15000;
 
 function fetchWithTimeout(url, opts = {}, ms = API_TIMEOUT_MS) {

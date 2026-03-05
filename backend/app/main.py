@@ -88,9 +88,21 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = _scheduler
 
     def startup_background():
-        # Brief delay so /health is up; then run first discovery tick so we get new data quickly.
+        # Brief delay so /health is up; then build initial snapshot + run first discovery tick.
         import time
         time.sleep(3)
+        # Build snapshot from existing DB data so clients get data immediately
+        try:
+            from app.services.discovery.snapshot_store import rebuild_snapshot
+            from app.db.session import SessionLocal
+            _db = SessionLocal()
+            try:
+                rebuild_snapshot(_db)
+                logger.info("Initial discovery snapshot built from existing DB data")
+            finally:
+                _db.close()
+        except Exception as e:
+            logger.warning("Initial snapshot build failed (will retry after first tick): %s", e)
         try:
             run_discovery_bucket_job()
             logger.info("Discovery bucket job tick on startup; next tick in %ss", DISCOVERY_POLL_INTERVAL_SECONDS)

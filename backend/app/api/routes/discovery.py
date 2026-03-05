@@ -8,8 +8,6 @@ import json
 import logging
 import os
 import sys
-import threading
-import time as _time
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
@@ -70,32 +68,10 @@ from app.services.discovery.buckets import (
 )
 from app.services.providers import get_provider, list_providers
 from app.services.discovery.feed import attach_likely_open_labels, build_feed
+from app.services.discovery.snapshot_store import get_snapshot, filter_snapshot_for_request
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Lightweight in-memory response cache for just-opened (avoids repeat heavy
-# queries within the same discovery tick).  Keyed by (date_filter, time_slots,
-# party_sizes) tuple; entries expire after _JO_CACHE_TTL seconds.
-# ---------------------------------------------------------------------------
-_JO_CACHE_TTL = 8  # seconds — shorter than the 10s discovery tick
-_jo_cache: dict[tuple, tuple[float, dict]] = {}  # key → (expire_ts, payload)
-_jo_cache_lock = threading.Lock()
-
-
-def _jo_cache_get(key: tuple) -> dict | None:
-    with _jo_cache_lock:
-        entry = _jo_cache.get(key)
-        if entry and entry[0] > _time.monotonic():
-            return entry[1]
-        _jo_cache.pop(key, None)
-        return None
-
-
-def _jo_cache_set(key: tuple, payload: dict) -> None:
-    with _jo_cache_lock:
-        _jo_cache[key] = (_time.monotonic() + _JO_CACHE_TTL, payload)
 
 def _next_scan_iso(request: Request) -> str:
     """Next discovery bucket job run time (UTC ISO). Fallback if scheduler not ready."""
@@ -123,12 +99,14 @@ async def list_availability_providers():
 @router.get("/watches/bucket-status")
 async def bucket_status(db: Session = Depends(get_db)):
     """
-    Monitor all 28 buckets without running a refresh. Returns per-bucket: bucket_id, date_str,
-    time_slot, last_scan_at, baseline_count, stale. Use for dashboards or polling to see when
-    baselines are filled and which buckets have been scanned recently.
+    Monitor all 28 buckets without running a refresh. Served from snapshot when available.
     """
     try:
-        bucket_health = get_bucket_health(db, window_start_date())
+        snap = get_snapshot()
+        if snap is not None and "bucket_health" in snap:
+            bucket_health = snap["bucket_health"]
+        else:
+            bucket_health = get_bucket_health(db, window_start_date())
         stale = [b for b in bucket_health if b.get("stale")]
         return {
             "buckets": bucket_health,
@@ -628,8 +606,11 @@ async def market_metrics(
 
 @router.get("/watches/calendar-counts")
 async def calendar_counts(db: Session = Depends(get_db)):
-    """Result counts per date for the 14-day calendar. by_date[date_str] = total (just_opened + still_open). Use for calendar bar graph."""
+    """Result counts per date for the 14-day calendar. Served from snapshot (zero DB queries)."""
     try:
+        snap = get_snapshot()
+        if snap is not None and "calendar_counts" in snap:
+            return snap["calendar_counts"]
         return get_calendar_counts(db, window_start_date())
     except Exception as e:
         logger.warning("calendar-counts failed: %s", e, exc_info=True)
@@ -928,12 +909,17 @@ async def new_drops(
     if since is not None and since.strip() and since_dt is None:
         return {"drops": [], "at": datetime.now(timezone.utc).isoformat()}
     try:
-        just_opened = get_just_opened_from_buckets(
-            db,
-            limit_events=500,
-            date_filter=None,
-            opened_within_minutes=minutes,
-        )
+        # Use snapshot for just-opened data (zero DB queries); fall back to DB if not yet built
+        snap = get_snapshot()
+        if snap is not None:
+            just_opened = snap.get("just_opened") or []
+        else:
+            just_opened = get_just_opened_from_buckets(
+                db,
+                limit_events=500,
+                date_filter=None,
+                opened_within_minutes=minutes,
+            )
         drops = []
         for day in just_opened:
             date_str = day.get("date_str") or ""
@@ -1000,28 +986,32 @@ async def list_just_opened(
     party_sizes: str | None = None,
     debug: str | None = None,
 ):
-    """Just opened + still open. Optional: dates, time_slots, party_sizes. Returns all times Resy returned (no time filter)."""
+    """Just opened + still open. Serves from pre-computed snapshot (zero DB queries). Optional: dates, party_sizes."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     try:
-        today = window_start_date()
-        date_filter = None
-        if dates:
-            date_filter = [s.strip() for s in dates.split(",") if s.strip()]
-        time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
+        date_filter = [s.strip() for s in dates.split(",") if s.strip()] if dates else None
         party_size_list = _parse_ints(party_sizes)
 
-        cache_key = (
-            tuple(sorted(date_filter)) if date_filter else (),
-            tuple(sorted(time_slot_list)) if time_slot_list else (),
-            tuple(sorted(party_size_list)) if party_size_list else (),
-        )
-        if not debug:
-            cached = _jo_cache_get(cache_key)
-            if cached is not None:
-                cached["next_scan_at"] = _next_scan_iso(request)
-                return cached
+        # Serve from pre-computed snapshot — no DB queries
+        snap = get_snapshot()
+        if snap is not None and not (debug and str(debug).strip() in ("1", "true", "yes")):
+            snap = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list)
+            snap["next_scan_at"] = _next_scan_iso(request)
+            if (snap.get("total_venues_scanned") or 0) == 0:
+                snap["zero_venues_hint"] = (
+                    "Resy returned no open slots for the scanned dates/times. "
+                    "Check GET /chat/watches/resy-test?days_ahead=7 and RESY_API_KEY / RESY_AUTH_TOKEN in .env."
+                )
+            snap.pop("rolling_by_name", None)
+            snap.pop("bucket_health", None)
+            snap.pop("calendar_counts", None)
+            snap.pop("computed_at", None)
+            return snap
 
+        # Fallback: first startup before snapshot is built, or debug mode — query DB directly
+        today = window_start_date()
+        time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         response.headers["X-Discovery-Today"] = today.isoformat()
         info = get_last_scan_info_buckets(db, today)
         just_opened = get_just_opened_from_buckets(
@@ -1040,7 +1030,6 @@ async def list_just_opened(
             party_sizes=party_size_list,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
-        # Tag NYC hotspot venues for special notifications
         for day in just_opened:
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"))
@@ -1048,30 +1037,20 @@ async def list_just_opened(
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"))
 
-        # Feed shows only "just opened" (venues that had 0 availability and now have some).
-        # Do not merge in still_open — those include baseline availability and would show places that were already open.
         feed = build_feed(just_opened, [])
         ranked_board = feed["ranked_board"]
         top_opportunities = feed["top_opportunities"]
         hot_right_now = feed["hot_right_now"]
 
-        # Labels by reservation date (for card badges only; "likely open" sections use likely_to_open)
         try:
             from zoneinfo import ZoneInfo
             tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
             today_calendar = datetime.now(tz).date()
         except Exception:
             today_calendar = date.today()
-        attach_likely_open_labels(ranked_board, today_calendar)  # same card refs in top_opportunities / hot_right_now
-        # Venues with NO open slots now but strong drop history — for "Likely to open" section
+        attach_likely_open_labels(ranked_board, today_calendar)
         likely_to_open = get_likely_to_open_venues(db, today)
-        # Deprecated: date-based sections now empty; frontend uses likely_to_open (no-spots semantics)
-        likely_open_today = []
-        likely_open_tomorrow = []
-        likely_open_soon = []
 
-        # Enrich feed cards with venue scarcity metrics (rarity_score, availability_rate_14d, etc.)
-        # Load most-recent rolling metrics per venue (capped for scalability)
         rolling_rows = (
             db.query(VenueRollingMetrics)
             .filter(VenueRollingMetrics.venue_name.isnot(None))
@@ -1106,9 +1085,9 @@ async def list_just_opened(
             "top_opportunities": top_opportunities,
             "hot_right_now": hot_right_now,
             "likely_to_open": likely_to_open,
-            "likely_open_today": likely_open_today,
-            "likely_open_tomorrow": likely_open_tomorrow,
-            "likely_open_soon": likely_open_soon,
+            "likely_open_today": [],
+            "likely_open_tomorrow": [],
+            "likely_open_soon": [],
             **info,
             "next_scan_at": _next_scan_iso(request),
         }
@@ -1140,8 +1119,6 @@ async def list_just_opened(
                 "buckets_with_empty_baseline": len(empty_baseline_buckets),
                 "buckets_with_empty_baseline_ids": empty_baseline_buckets[:5],
             }
-        if not debug:
-            _jo_cache_set(cache_key, payload)
         return payload
     except Exception as e:
         logger.warning("list_just_opened failed: %s", e, exc_info=True)
@@ -1156,14 +1133,23 @@ async def list_still_open(
     time_slots: str | None = None,
     party_sizes: str | None = None,
 ):
-    """Still open only. Same query params as just-opened. Returns all times (no time filter)."""
+    """Still open only. Served from snapshot when available."""
     try:
-        today = window_start_date()
-        date_filter = None
-        if dates:
-            date_filter = [s.strip() for s in dates.split(",") if s.strip()]
-        time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
+        date_filter = [s.strip() for s in dates.split(",") if s.strip()] if dates else None
         party_size_list = _parse_ints(party_sizes)
+
+        snap = get_snapshot()
+        if snap is not None:
+            filtered = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list)
+            return {
+                "still_open": filtered.get("still_open", []),
+                "last_scan_at": filtered.get("last_scan_at"),
+                "total_venues_scanned": filtered.get("total_venues_scanned", 0),
+                "next_scan_at": _next_scan_iso(request),
+            }
+
+        today = window_start_date()
+        time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         info = get_last_scan_info_buckets(db, today)
         still_open = get_still_open_from_buckets(
             db,

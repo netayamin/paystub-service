@@ -47,6 +47,18 @@ def _get_executor() -> ThreadPoolExecutor:
     return _executor
 
 
+def _rebuild_snapshot_safe() -> None:
+    """Rebuild the pre-computed discovery snapshot (runs in thread pool, catches all errors)."""
+    from app.services.discovery.snapshot_store import rebuild_snapshot
+    db = SessionLocal()
+    try:
+        rebuild_snapshot(db)
+    except Exception as e:
+        logger.warning("Snapshot rebuild failed: %s", e, exc_info=True)
+    finally:
+        db.close()
+
+
 def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str) -> None:
     """Poll one bucket in its own session; on finish re-enqueue (set next_run_after) and update heartbeat."""
     now = datetime.now(timezone.utc)
@@ -63,6 +75,7 @@ def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str) -> None:
             set_discovery_job_heartbeat(in_flight_count=in_flight)
             if in_flight == 0:
                 set_discovery_job_heartbeat(finished=now, running=False)
+                _get_executor().submit(_rebuild_snapshot_safe)
 
 
 def run_discovery_bucket_job() -> None:
