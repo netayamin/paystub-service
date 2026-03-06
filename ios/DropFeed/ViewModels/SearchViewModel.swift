@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class SearchViewModel: ObservableObject {
-    @Published var selectedDates: Set<String> = []
+    @Published var selectedDates: Set<String>
     @Published var selectedTimeFilter: String = "all"
     @Published var selectedPartySizes: Set<Int> = []
     @Published var results: [Drop] = []
@@ -11,6 +11,16 @@ final class SearchViewModel: ObservableObject {
     @Published var hasSearched = false
 
     private let service = APIService.shared
+
+    init() {
+        // Default to today so the user immediately sees today's availability
+        let cal = Calendar.current
+        let today = Date()
+        let y = cal.component(.year, from: today)
+        let m = cal.component(.month, from: today)
+        let d = cal.component(.day, from: today)
+        selectedDates = [String(format: "%04d-%02d-%02d", y, m, d)]
+    }
 
     static let timeOptions: [(key: String, label: String)] = [
         ("all", "All"),
@@ -22,7 +32,6 @@ final class SearchViewModel: ObservableObject {
 
     static let partySizeOptions: [Int] = [2, 4, 6, 8]
 
-    /// Next 14 days for date picker (YYYY-MM-DD)
     var dateOptions: [(dateStr: String, dayName: String, dayNum: String)] {
         let cal = Calendar.current
         let today = Date()
@@ -39,8 +48,7 @@ final class SearchViewModel: ObservableObject {
                 let weekday = cal.component(.weekday, from: d)
                 return weekday >= 1 && weekday <= 7 ? symbols[weekday] : ""
             }()
-            let dayNum = "\(day)"
-            return (dateStr, dayName, dayNum)
+            return (dateStr, dayName, "\(day)")
         }
     }
 
@@ -52,6 +60,21 @@ final class SearchViewModel: ObservableObject {
         case "dinner": return ("20:00", "24:00")
         default: return (nil, nil)
         }
+    }
+
+    var selectedDateLabel: String {
+        if selectedDates.isEmpty { return "All dates" }
+        if selectedDates.count == 1, let d = selectedDates.first {
+            let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+            if let date = fmt.date(from: d) {
+                let cal = Calendar.current
+                if cal.isDateInToday(date) { return "Today" }
+                if cal.isDateInTomorrow(date) { return "Tomorrow" }
+                let out = DateFormatter(); out.dateFormat = "EEE, MMM d"
+                return out.string(from: date)
+            }
+        }
+        return "\(selectedDates.count) dates"
     }
 
     func loadResults() async {
@@ -71,13 +94,10 @@ final class SearchViewModel: ObservableObject {
             var ranked = resp.rankedBoard ?? []
             if ranked.isEmpty {
                 let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
-                if !newDrops.isEmpty {
-                    ranked = newDrops
-                }
+                if !newDrops.isEmpty { ranked = newDrops }
             }
             results = ranked
         } catch is CancellationError {
-            // ignore
         } catch {
             self.error = Self.userFacingError(error)
             results = []
@@ -93,8 +113,7 @@ final class SearchViewModel: ObservableObject {
                 return "Request timed out. Try again in a moment."
             case .cannotFindHost, .cannotConnectToHost:
                 return "Can't reach the server. Try again later."
-            default:
-                break
+            default: break
             }
         }
         return error.localizedDescription

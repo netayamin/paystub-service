@@ -87,6 +87,12 @@ struct SearchView: View {
             .padding(.bottom, 120)
         }
         .background(AppTheme.background)
+        .task {
+            // Auto-load today's results on first appear
+            if !searchVM.hasSearched {
+                await searchVM.loadResults()
+            }
+        }
     }
 
     private var searchHeader: some View {
@@ -94,7 +100,7 @@ struct SearchView: View {
             Text("Search")
                 .font(.system(size: 24, weight: .bold))
                 .foregroundColor(AppTheme.textPrimary)
-            Text("Filter by date, time, and party size to find available tables.")
+            Text("Showing \(searchVM.selectedDateLabel) · Tap filters to refine.")
                 .font(.system(size: 13))
                 .foregroundColor(AppTheme.textSecondary)
         }
@@ -226,7 +232,7 @@ struct SearchView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 16, weight: .semibold))
                 }
-                Text(searchVM.isLoading ? "Searching…" : "Show results")
+                Text(searchVM.isLoading ? "Searching…" : "Search")
                     .font(.system(size: 16, weight: .semibold))
             }
             .foregroundColor(.white)
@@ -255,12 +261,9 @@ struct SearchView: View {
 
     private var searchResultsSection: some View {
         Group {
-            if !searchVM.hasSearched {
-                Text("Set filters above and tap \"Show results\" to see available tables.")
-                    .font(.system(size: 14))
-                    .foregroundColor(AppTheme.textTertiary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
+            if !searchVM.hasSearched && !searchVM.isLoading {
+                // auto-load hasn't triggered yet — show nothing
+                EmptyView()
             } else if searchVM.isLoading && searchVM.results.isEmpty {
                 VStack(spacing: 12) {
                     ProgressView()

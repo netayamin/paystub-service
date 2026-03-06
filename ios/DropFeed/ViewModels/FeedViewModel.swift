@@ -3,6 +3,8 @@ import Foundation
 @MainActor
 final class FeedViewModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
+    private var countdownTask: Task<Void, Never>?
+
     @Published var drops: [Drop] = []
     @Published var topOpportunities: [Drop]?
     @Published var hotRightNow: [Drop]?
@@ -11,25 +13,40 @@ final class FeedViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var lastScanAt: Date?
+    @Published var nextScanAt: Date?
     @Published var totalVenuesScanned: Int = 0
-    
+    @Published var newDropsCount: Int = 0
+    @Published var secondsUntilNextScan: Int = 0
+
     @Published var selectedDates: Set<String> = []
     @Published var selectedPartySizes: Set<Int> = []
     @Published var selectedTimeFilter: String = "all"
-    
+
     private let service = APIService.shared
-    
-    // MARK: - Hero card (top-ranked drop)
-    
-    var heroCard: Drop? {
-        drops.first
-    }
-    
+    private var previousDropIds: Set<String> = []
+
+    // MARK: - Derived
+
+    var heroCard: Drop? { drops.first }
+
     var feedCards: [Drop] {
         guard drops.count > 1 else { return [] }
         return Array(drops.dropFirst())
     }
-    
+
+    var rareDrops: [Drop] {
+        drops.filter { $0.scarcityTier == .rare || ($0.rarityScore ?? 0) > 0.65 }
+    }
+
+    var trendingDrops: [Drop] {
+        drops.filter { ($0.trendPct ?? 0) > 20 }.sorted { ($0.trendPct ?? 0) > ($1.trendPct ?? 0) }
+    }
+
+    /// Venues from likelyToOpen that have a drop likelihood for today specifically
+    var likelyTodayVenues: [LikelyToOpenVenue] {
+        likelyToOpen.filter { ($0.rarityScore ?? 0) > 0.5 }.prefix(5).map { $0 }
+    }
+
     /// Next 14 days for date picker (YYYY-MM-DD)
     var dateOptions: [(dateStr: String, dayName: String, dayNum: String)] {
         let cal = Calendar.current
@@ -47,11 +64,10 @@ final class FeedViewModel: ObservableObject {
                 let weekday = cal.component(.weekday, from: d)
                 return weekday >= 1 && weekday <= 7 ? symbols[weekday] : ""
             }()
-            let dayNum = "\(day)"
-            return (dateStr, dayName, dayNum)
+            return (dateStr, dayName, "\(day)")
         }
     }
-    
+
     var timeFilterAPI: (after: String?, before: String?) {
         switch selectedTimeFilter {
         case "lunch": return ("11:00", "15:00")
@@ -61,33 +77,52 @@ final class FeedViewModel: ObservableObject {
         default: return (nil, nil)
         }
     }
-    
+
     var lastScanText: String {
         guard let d = lastScanAt else { return "—" }
         let sec = Int(-d.timeIntervalSinceNow)
         if sec < 60 { return "just now" }
-        let min = sec / 60
-        if min < 60 { return "\(min)m ago" }
-        let h = min / 60
-        if h < 24 { return "\(h)h ago" }
-        return "\(h/24)d ago"
+        if sec < 3600 { return "\(sec / 60)m ago" }
+        if sec < 86400 { return "\(sec / 3600)h ago" }
+        return "\(sec / 86400)d ago"
     }
-    
+
+    var nextScanLabel: String {
+        if secondsUntilNextScan <= 0 { return "Scanning now…" }
+        if secondsUntilNextScan < 60 { return "Next scan in \(secondsUntilNextScan)s" }
+        return "Next scan in \(secondsUntilNextScan / 60)m"
+    }
+
+    // MARK: - Polling
+
     func startPolling() {
         refreshTask?.cancel()
         refreshTask = Task { @MainActor in
             while !Task.isCancelled {
                 await refresh()
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s polling
+            }
+        }
+        startCountdownTick()
+    }
+
+    private func startCountdownTick() {
+        countdownTask?.cancel()
+        countdownTask = Task { @MainActor in
+            while !Task.isCancelled {
+                if let next = nextScanAt {
+                    secondsUntilNextScan = max(0, Int(next.timeIntervalSinceNow))
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s tick
             }
         }
     }
-    
+
     func refresh() async {
         isLoading = true
         error = nil
         defer { isLoading = false }
-        
+
         let timeAPI = timeFilterAPI
         do {
             let resp = try await service.fetchJustOpened(
@@ -96,46 +131,53 @@ final class FeedViewModel: ObservableObject {
                 timeAfter: timeAPI.after,
                 timeBefore: timeAPI.before
             )
-            
+
             var ranked = resp.rankedBoard ?? []
             let top = resp.topOpportunities ?? []
             let hot = resp.hotRightNow ?? []
             let scanned = resp.totalVenuesScanned ?? 0
-            
-            // If main feed is empty but we have scan data (or no scan yet), fall back to new-drops so feed isn't blank
+
             if ranked.isEmpty {
                 let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
-                if !newDrops.isEmpty {
-                    ranked = newDrops
-                }
+                if !newDrops.isEmpty { ranked = newDrops }
             }
-            
+
+            // Detect new drops since last refresh
+            if !previousDropIds.isEmpty {
+                let incoming = Set(ranked.map { $0.id })
+                newDropsCount = incoming.subtracting(previousDropIds).count
+            } else {
+                newDropsCount = 0
+            }
+            previousDropIds = Set(ranked.map { $0.id })
+
             drops = ranked
             topOpportunities = top.isEmpty ? nil : top
             hotRightNow = hot.isEmpty ? nil : hot
             totalVenuesScanned = scanned
             likelyToOpen = resp.likelyToOpen ?? []
-            
-            if let iso = resp.lastScanAt {
-                lastScanAt = Drop.parseISO(iso)
-            } else {
-                lastScanAt = nil
+
+            if let iso = resp.lastScanAt { lastScanAt = Drop.parseISO(iso) }
+            if let iso = resp.nextScanAt {
+                nextScanAt = Drop.parseISO(iso)
+                secondsUntilNextScan = max(0, Int((nextScanAt ?? Date()).timeIntervalSinceNow))
             }
-            
-            // Fetch calendar counts (non-blocking)
+
             Task {
                 if let counts = try? await service.fetchCalendarCounts() {
                     self.calendarCounts = counts
                 }
             }
         } catch is CancellationError {
-            // Ignore
         } catch {
             self.error = Self.userFacingError(error)
         }
     }
-    
-    /// User-friendly message when backend is unreachable or request fails.
+
+    func acknowledgeNewDrops() {
+        newDropsCount = 0
+    }
+
     private static func userFacingError(_ error: Error) -> String {
         if let urlError = error as? URLError {
             switch urlError.code {
@@ -145,8 +187,7 @@ final class FeedViewModel: ObservableObject {
                 return "Request timed out. The server may be busy — try again in a moment."
             case .cannotFindHost, .cannotConnectToHost:
                 return "Can't reach the server. Check your connection or try again later."
-            default:
-                break
+            default: break
             }
         }
         return error.localizedDescription
