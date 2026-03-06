@@ -206,13 +206,52 @@ If the API at `http://<EC2_IP>:8000` doesn’t respond or the backend isn’t ru
 
    From your browser: `http://YOUR_EC2_PUBLIC_IP:8000/health`
 
-6. **If it exits or fails**, check logs:
+6. **If it exits or fails (or status is "Restarting")**, check logs:
 
    ```bash
-   sudo docker compose -f docker-compose.prod.yml logs -f backend
+   # Use docker-compose (hyphen) if your EC2 has the older Docker CLI
+   sudo docker-compose -f docker-compose.prod.yml logs --tail=100 backend
    ```
 
    Common causes: wrong or missing `DATABASE_URL`, RDS security group not allowing EC2 (port 5432 from EC2’s security group), or out-of-memory on t3.micro (try t3.small).
+
+---
+
+## Backend in restart loop ("Restarting (1)")
+
+If `docker-compose -f docker-compose.prod.yml ps` shows the backend as **Restarting**:
+
+1. **See why it’s crashing** (on EC2):
+
+   ```bash
+   cd ~/paystub-service
+   sudo docker-compose -f docker-compose.prod.yml logs --tail=80 backend
+   ```
+
+   (If that fails, use: `sudo docker logs paystub-service-backend-1 --tail 80`)
+
+2. **Typical fixes:**
+
+   - **Database unreachable** (connection refused / timeout):  
+     - If you use **RDS**: set `DATABASE_URL` in `backend/.env` to your RDS URL and ensure the RDS security group allows inbound 5432 from this EC2’s security group.  
+     - If you use the **Postgres container** on the same EC2 (e.g. from `docker-compose.yml`): from the backend container, `localhost` is the container itself, not the host. Use the host’s IP so the backend can reach the db container:
+       - Add to `docker-compose.prod.yml` under `backend:`:
+         ```yaml
+         extra_hosts:
+           - "host.docker.internal:host-gateway"
+         ```
+         Then in `backend/.env`:  
+         `DATABASE_URL=postgresql://paystub:paystub@host.docker.internal:5432/paystub`
+       - Or use the EC2 private IP (e.g. `172.31.16.12`) in `DATABASE_URL` instead of `host.docker.internal` if your Docker doesn’t support `host-gateway`.
+   - **Missing or invalid env**: ensure `backend/.env` has all required vars (e.g. `DATABASE_URL`, Resy keys if used).
+   - **Out of memory**: use a larger instance (e.g. t3.small).
+
+3. **Restart after editing**:
+
+   ```bash
+   sudo docker-compose -f docker-compose.prod.yml up -d --force-recreate backend
+   curl -s http://localhost:8000/health
+   ```
 
 ---
 

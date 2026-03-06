@@ -1069,11 +1069,11 @@ async def list_just_opened(
                     nm = (v.get("name") or "").strip().lower()
                     rm = rolling_by_name.get(nm)
                     if rm:
-                    v["rarity_score"] = rm.rarity_score
-                    v["availability_rate_14d"] = rm.availability_rate_14d
-                    v["days_with_drops"] = rm.days_with_drops
-                    v["drop_frequency_per_day"] = rm.drop_frequency_per_day
-                    v["trend_pct"] = rm.trend_pct
+                        v["rarity_score"] = rm.rarity_score
+                        v["availability_rate_14d"] = rm.availability_rate_14d
+                        v["days_with_drops"] = rm.days_with_drops
+                        v["drop_frequency_per_day"] = rm.drop_frequency_per_day
+                        v["trend_pct"] = rm.trend_pct
 
         _attach_metrics_raw(just_opened)
         _attach_metrics_raw(still_open)

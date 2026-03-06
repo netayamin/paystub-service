@@ -1,9 +1,8 @@
-# Production: backend only. Postgres must be external (e.g. AWS RDS).
-# Do NOT run Postgres in Docker on a micro instance — use RDS or another managed DB.
+# Production: backend only. Postgres must be external (e.g. AWS RDS or a db container on the same host).
 #
-# 1. Set backend/.env with DATABASE_URL (your RDS URL), OPENAI_API_KEY, RESY_*, etc.
-# 2. Run: docker compose -f docker-compose.prod.yml up -d
-# 3. Migrations (once): docker compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
+# 1. Set backend/.env with DATABASE_URL (RDS URL or postgresql://paystub:paystub@host.docker.internal:5432/paystub for local db container).
+# 2. Run: docker-compose -f docker-compose.prod.yml up -d  (or "docker compose" if you have the plugin)
+# 3. Migrations (once): docker-compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
 
 services:
   backend:
@@ -13,7 +12,9 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-unknown}
     env_file: ./backend/.env
-    # DATABASE_URL comes from backend/.env (e.g. postgresql://user:pass@your-rds.region.rds.amazonaws.com:5432/paystub)
+    # So backend can reach Postgres on the host (e.g. db container from docker-compose.yml). Omit if using RDS only.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"

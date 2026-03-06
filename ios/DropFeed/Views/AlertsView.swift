@@ -2,45 +2,220 @@ import SwiftUI
 
 struct AlertsView: View {
     @ObservedObject var alertsVM: AlertsViewModel
-    
+    @ObservedObject var savedVM: SavedViewModel
+    @ObservedObject var premium: PremiumManager
+    @State private var showPaywall = false
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Alerts")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(AppTheme.textPrimary)
-                    if alertsVM.unreadCount > 0 {
-                        Text("\(alertsVM.unreadCount) unread")
-                            .font(.system(size: 13))
-                            .foregroundColor(AppTheme.accentRed)
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Header
+                header
+                // Set specific notifications: watch list
+                setNotificationsSection
+                // Recent alerts
+                recentAlertsSection
+            }
+            .padding(.bottom, 120)
+        }
+        .background(AppTheme.background)
+        .task {
+            alertsVM.startPolling()
+            await savedVM.loadAll()
+        }
+        .sheet(isPresented: $showPaywall) {
+            PremiumPaywallView(premium: premium)
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Alerts")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(AppTheme.textPrimary)
+                Text("Set notifications for restaurants and see when tables drop.")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppTheme.textSecondary)
+            }
+            Spacer()
+            if !alertsVM.notifications.isEmpty {
+                Button {
+                    alertsVM.markAllRead()
+                } label: {
+                    Text("Mark all read")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppTheme.accent)
                 }
-                Spacer()
-                if !alertsVM.notifications.isEmpty {
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Set specific notifications (watch list)
+
+    private var setNotificationsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Notify me when tables drop")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(AppTheme.textPrimary)
+
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(AppTheme.textTertiary)
+                TextField("Add restaurant to watch…", text: $savedVM.searchText)
+                    .font(.system(size: 14))
+                    .foregroundColor(AppTheme.textPrimary)
+                    .autocorrectionDisabled()
+                    .onSubmit {
+                        addCurrentSearch()
+                    }
+                if !savedVM.searchText.isEmpty {
                     Button {
-                        alertsVM.markAllRead()
+                        savedVM.searchText = ""
                     } label: {
-                        Text("Mark all read")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(AppTheme.accent)
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppTheme.textTertiary)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
-            
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(AppTheme.surface)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(AppTheme.border, lineWidth: 0.5)
+            )
+
+            if !savedVM.searchSuggestions.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(savedVM.searchSuggestions.prefix(5), id: \.self) { name in
+                        Button {
+                            if premium.watchlistLimitReached(currentCount: savedVM.watchedVenues.count) {
+                                showPaywall = true
+                            } else {
+                                savedVM.toggleWatch(name)
+                                savedVM.searchText = ""
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bell.badge")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(AppTheme.textTertiary)
+                                Text(name)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(AppTheme.textPrimary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+                        Divider().background(AppTheme.border)
+                    }
+                }
+                .background(AppTheme.surfaceElevated)
+                .cornerRadius(12)
+            }
+            if savedVM.showFreeTextAdd && !savedVM.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                Button {
+                    if premium.watchlistLimitReached(currentCount: savedVM.watchedVenues.count) {
+                        showPaywall = true
+                    } else {
+                        savedVM.toggleWatch(savedVM.searchText.trimmingCharacters(in: .whitespaces))
+                        savedVM.searchText = ""
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(AppTheme.accentOrange)
+                        Text("Add \"\(savedVM.searchText.trimmingCharacters(in: .whitespaces))\"")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppTheme.accentOrange)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !savedVM.watchedVenues.isEmpty {
+                Text("Watching \(savedVM.watchedVenues.count) restaurant\(savedVM.watchedVenues.count == 1 ? "" : "s")")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.textTertiary)
+                    .textCase(.uppercase)
+                AlertsChipFlowLayout(spacing: 6) {
+                    ForEach(savedVM.watchedVenues.sorted(), id: \.self) { name in
+                        HStack(spacing: 4) {
+                            Text(name.capitalized)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppTheme.textPrimary)
+                            Button {
+                                savedVM.toggleWatch(name)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(AppTheme.textTertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.surfaceElevated)
+                        .cornerRadius(8)
+                    }
+                }
+            } else {
+                Text("Search above to add restaurants. We'll notify you when tables open up.")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppTheme.textTertiary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 20)
+    }
+
+    private func addCurrentSearch() {
+        let q = savedVM.searchText.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 2 else { return }
+        if premium.watchlistLimitReached(currentCount: savedVM.watchedVenues.count) {
+            showPaywall = true
+        } else {
+            savedVM.toggleWatch(q)
+            savedVM.searchText = ""
+        }
+    }
+
+    // MARK: - Recent alerts
+
+    private var recentAlertsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recent alerts")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(AppTheme.textPrimary)
+
             if alertsVM.notifications.isEmpty {
                 emptyState
             } else {
-                notificationsList
+                LazyVStack(spacing: 0) {
+                    ForEach(alertsVM.notifications) { notif in
+                        notificationRow(notif)
+                        Divider()
+                            .background(AppTheme.border)
+                    }
+                }
             }
         }
-        .background(AppTheme.background)
-        .task { alertsVM.startPolling() }
+        .padding(.horizontal, 16)
     }
     
     private var emptyState: some View {
@@ -198,6 +373,46 @@ struct AlertsView: View {
     }
 }
 
+// MARK: - Chip flow layout for watched venues
+
+private struct AlertsChipFlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = layout(proposal: proposal, subviews: subviews)
+        return result.size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = layout(proposal: proposal, subviews: subviews)
+        for (index, frame) in result.frames.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func layout(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        let maxWidth = proposal.width ?? .infinity
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth && x > 0 {
+                x = 0
+                y += lineHeight + spacing
+                lineHeight = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            lineHeight = max(lineHeight, size.height)
+            x += size.width + spacing
+        }
+
+        return (CGSize(width: maxWidth, height: y + lineHeight), frames)
+    }
+}
+
 #Preview {
-    AlertsView(alertsVM: AlertsViewModel())
+    AlertsView(alertsVM: AlertsViewModel(), savedVM: SavedViewModel(), premium: PremiumManager())
 }
