@@ -93,6 +93,10 @@ struct SearchView: View {
                 await searchVM.loadResults()
             }
         }
+        // Auto-reload whenever any filter changes
+        .onChange(of: searchVM.selectedDates) { _, _ in Task { await searchVM.loadResults() } }
+        .onChange(of: searchVM.selectedTimeFilter) { _, _ in Task { await searchVM.loadResults() } }
+        .onChange(of: searchVM.selectedPartySizes) { _, _ in Task { await searchVM.loadResults() } }
     }
 
     private var searchHeader: some View {
@@ -232,7 +236,7 @@ struct SearchView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 16, weight: .semibold))
                 }
-                Text(searchVM.isLoading ? "Searching…" : "Search")
+                Text(searchVM.isLoading ? "Searching…" : "Refresh results")
                     .font(.system(size: 16, weight: .semibold))
             }
             .foregroundColor(.white)

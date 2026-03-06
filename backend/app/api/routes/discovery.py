@@ -1019,7 +1019,12 @@ async def list_just_opened(
                     "Resy returned no open slots for the scanned dates/times. "
                     "Check GET /chat/watches/resy-test?days_ahead=7 and RESY_API_KEY / RESY_AUTH_TOKEN in .env."
                 )
-            return filtered
+            import json as _json
+            return Response(
+                content=_json.dumps(filtered, separators=(",", ":"), default=str).encode(),
+                media_type="application/json",
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+            )
 
         # Fallback: first startup before snapshot is built, or debug mode — query DB directly
         today = window_start_date()

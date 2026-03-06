@@ -24,6 +24,11 @@ final class APIService {
     init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
+        // Disable URLSession cache so every request always hits the server.
+        // The backend already adds Cache-Control: no-store but iOS sometimes
+        // ignores it for HTTP. Setting urlCache = nil is the reliable fix.
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         session = URLSession(configuration: config)
         decoder = JSONDecoder()
     }
