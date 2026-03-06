@@ -53,6 +53,15 @@ Push is enabled in the project (`DropFeed.entitlements`). **Requires a real devi
 4. **Restart backend** (e.g. `sudo docker-compose -f docker-compose.prod.yml up -d` on EC2).
 5. **iPhone:** Build and run the app, allow notifications. The device token is sent to the backend. New drops will push within ~1 minute even when the app is in the background or closed.
 
+## Optional: Use ACarousel library
+
+The Live tab uses a built-in snap carousel (peek, 5s auto-play, pause on drag). To use the [ACarousel](https://github.com/JWAutumn/ACarousel) Swift Package instead:
+
+1. In Xcode: **File → Add Package Dependencies…**
+2. Enter: `https://github.com/JWAutumn/ACarousel`
+3. Add the **ACarousel** product to the DropFeed target.
+4. In `FeedView.swift`: add `import ACarousel` and replace the `JustDroppedCarouselSection` body with the ACarousel-based implementation (see the comment in that struct).
+
 ## Structure
 
 - `DropFeedApp.swift` — App entry

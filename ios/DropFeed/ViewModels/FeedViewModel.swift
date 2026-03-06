@@ -17,6 +17,8 @@ final class FeedViewModel: ObservableObject {
     @Published var totalVenuesScanned: Int = 0
     @Published var newDropsCount: Int = 0
     @Published var secondsUntilNextScan: Int = 0
+    /// Tables dropped in the last 60 minutes (for "X TABLES DROPPED IN THE LAST HOUR")
+    @Published var tablesDroppedLastHour: Int = 0
 
     @Published var selectedDates: Set<String> = []
     @Published var selectedPartySizes: Set<Int> = []
@@ -46,18 +48,30 @@ final class FeedViewModel: ObservableObject {
             .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
     }
 
-    /// Drops ranked by rarity score
+    /// Drops ranked by rarity score. Fallback: top 10 by rarity so section always has content.
     var rareDrops: [Drop] {
-        drops
-            .filter { ($0.rarityScore ?? 0) > 0.3 || $0.scarcityTier == .rare }
-            .sorted { ($0.rarityScore ?? 0) > ($1.rarityScore ?? 0) }
+        let withRarity = drops.filter { ($0.rarityScore ?? 0) > 0.3 || $0.scarcityTier == .rare }
+        if !withRarity.isEmpty {
+            return Array(withRarity.sorted { ($0.rarityScore ?? 0) > ($1.rarityScore ?? 0) }.prefix(10))
+        }
+        return Array(drops.sorted { ($0.rarityScore ?? 0) > ($1.rarityScore ?? 0) }.prefix(10))
     }
 
-    /// Drops whose trendPct is high (availability spiking)
+    /// Drops whose trendPct is high (availability spiking). Fallback: top 10 by trend or all drops.
     var trendingDrops: [Drop] {
-        drops
-            .filter { ($0.trendPct ?? 0) > 10 }
-            .sorted { ($0.trendPct ?? 0) > ($1.trendPct ?? 0) }
+        let withTrend = drops.filter { ($0.trendPct ?? 0) > 10 }
+        if !withTrend.isEmpty {
+            return Array(withTrend.sorted { ($0.trendPct ?? 0) > ($1.trendPct ?? 0) }.prefix(10))
+        }
+        return Array(drops.sorted { ($0.trendPct ?? 0) > ($1.trendPct ?? 0) }.prefix(10))
+    }
+
+    /// "Hottest" blend of fresh + trending + rarity. Uses backend hot_right_now when available.
+    var hottestDrops: [Drop] {
+        let source = (hotRightNow?.isEmpty == false) ? (hotRightNow ?? []) : drops
+        return source.sorted { lhs, rhs in
+            _heatScore(lhs) > _heatScore(rhs)
+        }
     }
 
     /// Drops with known short slot windows — "Gone in minutes"
@@ -77,6 +91,15 @@ final class FeedViewModel: ObservableObject {
     /// Venues from likelyToOpen that have a drop likelihood for today specifically
     var likelyTodayVenues: [LikelyToOpenVenue] {
         likelyToOpen.filter { ($0.rarityScore ?? 0) > 0.5 }.prefix(5).map { $0 }
+    }
+
+    /// Best candidates for "what could drop soon" section
+    var predictedVenues: [LikelyToOpenVenue] {
+        likelyToOpen.sorted { lhs, rhs in
+            let l = (lhs.rarityScore ?? 0) * 0.65 + (1 - min(max(lhs.availabilityRate14d ?? 1, 0), 1)) * 0.35
+            let r = (rhs.rarityScore ?? 0) * 0.65 + (1 - min(max(rhs.availabilityRate14d ?? 1, 0), 1)) * 0.35
+            return l > r
+        }
     }
 
     // Legacy aliases kept for views that still reference them
@@ -195,6 +218,7 @@ final class FeedViewModel: ObservableObject {
             hotRightNow = hot.isEmpty ? nil : hot
             totalVenuesScanned = scanned
             likelyToOpen = resp.likelyToOpen ?? []
+            tablesDroppedLastHour = resp.tablesDroppedLastHour ?? 0
 
             if let iso = resp.lastScanAt { lastScanAt = Drop.parseISO(iso) }
             if let iso = resp.nextScanAt {
@@ -230,5 +254,19 @@ final class FeedViewModel: ObservableObject {
             }
         }
         return error.localizedDescription
+    }
+
+    private func _heatScore(_ drop: Drop) -> Double {
+        let trend = max(0, (drop.trendPct ?? 0) / 100)
+        let rarity = min(max(drop.rarityScore ?? 0, 0), 1)
+        let fresh: Double = {
+            let sec = drop.secondsSinceDetected
+            if sec < 300 { return 1.0 }
+            if sec < 1800 { return 0.7 }
+            if sec < 7200 { return 0.45 }
+            if sec < 86400 { return 0.2 }
+            return 0.05
+        }()
+        return (trend * 0.45) + (rarity * 0.35) + (fresh * 0.20)
     }
 }

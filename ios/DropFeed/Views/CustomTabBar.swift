@@ -10,8 +10,8 @@ struct CustomTabBar: View {
     
     var body: some View {
         HStack(spacing: 0) {
-            tabItem(tag: 0, icon: "location.circle.fill", label: "Live", useGoldWhenSelected: true)
-            tabItem(tag: 1, icon: "magnifyingglass", label: "Search", useGoldWhenSelected: false)
+            tabItem(tag: 0, icon: "house.fill", label: "Home", useGoldWhenSelected: true)
+            tabItem(tag: 1, icon: "magnifyingglass", label: "Discover", useGoldWhenSelected: false)
             tabItem(tag: 2, icon: "bell", label: "Alerts", badge: alertBadgeCount, useGoldWhenSelected: false)
             tabItem(tag: 3, icon: "person", label: "Profile", useGoldWhenSelected: false)
         }

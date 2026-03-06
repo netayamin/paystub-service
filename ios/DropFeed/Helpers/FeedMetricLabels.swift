@@ -3,10 +3,11 @@ import Foundation
 /// Maps DB metrics to user-facing labels (no raw numbers in UI).
 enum FeedMetricLabels {
 
-    // MARK: - Rarity (rarity_score 0–100)
-    /// 90–100 = Mythic/Ultra Rare, 70–89 = Rare
+    // MARK: - Rarity (backend: rarity_score 0–100, higher = rarer)
+    /// 90–100 = Ultra Rare, 70–89 = Rare. Accepts 0–1 or 0–100.
     static func rarityTier(score: Double?) -> String {
-        let s = (score ?? 0) <= 1 ? (score ?? 0) * 100 : (score ?? 0)
+        let raw = score ?? 0
+        let s = raw <= 1 ? raw * 100 : raw
         let v = Int(s.rounded())
         switch v {
         case 90...100: return "Ultra Rare"
@@ -16,32 +17,34 @@ enum FeedMetricLabels {
         }
     }
 
-    // MARK: - Scarcity (availability_rate_14d 0–1)
-    /// e.g. <5% → "Extremely Scarce"
+    // MARK: - Scarcity (availability_rate_14d 0–1). Short labels for badges.
+    /// e.g. <5% → "Ext. Scarce" so badge doesn’t truncate
     static func scarcityStatus(rate: Double?) -> String {
-        guard let r = rate, r <= 1 else { return "Scarce" }
-        let pct = r * 100
-        if pct < 5 { return "Extremely Scarce" }
+        guard let r = rate, r >= 0 else { return "Scarce" }
+        let pct = r <= 1 ? r * 100 : r
+        if pct < 5 { return "Ext. Scarce" }
         if pct < 15 { return "Very Scarce" }
         if pct < 40 { return "Scarce" }
         return "Available"
     }
 
-    // MARK: - Heat (trend_pct) — no % shown
-    /// 20% = Rising Heat, 50% = Exploding, 80%+ = Peak Demand
+    // MARK: - Heat (trend_pct). Backend sends ratio e.g. 0.2 = 20% increase; normalize to 0–100 for tiers.
+    /// 20% = Rising Heat, 50% = Exploding, 80%+ = Peak Demand. No raw % shown.
     static func heatLabel(trendPct: Double?) -> String {
         let p = trendPct ?? 0
-        if p >= 80 { return "Peak Demand" }
-        if p >= 50 { return "Exploding" }
-        if p >= 20 { return "Rising Heat" }
-        if p > 0 { return "Warming" }
+        let normalized: Double = (p >= -1 && p <= 1) ? p * 100 : p
+        if normalized >= 80 { return "Peak Demand" }
+        if normalized >= 50 { return "Exploding" }
+        if normalized >= 20 { return "Rising Heat" }
+        if normalized > 0 { return "Warming" }
+        if normalized < 0 { return "Cooling" }
         return "Steady"
     }
 
     // MARK: - Urgency (avg_drop_duration_seconds)
-    /// "Gone in 5 mins" / "Typically gone in 5 mins"
+    /// "Gone in 5 min" / "Typically gone in <5 min" when unknown
     static func urgencyText(avgDurationSeconds: Double?) -> String {
-        guard let sec = avgDurationSeconds, sec > 0 else { return "Act fast" }
+        guard let sec = avgDurationSeconds, sec > 0 else { return "Typically gone in <5 min" }
         if sec < 60 { return "Gone in <1 min" }
         let mins = Int(sec / 60)
         if mins == 1 { return "Gone in 1 min" }

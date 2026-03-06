@@ -244,15 +244,70 @@ struct LikelyToOpenVenue: Codable, Identifiable {
     let rarityScore: Double?
     let lastSeenDescription: String?
     let neighborhood: String?
+    /// For "Expected Drops": e.g. "Evening", "Midnight", "10:00 AM"
+    let predictedDropTime: String?
+    /// "High", "Medium", "Low" from backend metrics
+    let confidence: String?
     
     enum CodingKeys: String, CodingKey {
         case name
+        case venueName = "venue_name"
         case imageUrl = "image_url"
         case availabilityRate14d = "availability_rate_14d"
         case daysWithDrops = "days_with_drops"
         case rarityScore = "rarity_score"
         case lastSeenDescription = "last_seen_description"
         case neighborhood
+        case predictedDropTime = "predicted_drop_time"
+        case confidence
+    }
+    
+    init(
+        name: String,
+        imageUrl: String? = nil,
+        availabilityRate14d: Double? = nil,
+        daysWithDrops: Int? = nil,
+        rarityScore: Double? = nil,
+        lastSeenDescription: String? = nil,
+        neighborhood: String? = nil,
+        predictedDropTime: String? = nil,
+        confidence: String? = nil
+    ) {
+        self.name = name
+        self.imageUrl = imageUrl
+        self.availabilityRate14d = availabilityRate14d
+        self.daysWithDrops = daysWithDrops
+        self.rarityScore = rarityScore
+        self.lastSeenDescription = lastSeenDescription
+        self.neighborhood = neighborhood
+        self.predictedDropTime = predictedDropTime
+        self.confidence = confidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = (try? c.decode(String.self, forKey: .name)) ?? (try? c.decode(String.self, forKey: .venueName)) ?? ""
+        imageUrl = try? c.decodeIfPresent(String.self, forKey: .imageUrl)
+        availabilityRate14d = try? c.decodeIfPresent(Double.self, forKey: .availabilityRate14d)
+        daysWithDrops = try? c.decodeIfPresent(Int.self, forKey: .daysWithDrops)
+        rarityScore = try? c.decodeIfPresent(Double.self, forKey: .rarityScore)
+        lastSeenDescription = try? c.decodeIfPresent(String.self, forKey: .lastSeenDescription)
+        neighborhood = try? c.decodeIfPresent(String.self, forKey: .neighborhood)
+        predictedDropTime = try? c.decodeIfPresent(String.self, forKey: .predictedDropTime)
+        confidence = try? c.decodeIfPresent(String.self, forKey: .confidence)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(imageUrl, forKey: .imageUrl)
+        try c.encodeIfPresent(availabilityRate14d, forKey: .availabilityRate14d)
+        try c.encodeIfPresent(daysWithDrops, forKey: .daysWithDrops)
+        try c.encodeIfPresent(rarityScore, forKey: .rarityScore)
+        try c.encodeIfPresent(lastSeenDescription, forKey: .lastSeenDescription)
+        try c.encodeIfPresent(neighborhood, forKey: .neighborhood)
+        try c.encodeIfPresent(predictedDropTime, forKey: .predictedDropTime)
+        try c.encodeIfPresent(confidence, forKey: .confidence)
     }
 }
 
@@ -282,6 +337,8 @@ struct JustOpenedResponse: Codable {
     let lastScanAt: String?
     let totalVenuesScanned: Int?
     let nextScanAt: String?
+    /// Count of tables dropped in the last 60 minutes (for "X TABLES DROPPED IN THE LAST HOUR")
+    let tablesDroppedLastHour: Int?
     
     enum CodingKeys: String, CodingKey {
         case rankedBoard = "ranked_board"
@@ -291,6 +348,7 @@ struct JustOpenedResponse: Codable {
         case lastScanAt = "last_scan_at"
         case totalVenuesScanned = "total_venues_scanned"
         case nextScanAt = "next_scan_at"
+        case tablesDroppedLastHour = "tables_dropped_last_hour"
     }
     
     /// Decode response, skipping any feed cards that fail to decode so one bad card doesn't empty the feed.
@@ -328,7 +386,8 @@ struct JustOpenedResponse: Codable {
             likelyToOpen: likelyVenues.isEmpty ? nil : likelyVenues,
             lastScanAt: json["last_scan_at"] as? String,
             totalVenuesScanned: intValue("total_venues_scanned"),
-            nextScanAt: json["next_scan_at"] as? String
+            nextScanAt: json["next_scan_at"] as? String,
+            tablesDroppedLastHour: intValue("tables_dropped_last_hour")
         )
     }
     

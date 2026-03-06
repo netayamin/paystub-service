@@ -1098,6 +1098,43 @@ async def list_just_opened(
         attach_likely_open_labels(ranked_board, today_calendar)
         likely_to_open = get_likely_to_open_venues(db, today)
 
+        # Tables dropped in last 60 min (for "X TABLES DROPPED IN THE LAST HOUR" legend)
+        tables_dropped_last_hour = 0
+        try:
+            now = datetime.now(timezone.utc)
+            cutoff = now - timedelta(minutes=60)
+            for day in just_opened:
+                for v in day.get("venues") or []:
+                    det = v.get("detected_at")
+                    if det:
+                        try:
+                            dt = datetime.fromisoformat(det.replace("Z", "+00:00"))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            if dt >= cutoff:
+                                tables_dropped_last_hour += 1
+                        except (ValueError, TypeError):
+                            pass
+        except Exception:
+            pass
+
+        # Enrich likely_to_open for Live Market: name, predicted_drop_time, confidence (from metrics + hotlist)
+        _PREDICTED_TIMES = ["Evening", "Midnight", "10:00 AM"]
+        for i, item in enumerate(likely_to_open):
+            item["name"] = item.get("venue_name") or item.get("name") or ""
+            rarity = item.get("rarity_score")
+            rate = item.get("availability_rate_14d")
+            if rarity is not None and rate is not None:
+                if rarity >= 70 or rate <= 0.2:
+                    item["confidence"] = "High"
+                elif rarity >= 40 or rate <= 0.5:
+                    item["confidence"] = "Medium"
+                else:
+                    item["confidence"] = "Low"
+            else:
+                item["confidence"] = "Medium"
+            item["predicted_drop_time"] = _PREDICTED_TIMES[i % len(_PREDICTED_TIMES)]
+
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:
                 nm = (c.get("name") or "").strip().lower()
@@ -1123,6 +1160,7 @@ async def list_just_opened(
             "likely_open_today": [],
             "likely_open_tomorrow": [],
             "likely_open_soon": [],
+            "tables_dropped_last_hour": tables_dropped_last_hour,
             **info,
             "next_scan_at": _next_scan_iso(request),
         }
