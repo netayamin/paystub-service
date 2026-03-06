@@ -27,24 +27,63 @@ final class FeedViewModel: ObservableObject {
 
     // MARK: - Derived
 
-    var heroCard: Drop? { drops.first }
-
-    var feedCards: [Drop] {
-        guard drops.count > 1 else { return [] }
-        return Array(drops.dropFirst())
+    /// Top 4 for the hero carousel — uses topOpportunities if available, else top-ranked drops
+    var carouselDrops: [Drop] {
+        let top = topOpportunities ?? []
+        if top.count >= 2 { return Array(top.prefix(4)) }
+        // Fallback: sort drops by rarityScore desc
+        return Array(
+            drops
+                .sorted { ($0.rarityScore ?? 0) > ($1.rarityScore ?? 0) }
+                .prefix(4)
+        )
     }
 
+    /// Most recently detected drops (within last 24h), sorted newest first
+    var justDropped: [Drop] {
+        drops
+            .filter { $0.secondsSinceDetected < 86_400 }
+            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+    }
+
+    /// Drops ranked by rarity score
     var rareDrops: [Drop] {
-        drops.filter { $0.scarcityTier == .rare || ($0.rarityScore ?? 0) > 0.65 }
+        drops
+            .filter { ($0.rarityScore ?? 0) > 0.3 || $0.scarcityTier == .rare }
+            .sorted { ($0.rarityScore ?? 0) > ($1.rarityScore ?? 0) }
     }
 
+    /// Drops whose trendPct is high (availability spiking)
     var trendingDrops: [Drop] {
-        drops.filter { ($0.trendPct ?? 0) > 20 }.sorted { ($0.trendPct ?? 0) > ($1.trendPct ?? 0) }
+        drops
+            .filter { ($0.trendPct ?? 0) > 10 }
+            .sorted { ($0.trendPct ?? 0) > ($1.trendPct ?? 0) }
+    }
+
+    /// Drops with known short slot windows — "Gone in minutes"
+    var fleetingDrops: [Drop] {
+        drops
+            .filter { $0.avgDropDurationSeconds != nil }
+            .sorted { ($0.avgDropDurationSeconds ?? 99_999) < ($1.avgDropDurationSeconds ?? 99_999) }
+    }
+
+    /// Legendary NYC hotspots in the feed
+    var hotspotDrops: [Drop] {
+        drops
+            .filter { $0.isHotspot == true }
+            .sorted { ($0.rarityScore ?? 0) > ($1.rarityScore ?? 0) }
     }
 
     /// Venues from likelyToOpen that have a drop likelihood for today specifically
     var likelyTodayVenues: [LikelyToOpenVenue] {
         likelyToOpen.filter { ($0.rarityScore ?? 0) > 0.5 }.prefix(5).map { $0 }
+    }
+
+    // Legacy aliases kept for views that still reference them
+    var heroCard: Drop? { drops.first }
+    var feedCards: [Drop] {
+        guard drops.count > 1 else { return [] }
+        return Array(drops.dropFirst())
     }
 
     /// Next 14 days for date picker (YYYY-MM-DD)
