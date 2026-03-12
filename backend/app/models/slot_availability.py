@@ -8,7 +8,7 @@ from app.db.base import Base
 class SlotAvailability(Base):
     __tablename__ = "slot_availability"
 
-    bucket_id = Column(String(20), primary_key=True)
+    bucket_id = Column(String(40), primary_key=True)
     slot_id = Column(String(64), primary_key=True)
     state = Column(String(16), nullable=False, default="open")  # open | closed
     opened_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -26,3 +26,4 @@ class SlotAvailability(Base):
     neighborhood = Column(String(128), nullable=True)
     price_range = Column(String(32), nullable=True)
     image_url = Column(String(512), nullable=True)
+    market = Column(String(32), nullable=True, index=True)  # e.g. "nyc", "miami"

@@ -59,11 +59,11 @@ def _rebuild_snapshot_safe() -> None:
         db.close()
 
 
-def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str) -> None:
+def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str, market: str = "nyc") -> None:
     """Poll one bucket in its own session; on finish re-enqueue (set next_run_after) and update heartbeat."""
     now = datetime.now(timezone.utc)
     try:
-        _poll_one_bucket(bid, date_str, time_slot)
+        _poll_one_bucket(bid, date_str, time_slot, market)
         set_discovery_job_heartbeat(last_bucket_completed_at=now)
     except Exception as e:
         logger.exception("Bucket %s failed: %s", bid, e)
@@ -131,13 +131,13 @@ def run_discovery_bucket_job() -> None:
             if bid not in current_bids:
                 del _bucket_next_run[bid]
         # New buckets are immediately ready
-        for bid, _d, _t in buckets:
+        for bid, _d, _t, _m in buckets:
             if bid not in _bucket_next_run:
                 _bucket_next_run[bid] = min_dt
 
         ready = [
-            (bid, date_str, time_slot)
-            for bid, date_str, time_slot in buckets
+            (bid, date_str, time_slot, market)
+            for bid, date_str, time_slot, market in buckets
             if bid not in _in_flight and _bucket_next_run.get(bid, min_dt) <= now
         ]
         to_run = ready[:DISCOVERY_MAX_CONCURRENT_BUCKETS]
@@ -149,7 +149,7 @@ def run_discovery_bucket_job() -> None:
                 set_discovery_job_heartbeat(finished=now, running=False)
             return
 
-        for bid, date_str, time_slot in to_run:
+        for bid, date_str, time_slot, market in to_run:
             _in_flight.add(bid)
 
         set_discovery_job_heartbeat(
@@ -158,10 +158,10 @@ def run_discovery_bucket_job() -> None:
         )
 
     executor = _get_executor()
-    for bid, date_str, time_slot in to_run:
-        executor.submit(_run_bucket_then_reenqueue, bid, date_str, time_slot)
+    for bid, date_str, time_slot, market in to_run:
+        executor.submit(_run_bucket_then_reenqueue, bid, date_str, time_slot, market)
 
-    logger.debug("Discovery tick: dispatched %s buckets", len(to_run))
+    logger.debug("Discovery tick: dispatched %s buckets (markets: %s)", len(to_run), list({m for _, _, _, m in to_run}))
 
 
 def run_sliding_window_job() -> None:
@@ -196,15 +196,19 @@ def run_sliding_window_job() -> None:
         prune_old_market_metrics(db, today)
         prune_old_venues(db)
         ensure_buckets(db, today)
+        from app.core.market_config import get_active_markets
+        from app.services.discovery.buckets import bucket_id as make_bucket_id
         new_day = today + timedelta(days=WINDOW_DAYS - 1)
         new_day_str = new_day.isoformat()
-        for time_slot in TIME_SLOTS:
-            bid = f"{new_day_str}_{time_slot}"
-            run_baseline_for_bucket(db, bid, new_day_str, time_slot)
+        for market in get_active_markets():
+            for time_slot in TIME_SLOTS:
+                bid = make_bucket_id(new_day_str, time_slot, market.slug)
+                run_baseline_for_bucket(db, bid, new_day_str, time_slot, market=market.slug)
         logger.info(
-            "Discovery sliding window: pruned old buckets, ensured %s buckets, baselined new day %s",
+            "Discovery sliding window: pruned old buckets, ensured %s buckets, baselined new day %s (markets: %s)",
             len(all_bucket_ids(today)),
             new_day_str,
+            [m.slug for m in get_active_markets()],
         )
         set_discovery_sliding_window_finished_at(datetime.now(timezone.utc))
     finally:

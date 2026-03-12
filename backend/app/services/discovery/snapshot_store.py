@@ -201,7 +201,7 @@ def rebuild_snapshot(db: Session) -> None:
             d["date_str"] for d in just_opened + still_open if d.get("date_str")
         })
         # Also include all dates from buckets for the full 14-day range
-        for _bid, date_str, _ts in all_bucket_ids(today):
+        for _bid, date_str, _ts, _m in all_bucket_ids(today):
             if date_str not in date_strs:
                 date_strs.append(date_str)
         date_strs = sorted(set(date_strs))
@@ -272,22 +272,33 @@ def filter_snapshot_for_request(
     snap: dict,
     date_filter: list[str] | None = None,
     party_sizes: list[int] | None = None,
+    market_filter: list[str] | None = None,
 ) -> dict:
-    """Build a filtered response dict from the shared snapshot (non-mutating)."""
+    """Build a filtered response dict from the shared snapshot (non-mutating).
+    Pass market_filter=["nyc"] or ["miami"] to return only one city's data.
+    """
     date_set = set(date_filter) if date_filter else None
     ps_set = set(party_sizes) if party_sizes else None
+    mkt_set = set(market_filter) if market_filter else None
+
+    def _venue_matches_market(v: dict) -> bool:
+        if not mkt_set:
+            return True
+        return (v.get("market") or "nyc") in mkt_set
 
     def _filter_days(days: list[dict]) -> list[dict]:
         out = []
         for day in days:
             if date_set and day.get("date_str") not in date_set:
                 continue
+            venues = day.get("venues") or []
             if ps_set:
-                filtered_venues = [
-                    v for v in (day.get("venues") or [])
-                    if _venue_matches_party(v, ps_set)
-                ]
-                day = {**day, "venues": filtered_venues}
+                venues = [v for v in venues if _venue_matches_party(v, ps_set)]
+            if mkt_set:
+                venues = [v for v in venues if _venue_matches_market(v)]
+            if not venues and (ps_set or mkt_set):
+                continue
+            day = {**day, "venues": venues}
             out.append(day)
         return out
 
@@ -297,6 +308,8 @@ def filter_snapshot_for_request(
             if date_set and c.get("date_str") and c["date_str"] not in date_set:
                 continue
             if ps_set and not _venue_matches_party(c, ps_set):
+                continue
+            if mkt_set and not _venue_matches_market(c):
                 continue
             out.append(c)
         return out

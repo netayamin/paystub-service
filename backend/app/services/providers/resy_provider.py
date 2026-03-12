@@ -14,8 +14,15 @@ class ResyProvider:
         date_str: str,
         time_slot: str,
         party_sizes: list[int],
+        market: str = "nyc",
     ) -> list[NormalizedSlotResult]:
-        """Fetch Resy availability and return one NormalizedSlotResult per (venue, time) slot."""
+        """Fetch Resy availability and return one NormalizedSlotResult per (venue, time) slot.
+
+        Pass market to use the correct bounding box for the target city.
+        """
+        from app.services.resy.config import get_bounding_box_for_market
+        bbox = get_bounding_box_for_market(market)
+
         try:
             day = date.fromisoformat(date_str)
         except ValueError:
@@ -31,6 +38,7 @@ class ResyProvider:
                 time_window_hours=1,
                 per_page=DISCOVERY_RESY_PER_PAGE,
                 max_pages=DISCOVERY_RESY_MAX_PAGES,
+                bounding_box=bbox,
             )
             if result.get("error"):
                 continue
@@ -52,6 +60,7 @@ class ResyProvider:
                     payload = dict(v)
                     payload["availability_times"] = [actual_time]
                     payload["party_sizes_available"] = [party_size]
+                    payload["market"] = market
                     if "resy_url" not in payload and "book_url" not in payload:
                         payload["book_url"] = payload.get("resy_url")
                     by_slot[sid] = NormalizedSlotResult(

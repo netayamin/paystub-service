@@ -27,8 +27,21 @@ VENUE_SEARCH_TEST_BOUNDING_BOX: list[float] = [
 # Optional: expand the box by this many degrees on each side to widen the search area.
 # ~0.01 deg ≈ 1.1 km; 0.05 ≈ 5.5 km. Set RESY_SEARCH_BOX_EXPAND_DEGREES in .env to extend.
 def get_venue_search_bounding_box() -> list[float]:
-    """Bounding box for venue search; expanded by RESY_SEARCH_BOX_EXPAND_DEGREES if set."""
-    box = list(VENUE_SEARCH_TEST_BOUNDING_BOX)
+    """Bounding box for venue search (NYC/default); expanded by RESY_SEARCH_BOX_EXPAND_DEGREES if set."""
+    return get_bounding_box_for_market("nyc")
+
+
+def get_bounding_box_for_market(market_slug: str) -> list[float]:
+    """
+    Return bounding box [south, west, north, east] for the given market slug.
+    Falls back to the NYC default box for unknown slugs.
+    Expanded by RESY_SEARCH_BOX_EXPAND_DEGREES if set.
+    """
+    try:
+        from app.core.market_config import get_market
+        box = list(get_market(market_slug).bounding_box)
+    except (KeyError, ImportError):
+        box = list(VENUE_SEARCH_TEST_BOUNDING_BOX)
     try:
         expand = float(_env("RESY_SEARCH_BOX_EXPAND_DEGREES", "0"))
     except ValueError:

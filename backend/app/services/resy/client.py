@@ -90,8 +90,9 @@ class ResyClient:
         time_filter: str | None = None,
         venue_filter: dict[str, Any] | None = None,
         timeout: float = 20.0,
+        bounding_box: list[float] | None = None,
     ) -> dict[str, Any]:
-        """POST venue search; uses API response total_pages to fetch all pages, returns merged hits. Capped at max_pages (default 5 = up to 500)."""
+        """POST venue search; uses API response total_pages to fetch all pages, returns merged hits. Capped at max_pages (default 5 = up to 500). Pass bounding_box to override the default NYC box."""
         slot_filter: dict[str, Any] = {"day": day, "party_size": party_size}
         if time_filter:
             slot_filter["time_filter"] = time_filter
@@ -106,7 +107,7 @@ class ResyClient:
                 "slot_filter": slot_filter,
                 "types": ["venue"],
                 "order_by": "availability",
-                "geo": {"bounding_box": get_venue_search_bounding_box()},
+                "geo": {"bounding_box": bounding_box if bounding_box is not None else get_venue_search_bounding_box()},
                 "query": query,
             }
             if venue_filter:

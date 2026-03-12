@@ -9,7 +9,7 @@ class AvailabilityState(Base):
     __tablename__ = "availability_state"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    bucket_id = Column(String(20), nullable=False, index=True)
+    bucket_id = Column(String(40), nullable=False, index=True)
     slot_id = Column(String(64), nullable=False, index=True)
     opened_at = Column(DateTime(timezone=True), nullable=False)
     closed_at = Column(DateTime(timezone=True), nullable=True)
@@ -19,5 +19,6 @@ class AvailabilityState(Base):
     slot_date = Column(String(10), nullable=True)
     provider = Column(String(32), nullable=True, default="resy")
     aggregated_at = Column(DateTime(timezone=True), nullable=True)  # set when written to venue/market metrics (idempotency)
+    market = Column(String(32), nullable=True, index=True)  # e.g. "nyc", "miami"
 
     __table_args__ = (UniqueConstraint("bucket_id", "slot_id", name="uq_availability_state_bucket_slot"),)

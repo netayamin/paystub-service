@@ -989,14 +989,16 @@ async def list_just_opened(
     dates: str | None = None,
     time_slots: str | None = None,
     party_sizes: str | None = None,
+    market: str | None = None,
     debug: str | None = None,
 ):
-    """Just opened + still open. Serves from pre-computed snapshot (zero DB queries). Optional: dates, party_sizes."""
+    """Just opened + still open. Serves from pre-computed snapshot (zero DB queries). Optional: dates, party_sizes, market (e.g. nyc, miami)."""
     try:
         is_debug = debug and str(debug).strip() in ("1", "true", "yes")
         date_filter = [s.strip() for s in dates.split(",") if s.strip()] if dates else None
         party_size_list = _parse_ints(party_sizes)
-        has_filters = date_filter or party_size_list
+        market_list = [s.strip() for s in market.split(",") if s.strip()] if market else None
+        has_filters = date_filter or party_size_list or market_list
 
         # Fast path: no filters → return pre-serialized JSON bytes directly
         # (skips deepcopy, jsonable_encoder, json.dumps — sub-millisecond)
@@ -1012,7 +1014,7 @@ async def list_just_opened(
         # Filtered path: lightweight in-memory filtering on shared snapshot (no deepcopy)
         snap = get_snapshot()
         if snap is not None and not is_debug:
-            filtered = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list)
+            filtered = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list, market_filter=market_list)
             filtered["next_scan_at"] = _next_scan_iso(request)
             if (filtered.get("total_venues_scanned") or 0) == 0:
                 filtered["zero_venues_hint"] = (
@@ -1172,7 +1174,7 @@ async def list_just_opened(
         if debug and str(debug).strip() in ("1", "true", "yes"):
             just_opened_by_date = {d["date_str"]: len(d.get("venues") or []) for d in just_opened}
             still_open_by_date = {d["date_str"]: len(d.get("venues") or []) for d in still_open}
-            bucket_ids = [bid for bid, _d, _t in all_bucket_ids(today)]
+            bucket_ids = [bid for bid, _d, _t, _m in all_bucket_ids(today)]
             rows = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id.in_(bucket_ids)).all()
             def _baseline_empty(js: str | None) -> bool:
                 if not js or not js.strip() or js.strip() == "[]":

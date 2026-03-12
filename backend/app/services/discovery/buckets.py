@@ -106,9 +106,24 @@ def _is_bucket_fresh(scanned_at: datetime | None) -> bool:
     return scanned_at >= cutoff
 
 
-def bucket_id(date_str: str, time_slot: str) -> str:
-    """Stable bucket key. E.g. 2026-02-12_15:00."""
-    return f"{date_str}_{time_slot}"
+def bucket_id(date_str: str, time_slot: str, market: str = "nyc") -> str:
+    """Stable bucket key.  Format: {market}_{date_str}_{time_slot}  e.g. nyc_2026-02-12_15:00."""
+    return f"{market}_{date_str}_{time_slot}"
+
+
+def _parse_bucket_id(bid: str) -> tuple[str, str, str]:
+    """
+    Parse bucket_id into (market, date_str, time_slot).
+
+    Handles both the new format  {market}_{date}_{time}  and the legacy
+    format  {date}_{time}  (pre-045 rows without market prefix, assumed nyc).
+    """
+    parts = bid.split("_", 2)
+    if len(parts) == 3:
+        return parts[0], parts[1], parts[2]   # new:  "nyc", "2026-02-12", "15:00"
+    if len(parts) == 2:
+        return "nyc", parts[0], parts[1]       # old:  "nyc", "2026-02-12", "15:00"
+    return "nyc", bid, ""
 
 
 def slot_id(venue_id: str, actual_time: str, provider: str = "resy") -> str:
@@ -120,14 +135,21 @@ def slot_id(venue_id: str, actual_time: str, provider: str = "resy") -> str:
     return make_slot_id(provider, venue_id or "", actual_time or "")
 
 
-def all_bucket_ids(today: date) -> list[tuple[str, str, str]]:
-    """Returns (bucket_id, date_str, time_slot) for the 14-day × 2 slots window."""
-    out = []
-    for offset in range(WINDOW_DAYS):
-        day = today + timedelta(days=offset)
-        date_str = day.isoformat()
-        for ts in TIME_SLOTS:
-            out.append((bucket_id(date_str, ts), date_str, ts))
+def all_bucket_ids(today: date) -> list[tuple[str, str, str, str]]:
+    """
+    Returns (bucket_id, date_str, time_slot, market) for the 14-day window
+    across all active markets.  Markets are read from DISCOVERY_MARKETS env var
+    (default: nyc only).
+    """
+    from app.core.market_config import get_active_markets
+    markets = get_active_markets()
+    out: list[tuple[str, str, str, str]] = []
+    for market in markets:
+        for offset in range(WINDOW_DAYS):
+            day = today + timedelta(days=offset)
+            date_str = day.isoformat()
+            for ts in TIME_SLOTS:
+                out.append((bucket_id(date_str, ts, market.slug), date_str, ts, market.slug))
     return out
 
 
@@ -136,6 +158,7 @@ def fetch_for_bucket(
     time_slot: str,
     party_sizes: list[int],
     provider: str = "resy",
+    market: str = "nyc",
 ) -> list[dict]:
     """
     Fetch current availability for one bucket via the given provider.
@@ -145,17 +168,20 @@ def fetch_for_bucket(
     try:
         prov = get_provider(provider)
     except KeyError:
-        logger.warning("Unknown provider %s, skipping bucket %s", provider, bucket_id(date_str, time_slot))
+        logger.warning("Unknown provider %s, skipping bucket %s", provider, bucket_id(date_str, time_slot, market))
         return []
-    bid = bucket_id(date_str, time_slot)
+    bid = bucket_id(date_str, time_slot, market)
     try:
+        results = prov.search_availability(date_str, time_slot, party_sizes, market=market)
+    except TypeError:
+        # Fallback for providers that don't accept market kwarg (e.g. OpenTable)
         results = prov.search_availability(date_str, time_slot, party_sizes)
     except Exception as e:
         logger.warning("Provider %s search failed bucket=%s: %s", provider, bid, e)
         return []
     rows = [r.to_row() for r in results]
     if not rows:
-        logger.debug("Provider %s returned 0 slots for bucket=%s (date=%s time_slot=%s) — baseline will be 0", provider, bid, date_str, time_slot)
+        logger.debug("Provider %s returned 0 slots for bucket=%s (date=%s time_slot=%s market=%s) — baseline will be 0", provider, bid, date_str, time_slot, market)
     return rows
 
 
@@ -204,6 +230,7 @@ def _build_slot_availability_row(
     time_bucket_val: str,
     provider: str,
     run_id: str | None = None,
+    market: str = "nyc",
 ) -> dict:
     """Build one SlotAvailability row dict (open state). Used by bootstrap and drops."""
     payload = r.get("payload") if r else {}
@@ -239,6 +266,7 @@ def _build_slot_availability_row(
         "neighborhood": neighborhood_val,
         "price_range": price_range_val,
         "image_url": image_url_val,
+        "market": market,
     }
 
 
@@ -251,6 +279,7 @@ def _bootstrap_slot_availability(
     curr_set: set[str],
     now: datetime,
     provider: str,
+    market: str = "nyc",
 ) -> None:
     """Write all curr_set to SlotAvailability (open). Used when creating a new bucket or when baseline was None."""
     if not curr_set:
@@ -259,7 +288,7 @@ def _bootstrap_slot_availability(
     time_bucket_val = _time_bucket_from_slot(time_slot)
     by_slot = {r["slot_id"]: r for r in rows}
     bootstrap_rows = [
-        _build_slot_availability_row(bid, sid, by_slot.get(sid), date_str, now, time_bucket_val, provider, run_id)
+        _build_slot_availability_row(bid, sid, by_slot.get(sid), date_str, now, time_bucket_val, provider, run_id, market=market)
         for sid in curr_set
         if by_slot.get(sid) is not None
     ]
@@ -306,14 +335,14 @@ def _upsert_venue(db: Session, venue_id: str | None, venue_name: str | None) -> 
 
 
 def run_baseline_for_bucket(
-    db: Session, bid: str, date_str: str, time_slot: str, provider: str = "resy"
+    db: Session, bid: str, date_str: str, time_slot: str, provider: str = "resy", market: str = "nyc"
 ) -> int:
     """
     Fetch current state for bucket and set baseline = prev = curr. Replaces any previous baseline.
     Does NOT write to slot_availability or availability_state (no state/metrics from baseline).
     Returns slot count.
     """
-    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider)
+    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider, market=market)
     slot_ids = [r["slot_id"] for r in rows]
     now = datetime.now(timezone.utc)
     row = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id == bid).first()
@@ -323,8 +352,10 @@ def run_baseline_for_bucket(
         row.baseline_slot_ids_json = js
         row.prev_slot_ids_json = js
         row.scanned_at = now
+        if not row.market:
+            row.market = market
     else:
-        db.add(DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, baseline_slot_ids_json=js, prev_slot_ids_json=js, scanned_at=now))
+        db.add(DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, market=market, baseline_slot_ids_json=js, prev_slot_ids_json=js, scanned_at=now))
     db.commit()
     logger.info("Baseline bucket %s: %s slots", bid, len(slot_ids))
     return len(slot_ids)
@@ -351,9 +382,9 @@ def refresh_baselines_for_all_buckets(
     buckets = all_bucket_ids(today)
     total = len(buckets)
     errors = []
-    for i, (bid, date_str, time_slot) in enumerate(buckets, start=1):
+    for i, (bid, date_str, time_slot, market) in enumerate(buckets, start=1):
         try:
-            slot_count = run_baseline_for_bucket(db, bid, date_str, time_slot)
+            slot_count = run_baseline_for_bucket(db, bid, date_str, time_slot, market=market)
             if progress_callback:
                 progress_callback(bid, i, total, slot_count)
         except Exception as e:
@@ -373,7 +404,7 @@ def _advisory_lock_key(bucket_id: str) -> int:
 
 
 def run_poll_for_bucket(
-    db: Session, bid: str, date_str: str, time_slot: str, provider: str = "resy"
+    db: Session, bid: str, date_str: str, time_slot: str, provider: str = "resy", market: str = "nyc"
 ) -> tuple[int, int, dict]:
     """
     Poll one bucket: fetch curr (network, outside tx), then in a short write tx: lease bucket,
@@ -381,7 +412,7 @@ def run_poll_for_bucket(
     Returns (drops_emitted, current_slot_count, invariant_stats).
     """
     # Network I/O first (no DB transaction)
-    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider)
+    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider, market=market)
     curr_set = {r["slot_id"] for r in rows}
 
     bucket_row = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id == bid).first()
@@ -400,7 +431,7 @@ def run_poll_for_bucket(
 
     if not bucket_row:
         js = json.dumps(sorted(curr_set))
-        db.add(DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, baseline_slot_ids_json=js, prev_slot_ids_json=js, scanned_at=now))
+        db.add(DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, market=market, baseline_slot_ids_json=js, prev_slot_ids_json=js, scanned_at=now))
         db.commit()
         return 0, len(curr_set), {"B": len(curr_set), "P": len(curr_set), "C": len(curr_set), "baseline_ready": True, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
 
@@ -467,7 +498,7 @@ def run_poll_for_bucket(
 
     # --- Projection: all added go to SlotAvailability (feed); only drops_venue_zero get a DropEvent (venue had 0 before) ---
     slot_rows = [
-        _build_slot_availability_row(bid, sid, by_slot.get(sid), date_str, now, time_bucket_val, provider, run_id)
+        _build_slot_availability_row(bid, sid, by_slot.get(sid), date_str, now, time_bucket_val, provider, run_id, market=market)
         for sid in drops
     ]
     drop_rows = []
@@ -500,6 +531,7 @@ def run_poll_for_bucket(
             "provider": provider,
             "neighborhood": neighborhood_val,
             "price_range": price_range_val,
+            "market": market,
         })
 
     # Bulk insert SlotAvailability in batches (use excluded for conflict update so new row wins)
@@ -524,6 +556,7 @@ def run_poll_for_bucket(
                 SlotAvailability.price_range: ins.excluded.price_range,
                 SlotAvailability.image_url: ins.excluded.image_url,
                 SlotAvailability.closed_at: None,
+                SlotAvailability.market: ins.excluded.market,
             },
             where=text("slot_availability.updated_at < excluded.updated_at"),
         ))
@@ -564,6 +597,7 @@ def run_poll_for_bucket(
             "venue_name": r.get("venue_name") if r else None,
             "slot_date": slot_date_val,
             "provider": provider,
+            "market": market,
         })
     for i in range(0, len(state_rows_to_upsert), POLL_BATCH_SIZE):
         chunk = state_rows_to_upsert[i : i + POLL_BATCH_SIZE]
@@ -577,6 +611,7 @@ def run_poll_for_bucket(
                 AvailabilityState.venue_name: stmt.excluded.venue_name,
                 AvailabilityState.slot_date: stmt.excluded.slot_date,
                 AvailabilityState.provider: stmt.excluded.provider,
+                AvailabilityState.market: stmt.excluded.market,
             },
         ))
     # Close all slots that are open in DB but not in curr_set (one query + bulk update + sessions)
@@ -674,7 +709,7 @@ def run_poll_for_bucket(
 
 
 def ensure_buckets(db: Session, today: date) -> None:
-    """Ensure all 28 buckets exist (create with empty baseline/prev if missing)."""
+    """Ensure all buckets exist for all active markets (create with empty baseline/prev if missing)."""
     buckets = list(all_bucket_ids(today))
     existing_rows = (
         db.query(DiscoveryBucket.bucket_id)
@@ -683,8 +718,8 @@ def ensure_buckets(db: Session, today: date) -> None:
     )
     existing_ids = {r[0] for r in existing_rows}
     to_add = [
-        DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot)
-        for bid, date_str, time_slot in buckets
+        DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, market=market)
+        for bid, date_str, time_slot, market in buckets
         if bid not in existing_ids
     ]
     if to_add:
@@ -711,13 +746,17 @@ def delete_closed_drop_events(db: Session, batch_size: int = 50_000) -> int:
 
 def prune_old_drop_events(db: Session, today: date) -> int:
     """
-    Keep drop_events bounded: (1) remove rows for buckets before today;
+    Keep drop_events bounded: (1) remove rows for slot dates before today;
     (2) remove rows older than DROP_EVENTS_RETENTION_DAYS that have already been pushed.
-    Only deletes pushed rows so the push job never loses unsent events.
+    Uses slot_date column (market-agnostic) instead of bucket_id lexicographic comparison.
     """
     today_str = today.isoformat()
-    cutoff_bucket = f"{today_str}_15:00"
-    n_bucket = db.query(DropEvent).filter(DropEvent.bucket_id < cutoff_bucket).delete(synchronize_session=False)
+    # Rows with slot_date set (all rows written after migration 042)
+    n_bucket = (
+        db.query(DropEvent)
+        .filter(DropEvent.slot_date < today_str, DropEvent.slot_date.isnot(None))
+        .delete(synchronize_session=False)
+    )
     # Time-based: drop old events that we've already sent (push_sent_at set)
     cutoff_time = datetime.now(timezone.utc) - timedelta(days=DROP_EVENTS_RETENTION_DAYS)
     n_time = (
@@ -729,24 +768,23 @@ def prune_old_drop_events(db: Session, today: date) -> int:
     n = n_bucket + n_time
     if n:
         logger.info(
-            "Pruned %s drop_events (bucket<%s: %s, opened_at>%s days + pushed: %s)",
-            n,
-            today_str,
-            n_bucket,
-            DROP_EVENTS_RETENTION_DAYS,
-            n_time,
+            "Pruned %s drop_events (slot_date<%s: %s, opened_at>%s days + pushed: %s)",
+            n, today_str, n_bucket, DROP_EVENTS_RETENTION_DAYS, n_time,
         )
     return n
 
 
 def prune_old_slot_availability(db: Session, today: date) -> int:
-    """Remove projection rows for dates before today (retention). bucket_id format: YYYY-MM-DD_HH:MM."""
+    """Remove projection rows for slot dates before today (retention). Uses slot_date column."""
     today_str = today.isoformat()
-    cutoff = f"{today_str}_15:00"
-    n = db.query(SlotAvailability).filter(SlotAvailability.bucket_id < cutoff).delete(synchronize_session=False)
+    n = (
+        db.query(SlotAvailability)
+        .filter(SlotAvailability.slot_date < today_str, SlotAvailability.slot_date.isnot(None))
+        .delete(synchronize_session=False)
+    )
     db.commit()
     if n:
-        logger.info("Pruned %s slot_availability (date < %s)", n, today_str)
+        logger.info("Pruned %s slot_availability (slot_date < %s)", n, today_str)
     return n
 
 
@@ -756,13 +794,16 @@ def prune_old_sessions(db: Session, today: date) -> int:
 
 
 def prune_old_availability_state(db: Session, today: date) -> int:
-    """Remove availability_state rows for buckets before today (stale open slots)."""
+    """Remove availability_state rows for slot dates before today. Uses slot_date column."""
     today_str = today.isoformat()
-    cutoff = f"{today_str}_15:00"
-    n = db.query(AvailabilityState).filter(AvailabilityState.bucket_id < cutoff).delete(synchronize_session=False)
+    n = (
+        db.query(AvailabilityState)
+        .filter(AvailabilityState.slot_date < today_str, AvailabilityState.slot_date.isnot(None))
+        .delete(synchronize_session=False)
+    )
     db.commit()
     if n:
-        logger.info("Pruned %s availability_state (bucket_id < %s)", n, today_str)
+        logger.info("Pruned %s availability_state (slot_date < %s)", n, today_str)
     return n
 
 
@@ -833,7 +874,7 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     Venues that have NO open slots right now but have strong drop history (high availability_rate_14d).
     For "Likely to open" / "Often has drops — nothing open yet" section.
     """
-    bucket_ids = [bid for bid, _d, _t in all_bucket_ids(today)]
+    bucket_ids = [bid for bid, _d, _t, _m in all_bucket_ids(today)]
     open_venue_ids = set(
         r[0]
         for r in db.query(SlotAvailability.venue_id)
@@ -869,14 +910,14 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     ]
 
 
-def _poll_one_bucket(bid: str, date_str: str, time_slot: str) -> tuple[int, dict, str | None]:
+def _poll_one_bucket(bid: str, date_str: str, time_slot: str, market: str = "nyc") -> tuple[int, dict, str | None]:
     """
     Poll a single bucket in its own DB session (for use in thread pool).
     Returns (drops_emitted, stats, error_bid or None).
     """
     db = SessionLocal()
     try:
-        n_drops, _, stats = run_poll_for_bucket(db, bid, date_str, time_slot)
+        n_drops, _, stats = run_poll_for_bucket(db, bid, date_str, time_slot, market=market)
         return (n_drops, stats, None)
     except Exception as e:
         logger.exception("Poll bucket %s failed: %s", bid, e)
@@ -887,49 +928,49 @@ def _poll_one_bucket(bid: str, date_str: str, time_slot: str) -> tuple[int, dict
 
 def run_poll_all_buckets(db: Session, today: date) -> dict:
     """
-    Run poll for all 28 buckets in parallel so the whole run finishes in ~1–2 min.
-    Each bucket is re-scanned after cooldown (default 10s); tick every 3s dispatches ready buckets. Failed buckets are retried once (sequential).
+    Run poll for all active-market buckets in parallel so the whole run finishes in ~1–2 min.
+    Each bucket is re-scanned after cooldown; tick every 3s dispatches ready buckets. Failed buckets are retried once (sequential).
     Returns { "buckets_polled", "drops_emitted", "last_scan_at", "errors", "invariants" }.
     """
     ensure_buckets(db, today)
     buckets = list(all_bucket_ids(today))
     drops_emitted = 0
     buckets_baseline_ready = 0
-    errors: list[tuple[str, str, str]] = []
+    errors: list[tuple[str, str, str, str]] = []
 
     max_workers = min(len(buckets), DISCOVERY_MAX_CONCURRENT_BUCKETS)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_bucket = {
-            executor.submit(_poll_one_bucket, bid, date_str, time_slot): (bid, date_str, time_slot)
-            for bid, date_str, time_slot in buckets
+            executor.submit(_poll_one_bucket, bid, date_str, time_slot, market): (bid, date_str, time_slot, market)
+            for bid, date_str, time_slot, market in buckets
         }
         for future in as_completed(future_to_bucket):
-            bid, date_str, time_slot = future_to_bucket[future]
+            bid, date_str, time_slot, market = future_to_bucket[future]
             try:
                 n_drops, stats, err_bid = future.result()
                 if err_bid:
-                    errors.append((bid, date_str, time_slot))
+                    errors.append((bid, date_str, time_slot, market))
                     continue
                 drops_emitted += n_drops
                 if stats.get("baseline_ready"):
                     buckets_baseline_ready += 1
             except Exception as e:
                 logger.exception("Future for bucket %s raised: %s", bid, e)
-                errors.append((bid, date_str, time_slot))
+                errors.append((bid, date_str, time_slot, market))
 
     # Retry failed buckets once (sequential, same process)
     retried: list[str] = []
-    for bid, date_str, time_slot in list(errors):
+    for bid, date_str, time_slot, market in list(errors):
         logger.warning("Retrying bucket %s", bid)
-        n_drops, stats, err_bid = _poll_one_bucket(bid, date_str, time_slot)
+        n_drops, stats, err_bid = _poll_one_bucket(bid, date_str, time_slot, market)
         if err_bid:
             continue
         retried.append(bid)
         drops_emitted += n_drops
         if stats.get("baseline_ready"):
             buckets_baseline_ready += 1
-    errors = [(b, d, t) for b, d, t in errors if b not in retried]
-    error_ids = [b for b, _, _ in errors]
+    errors = [(b, d, t, m) for b, d, t, m in errors if b not in retried]
+    error_ids = [b for b, _, _, _ in errors]
 
     if errors:
         logger.error(
@@ -983,17 +1024,19 @@ def get_feed(db: Session, since: datetime | None = None, limit: int = 100) -> li
 
 def get_bucket_health(db: Session, today: date) -> list[dict]:
     """Return per-bucket last_scan_at and stale flag for health endpoint. Stale = not scanned within STALE_BUCKET_HOURS."""
-    bucket_ids = [bid for bid, _d, _t in all_bucket_ids(today)]
+    all_bids_list = all_bucket_ids(today)
+    bucket_ids = [bid for bid, _d, _t, _m in all_bids_list]
     rows = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id.in_(bucket_ids)).all()
     by_bucket = {r.bucket_id: r for r in rows}
     out = []
-    for bid, date_str, time_slot in all_bucket_ids(today):
+    for bid, date_str, time_slot, market in all_bids_list:
         row = by_bucket.get(bid)
         last_scan = row.scanned_at if row and row.scanned_at else None
         out.append({
             "bucket_id": bid,
             "date_str": date_str,
             "time_slot": time_slot,
+            "market": market,
             "last_scan_at": last_scan.isoformat() if last_scan else None,
             "baseline_count": len(_parse_slot_ids_json(row.baseline_slot_ids_json)) if row else 0,
             "stale": not _is_bucket_fresh(last_scan),
@@ -1009,17 +1052,19 @@ def get_baseline_snapshot(db: Session, today: date | None = None) -> dict:
     """
     if today is None:
         today = window_start_date()
-    bucket_ids = [bid for bid, _d, _t in all_bucket_ids(today)]
+    all_bids_list = all_bucket_ids(today)
+    bucket_ids = [bid for bid, _d, _t, _m in all_bids_list]
     rows = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id.in_(bucket_ids)).all()
     by_bucket = {r.bucket_id: r for r in rows}
     buckets = []
-    for bid, date_str, time_slot in all_bucket_ids(today):
+    for bid, date_str, time_slot, market in all_bids_list:
         row = by_bucket.get(bid)
         slot_ids = _parse_slot_ids_json(row.baseline_slot_ids_json) if row else set()
         buckets.append({
             "bucket_id": bid,
             "date_str": date_str,
             "time_slot": time_slot,
+            "market": market,
             "baseline_count": len(slot_ids),
             "baseline_slot_ids": sorted(slot_ids),
             "baseline_scanned_at": row.scanned_at.isoformat() if row and row.scanned_at else None,
@@ -1052,7 +1097,7 @@ def get_calendar_counts(db: Session, today: date | None = None) -> dict:
         today = window_start_date()
     date_strs = []
     seen_dates = set()
-    for _bid, date_str, _ts in all_bucket_ids(today):
+    for _bid, date_str, _ts, _m in all_bucket_ids(today):
         if date_str not in seen_dates:
             seen_dates.add(date_str)
             date_strs.append(date_str)
@@ -1109,11 +1154,22 @@ def get_notifications_by_date(
     }
 
 
-def _bucket_time_slot(bucket_id: str) -> str:
-    """Extract time_slot from bucket_id (e.g. 2026-02-12_15:00 -> 15:00)."""
-    if "_" in bucket_id:
-        return bucket_id.split("_")[1]
-    return ""
+def _bucket_time_slot(bucket_id_val: str) -> str:
+    """Extract time_slot from bucket_id. Handles both new (market_date_time) and old (date_time) formats."""
+    _, _, ts = _parse_bucket_id(bucket_id_val)
+    return ts
+
+
+def _bucket_date_str(bucket_id_val: str) -> str:
+    """Extract date_str from bucket_id. Handles both new and old formats."""
+    _, date_str, _ = _parse_bucket_id(bucket_id_val)
+    return date_str
+
+
+def _bucket_market(bucket_id_val: str) -> str:
+    """Extract market from bucket_id. Handles both new and old formats."""
+    market, _, _ = _parse_bucket_id(bucket_id_val)
+    return market
 
 
 def _venue_matches_party_sizes(payload: dict, party_sizes: list[int] | None) -> bool:
@@ -1177,7 +1233,7 @@ def get_just_opened_from_buckets(
     for r in events:
         if time_slots and _bucket_time_slot(r.bucket_id) not in time_slots:
             continue
-        date_str = r.bucket_id.split("_")[0] if "_" in r.bucket_id else ""
+        date_str = _bucket_date_str(r.bucket_id)
         if date_filter is not None and date_str not in date_filter:
             continue
         if date_str not in by_date:
@@ -1193,6 +1249,9 @@ def get_just_opened_from_buckets(
             payload["name"] = r.venue_name
         if getattr(r, "image_url", None) and not payload.get("image_url"):
             payload["image_url"] = r.image_url
+        r_market = getattr(r, "market", None) or _bucket_market(r.bucket_id)
+        if not payload.get("market"):
+            payload["market"] = r_market
         venue_key = str(payload.get("venue_id") or payload.get("name") or "").strip() or "unknown"
         if not _venue_matches_party_sizes(payload, party_sizes):
             continue
@@ -1268,7 +1327,7 @@ def get_still_open_from_buckets(
     for r in events:
         if time_slots and _bucket_time_slot(r.bucket_id) not in time_slots:
             continue
-        date_str = r.bucket_id.split("_")[0] if "_" in r.bucket_id else ""
+        date_str = _bucket_date_str(r.bucket_id)
         if date_filter is not None and date_str not in date_filter:
             continue
         if date_str not in by_date:
@@ -1284,6 +1343,9 @@ def get_still_open_from_buckets(
             payload["name"] = r.venue_name
         if getattr(r, "image_url", None) and not payload.get("image_url"):
             payload["image_url"] = r.image_url
+        r_market = getattr(r, "market", None) or _bucket_market(r.bucket_id)
+        if not payload.get("market"):
+            payload["market"] = r_market
         venue_key = str(payload.get("venue_id") or payload.get("name") or "").strip() or "unknown"
         if not _venue_matches_party_sizes(payload, party_sizes):
             continue
@@ -1365,12 +1427,10 @@ def get_feed_item_debug(
     in_prev = event.slot_id in prev_set
     in_curr: bool | None = None
     if fetch_curr and bucket_row and "_" in getattr(event, "bucket_id", ""):
-        bid = getattr(event, "bucket_id", "")
-        parts = bid.split("_", 1)
-        date_str = parts[0]
-        time_slot = parts[1] if len(parts) > 1 else "20:30"
+        bid_val = getattr(event, "bucket_id", "")
+        mkt, date_str, time_slot = _parse_bucket_id(bid_val)
         prov = (getattr(event, "provider", None) or "resy").strip() or "resy"
-        rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=prov)
+        rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=prov, market=mkt)
         curr_set = {r["slot_id"] for r in rows}
         in_curr = event.slot_id in curr_set
     # Reason: if currently in baseline/prev that's a signal (baseline = should not have been emitted)

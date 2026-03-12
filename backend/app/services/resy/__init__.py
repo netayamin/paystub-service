@@ -214,8 +214,9 @@ def search_with_availability(
     time_window_hours: int = 1,
     venue_filter: dict[str, Any] | None = None,
     timeout: float = 20.0,
+    bounding_box: list[float] | None = None,
 ) -> dict[str, Any]:
-    """Search venues with availability; returns only venues that have at least one slot. Fetches all pages (using API total_pages), capped at max_pages (default 5 = up to 500 venues). When time_filter is set, time_window_hours (default 1) expands to ±N hours; use 3 for Resy's natural ±3h window."""
+    """Search venues with availability; returns only venues that have at least one slot. Fetches all pages (using API total_pages), capped at max_pages (default 5 = up to 500 venues). When time_filter is set, time_window_hours (default 1) expands to ±N hours; use 3 for Resy's natural ±3h window. Pass bounding_box to search a specific city/area instead of the default NYC box."""
     day_str = _day_to_iso(day)
     if not day_str:
         return {"error": "Invalid or missing date. Use YYYY-MM-DD."}
@@ -239,6 +240,7 @@ def search_with_availability(
                 time_filter=t,
                 venue_filter=venue_filter,
                 timeout=timeout,
+                bounding_box=bounding_box,
             )
             if raw.get("error"):
                 # Skip this time filter and continue; partial results are better than 0 (avoids one timeout killing the whole bucket)
@@ -257,6 +259,7 @@ def search_with_availability(
             time_filter=None,
             venue_filter=venue_filter,
             timeout=timeout,
+            bounding_box=bounding_box,
         )
         if raw.get("error"):
             return raw

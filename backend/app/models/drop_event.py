@@ -9,7 +9,7 @@ class DropEvent(Base):
     __tablename__ = "drop_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    bucket_id = Column(String(20), nullable=False, index=True)
+    bucket_id = Column(String(40), nullable=False, index=True)
     slot_id = Column(String(64), nullable=False, index=True)
     opened_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     venue_id = Column(String(64), nullable=True)
@@ -26,3 +26,4 @@ class DropEvent(Base):
     neighborhood = Column(String(128), nullable=True)
     price_range = Column(String(32), nullable=True)
     push_sent_at = Column(DateTime(timezone=True), nullable=True)
+    market = Column(String(32), nullable=True, index=True)  # e.g. "nyc", "miami"
