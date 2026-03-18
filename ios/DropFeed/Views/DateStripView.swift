@@ -1,19 +1,20 @@
 import SwiftUI
 
+/// Horizontal scrolling date-pill strip with availability dots and ScaleButtonStyle bounce.
 struct DateStripView: View {
     let dateOptions: [(dateStr: String, dayName: String, dayNum: String)]
     @Binding var selectedDates: Set<String>
     var calendarCounts: CalendarCounts
-    
+
     private var allSelected: Bool { selectedDates.isEmpty }
-    
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     // "All" pill
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                             selectedDates.removeAll()
                         }
                     } label: {
@@ -25,14 +26,15 @@ struct DateStripView: View {
                             .background(allSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
                             .cornerRadius(12)
                     }
-                    .buttonStyle(.plain)
-                    
+                    .buttonStyle(ScaleButtonStyle())
+                    .accessibilityLabel("All dates")
+
                     ForEach(dateOptions, id: \.dateStr) { opt in
                         let isSelected = selectedDates.contains(opt.dateStr)
                         let count = calendarCounts.byDate[opt.dateStr] ?? 0
-                        
+
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                                 if isSelected {
                                     selectedDates.remove(opt.dateStr)
                                 } else {
@@ -47,9 +49,10 @@ struct DateStripView: View {
                                 Text(opt.dayNum)
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
+                                // Availability dot
                                 if count > 0 {
                                     Circle()
-                                        .fill(isSelected ? .white : AppTheme.accentRed)
+                                        .fill(isSelected ? Color.white : AppTheme.accentRed)
                                         .frame(width: 5, height: 5)
                                 } else {
                                     Spacer().frame(height: 5)
@@ -60,11 +63,12 @@ struct DateStripView: View {
                             .background(isSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
                             .cornerRadius(14)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ScaleButtonStyle())
                         .id(opt.dateStr)
+                        .accessibilityLabel("\(opt.dayName) \(opt.dayNum)\(count > 0 ? ", \(count) available" : "")")
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, AppTheme.spacingLG)
             }
         }
         .padding(.vertical, 4)
@@ -76,14 +80,17 @@ struct DateStripView: View {
         AppTheme.background.ignoresSafeArea()
         DateStripView(
             dateOptions: [
-                ("2026-03-04", "Today", "4"),
-                ("2026-03-05", "Tmrw", "5"),
-                ("2026-03-06", "Thu", "6"),
-                ("2026-03-07", "Fri", "7"),
-                ("2026-03-08", "Sat", "8"),
+                ("2026-03-18", "Today", "18"),
+                ("2026-03-19", "Tmrw",  "19"),
+                ("2026-03-20", "Fri",   "20"),
+                ("2026-03-21", "Sat",   "21"),
+                ("2026-03-22", "Sun",   "22"),
             ],
-            selectedDates: .constant(Set(["2026-03-04"])),
-            calendarCounts: CalendarCounts(byDate: ["2026-03-04": 12, "2026-03-05": 8, "2026-03-07": 3], dates: [])
+            selectedDates: .constant(Set(["2026-03-18"])),
+            calendarCounts: CalendarCounts(
+                byDate: ["2026-03-18": 12, "2026-03-19": 8, "2026-03-21": 3],
+                dates: []
+            )
         )
     }
 }
