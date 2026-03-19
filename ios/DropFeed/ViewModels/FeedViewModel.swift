@@ -12,7 +12,9 @@ final class FeedViewModel: ObservableObject {
     @Published var hotRightNow: [Drop]?
     @Published var likelyToOpen: [LikelyToOpenVenue] = []
     @Published var calendarCounts: CalendarCounts = CalendarCounts()
-    @Published var isLoading = false
+    @Published var isLoading = false       // true only on first load (no cards yet)
+    @Published var isRefreshing = false    // true on silent background polls
+    @Published var lastRefreshed: Date?    // wall-clock time of the last successful poll
     @Published var error: String?
     @Published var lastScanAt: Date?
     @Published var nextScanAt: Date?
@@ -204,9 +206,9 @@ final class FeedViewModel: ObservableObject {
     }
 
     func refresh() async {
-        isLoading = true
+        if drops.isEmpty { isLoading = true } else { isRefreshing = true }
         error = nil
-        defer { isLoading = false }
+        defer { isLoading = false; isRefreshing = false }
 
         let timeAPI = timeFilterAPI
         do {
@@ -242,6 +244,7 @@ final class FeedViewModel: ObservableObject {
             hotRightNow = hot.isEmpty ? nil : hot
             totalVenuesScanned = scanned
             likelyToOpen = resp.likelyToOpen ?? []
+            lastRefreshed = Date()
 
             if let iso = resp.lastScanAt { lastScanAt = Drop.parseISO(iso) }
             if let iso = resp.nextScanAt {

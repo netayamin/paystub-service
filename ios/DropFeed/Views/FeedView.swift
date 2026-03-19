@@ -283,7 +283,7 @@ struct FeedView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                 }
-                .background(FeedPalette.liveFeedDark.pageBackground)
+                .background(Color.black)
                 .padding(.horizontal, -16)
 
                 // ── Real-Time Ticker — light section ─────────────────────
@@ -355,7 +355,6 @@ struct FeedView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
         }
-        .background(palette.pageBackground)
     }
 
     // MARK: - Lightweight UI helpers (light feed)
@@ -540,6 +539,14 @@ struct FeedView: View {
 
     private var hasActiveFilters: Bool {
         !feedVM.selectedDates.isEmpty || !feedVM.selectedPartySizes.isEmpty || feedVM.selectedTimeFilter != "all"
+    }
+
+    /// "updated just now" / "updated 14s ago" / "updated 2m ago" shown in Top Drops header.
+    private func topDropsUpdatedLabel(_ date: Date) -> String {
+        let s = max(0, Int(-date.timeIntervalSinceNow))
+        if s < 5  { return "updated just now" }
+        if s < 60 { return "updated \(s)s ago" }
+        return "updated \(s / 60)m ago"
     }
 
     private var emptyView: some View {
