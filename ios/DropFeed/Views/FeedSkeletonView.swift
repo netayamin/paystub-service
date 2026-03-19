@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Barebones shimmer skeleton matching the simplified feed list.
 struct FeedSkeletonView: View {
+    private let palette: FeedPalette = .liveFeedLight
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
@@ -13,7 +15,7 @@ struct FeedSkeletonView: View {
             .padding(.top, 8)
             .padding(.bottom, 120)
         }
-        .background(AppTheme.background)
+        .background(palette.pageBackground)
     }
 
     private var skeletonRow: some View {
@@ -42,11 +44,11 @@ struct FeedSkeletonView: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 16)
-        .background(AppTheme.surface)
+        .background(palette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(AppTheme.border, lineWidth: 0.5)
+                .stroke(palette.border, lineWidth: 0.5)
         )
         .shimmer()
     }

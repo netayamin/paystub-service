@@ -23,6 +23,7 @@
 		A1000037 /* ShimmerModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000038 /* ShimmerModifier.swift */; };
 		A1000039 /* FeedSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003A /* FeedSkeletonView.swift */; };
 		A1000042 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000041 /* AppTheme.swift */; };
+		A1000102 /* FeedPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101 /* FeedPalette.swift */; };
 		A1000044 /* DateTimeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000045 /* DateTimeFilterSheet.swift */; };
 		A1000048 /* ProfilePlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000049 /* ProfilePlaceholderView.swift */; };
 		A100004A /* CustomTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004B /* CustomTabBar.swift */; };
@@ -60,6 +61,7 @@
 		A1000038 /* ShimmerModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShimmerModifier.swift; sourceTree = "<group>"; };
 		A100003A /* FeedSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedSkeletonView.swift; sourceTree = "<group>"; };
 		A1000041 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		A1000101 /* FeedPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedPalette.swift; sourceTree = "<group>"; };
 		A1000045 /* DateTimeFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateTimeFilterSheet.swift; sourceTree = "<group>"; };
 		A1000049 /* ProfilePlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePlaceholderView.swift; sourceTree = "<group>"; };
 		A100004B /* CustomTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomTabBar.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000041 /* AppTheme.swift */,
+				A1000101 /* FeedPalette.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -262,6 +265,7 @@
 				A1000006 /* FeedView.swift in Sources */,
 				A1000007 /* FeedViewModel.swift in Sources */,
 				A1000042 /* AppTheme.swift in Sources */,
+				A1000102 /* FeedPalette.swift in Sources */,
 				A1000044 /* DateTimeFilterSheet.swift in Sources */,
 				A1000048 /* ProfilePlaceholderView.swift in Sources */,
 				A100004A /* CustomTabBar.swift in Sources */,

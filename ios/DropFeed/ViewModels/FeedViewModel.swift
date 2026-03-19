@@ -29,6 +29,22 @@ final class FeedViewModel: ObservableObject {
 
     var heroCard: Drop? { drops.first }
 
+    /// Top drops prioritized by backend `top_opportunities` when available.
+    var topDrops: [Drop] {
+        if let top = topOpportunities, !top.isEmpty {
+            return top
+        }
+        return Array(drops.prefix(4))
+    }
+
+    /// Recently detected tables to surface as "live now".
+    /// Uses `secondsSinceDetected` computed from `detectedAt` / `createdAt`.
+    var justDropped: [Drop] {
+        drops
+            .filter { $0.secondsSinceDetected <= 600 }
+            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+    }
+
     var feedCards: [Drop] {
         guard drops.count > 1 else { return [] }
         return Array(drops.dropFirst())
