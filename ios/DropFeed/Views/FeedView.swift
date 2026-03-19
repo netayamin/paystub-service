@@ -213,30 +213,45 @@ struct FeedView: View {
                     }
                 }
 
-                // Top drops
-                VStack(alignment: .leading, spacing: 14) {
+                // ── Top Drops — full-bleed dark premium section ──────────
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header
                     HStack(alignment: .bottom) {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("Top Drops")
                                 .font(.system(size: 28, weight: .black))
-                                .foregroundColor(palette.textPrimary)
+                                .foregroundColor(.white)
                             Text("Reserved for the elite")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(palette.textSecondary)
+                                .foregroundColor(Color(white: 0.55))
                         }
                         Spacer()
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Circle()
                                 .fill(palette.accentRed)
                                 .frame(width: 7, height: 7)
                             Text("LIVE NOW")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 11, weight: .bold))
+                                .tracking(0.5)
                                 .foregroundColor(palette.accentRed)
                         }
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 8)
+                        .background(palette.accentRed.opacity(0.15))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(palette.accentRed.opacity(0.3), lineWidth: 1))
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 22)
+                    .padding(.bottom, 14)
 
+                    // Cards
                     if top.isEmpty {
-                        emptySectionHint
+                        Text("Scanning for top drops…")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(white: 0.45))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 24)
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 14) {
@@ -250,26 +265,39 @@ struct FeedView: View {
                             }
                             .padding(.horizontal, 16)
                         }
-                        .padding(.horizontal, -16)
                     }
-                }
 
-                // Real-Time Ticker — full-bleed dark section
-                VStack(alignment: .leading, spacing: 0) {
-                    // ── Header ──────────────────────────────────────────────
+                    // Footer
+                    HStack(spacing: 6) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("NYC'S HARDEST RESERVATIONS")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(0.8)
+                    }
+                    .foregroundColor(Color(white: 0.30))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                }
+                .background(FeedPalette.liveFeedDark.pageBackground)
+                .padding(.horizontal, -16)
+
+                // ── Real-Time Ticker — light section ─────────────────────
+                VStack(alignment: .leading, spacing: 12) {
+                    // Header
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Real-Time Ticker")
-                                .font(.system(size: 28, weight: .black))
-                                .foregroundColor(.white)
+                                .font(.system(size: 26, weight: .black))
+                                .foregroundColor(palette.textPrimary)
                             HStack(spacing: 5) {
                                 Circle()
-                                    .fill(Color(red: 0.22, green: 0.85, blue: 0.45))
+                                    .fill(Color(red: 0.22, green: 0.75, blue: 0.40))
                                     .frame(width: 7, height: 7)
                                 Text("SYSTEM ONLINE")
                                     .font(.system(size: 11, weight: .bold))
-                                    .tracking(0.8)
-                                    .foregroundColor(Color(red: 0.22, green: 0.85, blue: 0.45))
+                                    .tracking(0.7)
+                                    .foregroundColor(Color(red: 0.18, green: 0.62, blue: 0.34))
                             }
                         }
                         Spacer()
@@ -282,26 +310,22 @@ struct FeedView: View {
                                 .tracking(0.5)
                                 .foregroundColor(palette.accentRed)
                         }
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 8)
-                        .background(palette.accentRed.opacity(0.15))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(palette.accentRed.opacity(0.08))
                         .clipShape(Capsule())
-                        .overlay(Capsule().stroke(palette.accentRed.opacity(0.3), lineWidth: 1))
+                        .overlay(Capsule().stroke(palette.accentRed.opacity(0.2), lineWidth: 1))
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 22)
-                    .padding(.bottom, 16)
 
-                    // ── Cards ───────────────────────────────────────────────
+                    // Cards
                     if vm.tickerDrops.isEmpty && just.isEmpty {
                         Text("Scanning for live drops…")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Color(white: 0.45))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 24)
+                            .foregroundColor(palette.textTertiary)
+                            .padding(.vertical, 12)
                     } else {
                         let visible = vm.tickerDrops.isEmpty ? Array(just.prefix(5)) : vm.tickerDrops
-                        VStack(spacing: 8) {
+                        VStack(spacing: 10) {
                             ForEach(Array(visible.enumerated()), id: \.offset) { _, drop in
                                 RealTimeTickerCard(drop: drop)
                                     .id(drop.id)
@@ -309,23 +333,20 @@ struct FeedView: View {
                                     .animation(.easeInOut(duration: 0.55), value: drop.id)
                             }
                         }
-                        .padding(.horizontal, 16)
                     }
 
-                    // ── Footer ──────────────────────────────────────────────
+                    // Footer
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 11, weight: .semibold))
-                        Text("UPDATING CORE FEED...")
+                        Text("UPDATING IN REAL-TIME...")
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.6)
                     }
-                    .foregroundColor(Color(white: 0.35))
+                    .foregroundColor(palette.textTertiary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
+                    .padding(.top, 4)
                 }
-                .background(FeedPalette.liveFeedDark.pageBackground)
-                .padding(.horizontal, -16)
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -716,7 +737,7 @@ private struct TopDropCard: View {
 private struct RealTimeTickerCard: View {
     let drop: Drop
 
-    private let palette: FeedPalette = .liveFeedDark
+    private let palette: FeedPalette = .liveFeedLight
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -843,11 +864,10 @@ private struct RealTimeTickerCard: View {
                     lineWidth: drop.feedHot == true ? 1.5 : 1
                 )
         )
-        // Hot drop: vivid red glow pops on dark background
         .shadow(
-            color: drop.feedHot == true ? palette.accentRed.opacity(0.45) : Color.clear,
-            radius: drop.feedHot == true ? 14 : 0,
-            x: 0, y: 0
+            color: drop.feedHot == true ? palette.accentRed.opacity(0.20) : Color.black.opacity(0.04),
+            radius: drop.feedHot == true ? 10 : 6,
+            x: 0, y: drop.feedHot == true ? 3 : 2
         )
     }
 }
