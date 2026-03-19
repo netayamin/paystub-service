@@ -793,6 +793,7 @@ private struct RealTimeTickerCard: View {
             }
 
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
         .background(palette.surface)
