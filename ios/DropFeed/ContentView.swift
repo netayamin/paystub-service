@@ -102,9 +102,8 @@ struct SearchView: View {
             .background(palette.pageBackground)
         }
         .background(palette.pageBackground)
-        .task {
-            if !vm.hasSearched { await vm.loadResults() }
-        }
+        .onAppear  { vm.startPolling() }
+        .onDisappear { vm.stopPolling() }
     }
 
     // MARK: - When? (date strip)
@@ -131,7 +130,7 @@ struct SearchView: View {
         let sel = vm.selectedDates.contains(opt.dateStr)
         return Button {
             vm.selectedDates = [opt.dateStr]
-            Task { await vm.loadResults() }
+            vm.startPolling()  // restarts the 20s cycle immediately with new filter
         } label: {
             VStack(spacing: 4) {
                 Text(opt.dayName.uppercased())
@@ -251,7 +250,7 @@ struct SearchView: View {
 
     private var searchButton: some View {
         Button {
-            Task { await vm.loadResults() }
+            vm.startPolling()  // restarts the 20s cycle immediately
         } label: {
             HStack(spacing: 8) {
                 if vm.isLoading {
@@ -304,9 +303,28 @@ struct SearchView: View {
             .padding(.vertical, 48)
         } else if !vm.results.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("\(vm.results.count) table\(vm.results.count == 1 ? "" : "s") available")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(palette.textSecondary)
+                HStack(spacing: 8) {
+                    // Live pulse dot
+                    Circle()
+                        .fill(Color(red: 0.25, green: 0.85, blue: 0.48))
+                        .frame(width: 7, height: 7)
+
+                    Text("\(vm.results.count) table\(vm.results.count == 1 ? "" : "s") available")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(palette.textSecondary)
+
+                    Spacer()
+
+                    if vm.isRefreshing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: palette.textTertiary))
+                            .scaleEffect(0.65)
+                    } else if let ts = vm.lastUpdated {
+                        Text(relativeTime(ts))
+                            .font(.system(size: 11))
+                            .foregroundColor(palette.textTertiary)
+                    }
+                }
 
                 ForEach(vm.results) { drop in
                     SearchResultCard(drop: drop, isWatched: savedVM.isWatched(drop.name)) {
@@ -317,11 +335,18 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Divider helper
+    // MARK: - Helpers
 
     private var divider: some View {
         Divider()
             .background(palette.border)
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let s = Int(-date.timeIntervalSinceNow)
+        if s < 5  { return "just now" }
+        if s < 60 { return "\(s)s ago" }
+        return "\(s / 60)m ago"
     }
 }
 

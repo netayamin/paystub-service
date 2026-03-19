@@ -10,11 +10,14 @@ final class SearchViewModel: ObservableObject {
 
     // Results
     @Published var results: [Drop] = []
-    @Published var isLoading = false
+    @Published var isLoading = false      // true only on first load (no results yet)
+    @Published var isRefreshing = false   // true on silent background polls
     @Published var error: String?
     @Published var hasSearched = false
+    @Published var lastUpdated: Date?
 
     private let service = APIService.shared
+    private var pollTask: Task<Void, Never>?
 
     init() {
         let cal = Calendar.current
@@ -82,13 +85,38 @@ final class SearchViewModel: ObservableObject {
         return s >= 4 ? [4, 6, 8] : [s]
     }
 
+    // MARK: - Polling
+
+    func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                await loadResults()
+                try? await Task.sleep(nanoseconds: 20_000_000_000) // 20s, same as Feed
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
     // MARK: - Load
 
     func loadResults() async {
         hasSearched = true
-        isLoading   = true
-        error       = nil
-        defer { isLoading = false }
+        // Show full spinner only on first load; subsequent polls are silent.
+        if results.isEmpty {
+            isLoading = true
+        } else {
+            isRefreshing = true
+        }
+        error = nil
+        defer {
+            isLoading    = false
+            isRefreshing = false
+        }
 
         do {
             let resp = try await service.fetchJustOpened(
@@ -114,7 +142,8 @@ final class SearchViewModel: ObservableObject {
                 let fallback = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
                 ranked = fallback
             }
-            results = ranked
+            results      = ranked
+            lastUpdated  = Date()
         } catch is CancellationError {
         } catch {
             self.error = Self.userFacingError(error)
