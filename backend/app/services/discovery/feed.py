@@ -215,6 +215,75 @@ def _priority_score(card: dict, is_hot: bool) -> float:
     return scarcity * availability * freshness * popularity
 
 
+def _ticker_score(card: dict, is_hot: bool) -> float:
+    """
+    Score for the Real-Time Ticker ranked board.
+    Balances quality (hotspot + rarity + popularity + rating) with a modest
+    freshness bonus so genuinely new availability surfaces without letting
+    unknown restaurants dominate.
+
+    Weights (additive):
+      hotspot   2.0   — on our curated NYC hard-to-get list
+      rarity   ×1.5   — rarity_score 0-1 (rarely available = high demand)
+      popularity×1.2   — Resy demand signal
+      quality   ×0.8   — rating × credibility (review count)
+      freshness  0-0.5 — small boost for < 15 min; decays to 0 after 1 h
+    """
+    if not card.get("slots"):
+        return 0.0
+
+    hot      = 2.0 if is_hot else 0.0
+    rarity   = card.get("rarity_score")
+    scarcity = float(rarity) * 1.5 if isinstance(rarity, (int, float)) and rarity > 0 else 0.0
+    pop      = card.get("resy_popularity_score")
+    popularity = float(pop) * 1.2 if isinstance(pop, (int, float)) and pop > 0 else 0.0
+    rating   = card.get("rating_average") or 0
+    count    = card.get("rating_count") or 0
+    quality  = (float(rating) / 5.0) * min(1.0, count / 300) * 0.8
+
+    detected = card.get("detected_at") or card.get("created_at")
+    if detected:
+        try:
+            dt = datetime.fromisoformat(detected.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            mins = (datetime.now(timezone.utc) - dt).total_seconds() / 60
+        except Exception:
+            mins = 999
+    else:
+        mins = 999
+    freshness = 0.5 if mins <= 15 else (0.3 if mins <= 60 else 0.0)
+
+    return hot + scarcity + popularity + quality + freshness
+
+
+def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
+    """
+    Returns True if a venue deserves to appear in the Real-Time Ticker.
+    Hotspot restaurants always qualify. Others must pass at least one
+    quality signal so unknown low-demand restaurants are filtered out.
+    """
+    if not card.get("slots"):
+        return False
+    if is_hot:
+        return True  # our curated list always qualifies
+
+    pop = card.get("resy_popularity_score")
+    if isinstance(pop, (int, float)) and pop >= 0.25:
+        return True
+
+    rarity = card.get("rarity_score")
+    if isinstance(rarity, (int, float)) and rarity >= 0.20:
+        return True
+
+    rating = card.get("rating_average") or 0
+    count  = card.get("rating_count") or 0
+    if float(rating) >= 4.3 and count >= 80:
+        return True
+
+    return False
+
+
 def _top_opportunity_score(card: dict) -> float:
     """
     Score for Top Drops section: quality + scarcity, NOT freshness.
@@ -376,8 +445,28 @@ def build_feed(
         extra = target_len - len(hot_right_now)
         hot_right_now = hot_right_now + non_hot[:extra]
 
+    # Ticker board: quality-filtered subset for the Real-Time Ticker.
+    # Only venues that pass _is_ticker_worthy(), sorted by _ticker_score.
+    # Falls back to top-ranked if very few pass (keeps the ticker populated).
+    ticker_worthy = [c for c in cards if _is_ticker_worthy(c, c.get("feedHot", False))]
+    MIN_TICKER_ITEMS = 15
+    if len(ticker_worthy) < MIN_TICKER_ITEMS:
+        # Pad with best-ranked venues not already included
+        ticker_ids = {c["id"] for c in ticker_worthy}
+        for c in ranked:
+            if len(ticker_worthy) >= MIN_TICKER_ITEMS:
+                break
+            if c["id"] not in ticker_ids:
+                ticker_worthy.append(c)
+                ticker_ids.add(c["id"])
+
+    for c in ticker_worthy:
+        c["_ticker_score"] = _ticker_score(c, c.get("feedHot", False))
+    ticker_board = sorted(ticker_worthy, key=lambda x: -(x.get("_ticker_score") or 0))
+
     return {
         "ranked_board": ranked,
+        "ticker_board": ticker_board,
         "top_opportunities": top_opportunities,
         "hot_right_now": hot_right_now,
     }

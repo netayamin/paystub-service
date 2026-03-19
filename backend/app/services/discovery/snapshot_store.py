@@ -178,9 +178,10 @@ def rebuild_snapshot(db: Session) -> None:
 
         # Pass both just_opened AND still_open so the ranked board always has content
         feed = build_feed(just_opened, still_open)
-        ranked_board = feed["ranked_board"]
+        ranked_board    = feed["ranked_board"]
+        ticker_board    = feed["ticker_board"]
         top_opportunities = feed["top_opportunities"]
-        hot_right_now = feed["hot_right_now"]
+        hot_right_now   = feed["hot_right_now"]
 
         try:
             from zoneinfo import ZoneInfo
@@ -189,6 +190,7 @@ def rebuild_snapshot(db: Session) -> None:
         except Exception:
             today_calendar = date.today()
         attach_likely_open_labels(ranked_board, today_calendar)
+        attach_likely_open_labels(ticker_board, today_calendar)
 
         likely_to_open = get_likely_to_open_venues(db, today)
 
@@ -200,6 +202,7 @@ def rebuild_snapshot(db: Session) -> None:
                     c.update(rm)
 
         _attach_metrics(ranked_board)
+        _attach_metrics(ticker_board)
         _attach_metrics(top_opportunities)
         _attach_metrics(hot_right_now)
 
@@ -233,6 +236,7 @@ def rebuild_snapshot(db: Session) -> None:
             "just_opened": just_opened,
             "still_open": still_open,
             "ranked_board": ranked_board,
+            "ticker_board": ticker_board,
             "top_opportunities": top_opportunities,
             "hot_right_now": hot_right_now,
             "likely_to_open": likely_to_open,
@@ -249,7 +253,7 @@ def rebuild_snapshot(db: Session) -> None:
         # Pre-serialize the API-ready response (without internal fields) to JSON bytes.
         # The no-filter fast path returns these bytes directly — zero per-request work.
         api_payload = {k: v for k, v in snap.items()
-                       if k not in ("rolling_by_name", "bucket_health", "calendar_counts", "computed_at")}
+                       if k not in ("rolling_by_name", "bucket_health", "calendar_counts", "computed_at", "ticker_board")}
         api_bytes = _json.dumps(api_payload, separators=(",", ":"), default=str).encode()
 
         cal_bytes = _json.dumps(
@@ -264,9 +268,11 @@ def rebuild_snapshot(db: Session) -> None:
         }
         bh_bytes = _json.dumps(bh_payload, separators=(",", ":"), default=str).encode()
 
-        # Build compact mobile snapshot: drop heavy day arrays, cap ranked_board.
+        # Build compact mobile snapshot: drop heavy day arrays.
+        # ranked_board = quality-filtered ticker_board so iOS gets only
+        # attention-grabbing restaurants, not random noise.
         mobile_payload = {
-            "ranked_board":      ranked_board[:_MOBILE_RANKED_BOARD_LIMIT],
+            "ranked_board":      ticker_board[:_MOBILE_RANKED_BOARD_LIMIT],
             "top_opportunities": top_opportunities,
             "hot_right_now":     hot_right_now,
             "likely_to_open":    likely_to_open,
