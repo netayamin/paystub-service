@@ -535,14 +535,20 @@ struct FeedView: View {
 /// Returns "Today", "Tomorrow", or "3/14" for any date string "yyyy-MM-dd".
 private func friendlyDate(_ dateStr: String?) -> String? {
     guard let ds = dateStr, !ds.isEmpty else { return nil }
-    let fmt = DateFormatter()
-    fmt.dateFormat = "yyyy-MM-dd"
-    guard let d = fmt.date(from: ds) else { return nil }
+    // Parse "yyyy-MM-dd" by splitting on "-" — locale-safe, no DateFormatter needed.
+    let parts = ds.split(separator: "-")
+    guard parts.count == 3,
+          let year  = Int(parts[0]),
+          let month = Int(parts[1]),
+          let day   = Int(parts[2]) else { return nil }
+    var comps = DateComponents()
+    comps.year  = year
+    comps.month = month
+    comps.day   = day
     let cal = Calendar.current
-    if cal.isDateInToday(d) { return "Today" }
-    if cal.isDateInTomorrow(d) { return "Tomorrow" }
-    let month = cal.component(.month, from: d)
-    let day   = cal.component(.day, from: d)
+    guard let d = cal.date(from: comps) else { return nil }
+    if cal.isDateInToday(d)     { return "Today" }
+    if cal.isDateInTomorrow(d)  { return "Tomorrow" }
     return "\(month)/\(day)"
 }
 

@@ -423,14 +423,21 @@ struct HotlistResponse: Codable {
 // MARK: - Preview helpers
 
 extension Drop {
+    private static func isoDate(daysFromNow: Int) -> String {
+        let d = Calendar.current.date(byAdding: .day, value: daysFromNow, to: Date()) ?? Date()
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", c.year ?? 2026, c.month ?? 3, c.day ?? 20)
+    }
+
     static var preview: Drop {
-        Drop(
+        let ds = isoDate(daysFromNow: 0)   // Today
+        return Drop(
             id: "preview-balthazar",
             name: "Balthazar",
             location: "Soho",
-            dateStr: "2026-02-18",
+            dateStr: ds,
             slots: [
-                DropSlot(dateStr: "2026-02-18", time: "19:30", resyUrl: "https://resy.com/cities/ny/places/balthazar")
+                DropSlot(dateStr: ds, time: "19:30", resyUrl: "https://resy.com/cities/ny/places/balthazar")
             ],
             partySizesAvailable: [2, 4],
             detectedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-120)),
@@ -445,13 +452,14 @@ extension Drop {
     }
     
     static var previewTrending: Drop {
-        Drop(
+        let ds = isoDate(daysFromNow: 1)   // Tomorrow
+        return Drop(
             id: "preview-pastis",
             name: "Pastis",
             location: "Meatpacking",
-            dateStr: "2026-02-19",
+            dateStr: ds,
             slots: [
-                DropSlot(dateStr: "2026-02-19", time: "20:00", resyUrl: "https://resy.com/places/pastis")
+                DropSlot(dateStr: ds, time: "20:00", resyUrl: "https://resy.com/places/pastis")
             ],
             partySizesAvailable: [2],
             detectedAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-300)),
@@ -463,14 +471,15 @@ extension Drop {
     }
     
     static var previewRare: Drop {
-        Drop(
+        let ds = isoDate(daysFromNow: 5)
+        return Drop(
             id: "preview-don-angie",
             name: "Don Angie",
             location: "West Village",
-            dateStr: "2026-02-20",
+            dateStr: ds,
             slots: [
-                DropSlot(dateStr: "2026-02-20", time: "19:00", resyUrl: "https://resy.com/cities/ny/places/don-angie"),
-                DropSlot(dateStr: "2026-02-20", time: "21:30", resyUrl: "https://resy.com/cities/ny/places/don-angie")
+                DropSlot(dateStr: ds, time: "19:00", resyUrl: "https://resy.com/cities/ny/places/don-angie"),
+                DropSlot(dateStr: ds, time: "21:30", resyUrl: "https://resy.com/cities/ny/places/don-angie")
             ],
             partySizesAvailable: [2],
             imageUrl: nil,
