@@ -569,13 +569,7 @@ private struct TopDropCard: View {
 
     private var isTrending: Bool { (drop.trendPct ?? 0) > 10 || drop.feedHot == true }
 
-    private var subtitleText: String {
-        let party = drop.partySizesAvailable.sorted().first ?? 2
-        let time  = formatTime(drop.slots.first?.time ?? "")
-        let date  = friendlyDate(drop.dateStr ?? drop.slots.first?.dateStr) ?? ""
-        let datePart = date.isEmpty ? "" : "\(date) · "
-        return "\(datePart)\(time) • Party of \(party)"
-    }
+    private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
 
     private func formatTime(_ t: String) -> String {
         let p = t.split(separator: ":")
@@ -584,6 +578,19 @@ private struct TopDropCard: View {
         let h12 = h % 12 == 0 ? 12 : h % 12
         let ap = h < 12 ? "AM" : "PM"
         return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
+    }
+
+    private func slotLabel(_ slot: DropSlot) -> String {
+        let date = friendlyDate(slot.dateStr ?? drop.dateStr) ?? ""
+        let time = formatTime(slot.time ?? "")
+        guard !time.isEmpty else { return date.isEmpty ? "Reserve" : date }
+        return date.isEmpty ? time : "\(date)  \(time)"
+    }
+
+    private func openSlot(_ slot: DropSlot) {
+        let urlStr = slot.resyUrl ?? drop.resyUrl ?? drop.slots.first?.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        UIApplication.shared.open(url)
     }
 
     var body: some View {
@@ -605,34 +612,53 @@ private struct TopDropCard: View {
 
             // Bottom gradient
             LinearGradient(
-                colors: [.clear, .black.opacity(0.35), .black.opacity(0.82)],
+                colors: [.clear, .black.opacity(0.35), .black.opacity(0.85)],
                 startPoint: .center,
                 endPoint: .bottom
             )
 
             // Bottom content
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(drop.name)
-                    .font(.system(size: 30, weight: .black))
+                    .font(.system(size: 28, weight: .black))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
 
-                Text(subtitleText)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.white.opacity(0.88))
+                Text("Party of \(partySize)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.75))
 
-                Button { onToggleWatch(drop.name) } label: {
-                    Text(isWatched ? "SNAGGED" : "SECURE RESERVATION")
-                        .font(.system(size: 17, weight: .black))
-                        .tracking(0.5)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                        .background(palette.accentRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                // Time slot pills — one per available slot
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(drop.slots.prefix(8).enumerated()), id: \.offset) { _, slot in
+                            Button { openSlot(slot) } label: {
+                                Text(slotLabel(slot))
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
+                                    .background(palette.accentRed)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if drop.slots.isEmpty {
+                            Button { openSlot(DropSlot(dateStr: drop.dateStr, time: nil, resyUrl: drop.resyUrl)) } label: {
+                                Text("Reserve")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
+                                    .background(palette.accentRed)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 2)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 20)
