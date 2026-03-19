@@ -873,7 +873,10 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     """
     Venues that have NO open slots right now but have strong drop history (high availability_rate_14d).
     For "Likely to open" / "Often has drops — nothing open yet" section.
+    Returns 'name' (not just 'venue_name') so iOS clients can decode without remapping.
     """
+    from app.models.drop_event import DropEvent
+
     bucket_ids = [bid for bid, _d, _t, _m in all_bucket_ids(today)]
     open_venue_ids = set(
         r[0]
@@ -889,7 +892,7 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     latest = db.query(func.max(VenueRollingMetrics.as_of_date)).scalar()
     if not latest:
         return []
-    q = (
+    rows = (
         db.query(VenueRollingMetrics)
         .filter(
             VenueRollingMetrics.as_of_date == latest,
@@ -897,16 +900,44 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
         )
         .order_by(VenueRollingMetrics.availability_rate_14d.desc().nullslast())
         .limit(limit)
+        .all()
     )
+    if not rows:
+        return []
+
+    # Best-effort neighborhood lookup from recent drop events
+    venue_ids = [r.venue_id for r in rows if r.venue_id]
+    neighborhood_by_vid: dict[str, str] = {}
+    if venue_ids:
+        try:
+            recent_events = (
+                db.query(DropEvent.venue_id, DropEvent.neighborhood)
+                .filter(
+                    DropEvent.venue_id.in_(venue_ids),
+                    DropEvent.neighborhood.isnot(None),
+                )
+                .order_by(DropEvent.opened_at.desc())
+                .limit(len(venue_ids) * 5)
+                .all()
+            )
+            for vid, nbhd in recent_events:
+                if vid and nbhd and vid not in neighborhood_by_vid:
+                    neighborhood_by_vid[vid] = nbhd
+        except Exception:
+            pass
+
     return [
         {
             "venue_id": r.venue_id,
             "venue_name": r.venue_name or "",
+            "name": r.venue_name or "",          # iOS CodingKey expects "name"
+            "neighborhood": neighborhood_by_vid.get(r.venue_id or ""),
             "availability_rate_14d": r.availability_rate_14d,
             "days_with_drops": r.days_with_drops,
             "rarity_score": r.rarity_score,
+            "trend_pct": r.trend_pct,
         }
-        for r in q.all()
+        for r in rows
     ]
 
 

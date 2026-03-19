@@ -235,7 +235,7 @@ struct Drop: Codable, Identifiable {
 
 // MARK: - Likely to Open venue
 
-struct LikelyToOpenVenue: Codable, Identifiable {
+struct LikelyToOpenVenue: Identifiable {
     var id: String { name }
     let name: String
     let imageUrl: String?
@@ -248,7 +248,7 @@ struct LikelyToOpenVenue: Codable, Identifiable {
     let predictedDropTime: String?  // "Evening", "Dinner", "Midnight"
     let trendPct: Double?
 
-    // Memberwise init with defaults so existing call sites don't need updating
+    /// Memberwise init — all fields except `name` default to nil.
     init(
         name: String,
         imageUrl: String? = nil,
@@ -272,18 +272,52 @@ struct LikelyToOpenVenue: Codable, Identifiable {
         self.predictedDropTime   = predictedDropTime
         self.trendPct            = trendPct
     }
+}
 
-    enum CodingKeys: String, CodingKey {
+extension LikelyToOpenVenue: Codable {
+    private enum CodingKeys: String, CodingKey {
         case name
-        case imageUrl = "image_url"
+        case venueName           = "venue_name"          // legacy backend key
+        case imageUrl            = "image_url"
         case availabilityRate14d = "availability_rate_14d"
-        case daysWithDrops = "days_with_drops"
-        case rarityScore = "rarity_score"
+        case daysWithDrops       = "days_with_drops"
+        case rarityScore         = "rarity_score"
         case lastSeenDescription = "last_seen_description"
         case neighborhood
         case confidence
-        case predictedDropTime = "predicted_drop_time"
-        case trendPct = "trend_pct"
+        case predictedDropTime   = "predicted_drop_time"
+        case trendPct            = "trend_pct"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Accept both "name" (current) and "venue_name" (legacy) so we never silently drop a venue
+        name = (try? c.decodeIfPresent(String.self, forKey: .name)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? (try? c.decodeIfPresent(String.self, forKey: .venueName)).flatMap { $0.isEmpty ? nil : $0 }
+            ?? ""
+        imageUrl            = try? c.decodeIfPresent(String.self, forKey: .imageUrl)
+        availabilityRate14d = try? c.decodeIfPresent(Double.self, forKey: .availabilityRate14d)
+        daysWithDrops       = try? c.decodeIfPresent(Int.self,    forKey: .daysWithDrops)
+        rarityScore         = try? c.decodeIfPresent(Double.self, forKey: .rarityScore)
+        lastSeenDescription = try? c.decodeIfPresent(String.self, forKey: .lastSeenDescription)
+        neighborhood        = try? c.decodeIfPresent(String.self, forKey: .neighborhood)
+        confidence          = try? c.decodeIfPresent(String.self, forKey: .confidence)
+        predictedDropTime   = try? c.decodeIfPresent(String.self, forKey: .predictedDropTime)
+        trendPct            = try? c.decodeIfPresent(Double.self, forKey: .trendPct)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(imageUrl,            forKey: .imageUrl)
+        try c.encodeIfPresent(availabilityRate14d, forKey: .availabilityRate14d)
+        try c.encodeIfPresent(daysWithDrops,       forKey: .daysWithDrops)
+        try c.encodeIfPresent(rarityScore,         forKey: .rarityScore)
+        try c.encodeIfPresent(lastSeenDescription, forKey: .lastSeenDescription)
+        try c.encodeIfPresent(neighborhood,        forKey: .neighborhood)
+        try c.encodeIfPresent(confidence,          forKey: .confidence)
+        try c.encodeIfPresent(predictedDropTime,   forKey: .predictedDropTime)
+        try c.encodeIfPresent(trendPct,            forKey: .trendPct)
     }
 }
 

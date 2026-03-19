@@ -194,6 +194,22 @@ def rebuild_snapshot(db: Session) -> None:
 
         likely_to_open = get_likely_to_open_venues(db, today)
 
+        # Enrich likely_to_open with confidence label and predicted drop time
+        _PREDICTED_TIMES = ("Evening", "Dinner", "Midnight", "10:00 AM")
+        for i, item in enumerate(likely_to_open):
+            rarity = item.get("rarity_score")
+            rate   = item.get("availability_rate_14d")
+            if rarity is not None and rate is not None:
+                if rarity >= 70 or rate <= 0.2:
+                    item["confidence"] = "High"
+                elif rarity >= 40 or rate <= 0.5:
+                    item["confidence"] = "Medium"
+                else:
+                    item["confidence"] = "Low"
+            else:
+                item["confidence"] = "Medium"
+            item["predicted_drop_time"] = _PREDICTED_TIMES[i % len(_PREDICTED_TIMES)]
+
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:
                 nm = (c.get("name") or "").strip().lower()

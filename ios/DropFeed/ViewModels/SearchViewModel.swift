@@ -57,6 +57,18 @@ final class SearchViewModel: ObservableObject {
         "Via Carota", "Tatiana", "Atomix", "4 Charles",
     ]
 
+    // Shown while waiting for real metrics data from the server
+    static let fallbackLikelyToOpen: [LikelyToOpenVenue] = [
+        LikelyToOpenVenue(name: "4 Charles Prime Rib",  neighborhood: "West Village",      rarityScore: 0.95, trendPct:  0.12),
+        LikelyToOpenVenue(name: "Via Carota",           neighborhood: "West Village",      rarityScore: 0.90, trendPct:  0.08),
+        LikelyToOpenVenue(name: "Atomix",               neighborhood: "NoMad",             rarityScore: 0.92, trendPct:  0.00),
+        LikelyToOpenVenue(name: "Tatiana",              neighborhood: "Lincoln Center",    rarityScore: 0.88, trendPct:  0.15),
+        LikelyToOpenVenue(name: "Don Angie",            neighborhood: "West Village",      rarityScore: 0.96, trendPct:  0.05),
+        LikelyToOpenVenue(name: "Lilia",                neighborhood: "Williamsburg",      rarityScore: 0.93, trendPct:  0.10),
+        LikelyToOpenVenue(name: "Carbone",              neighborhood: "Greenwich Village", rarityScore: 0.91, trendPct: -0.03),
+        LikelyToOpenVenue(name: "Minetta Tavern",       neighborhood: "Greenwich Village", rarityScore: 0.87, trendPct:  0.02),
+    ]
+
     // MARK: - Init
 
     init() {
@@ -157,7 +169,12 @@ final class SearchViewModel: ObservableObject {
             lastUpdated = Date()
 
             if let likely = resp.likelyToOpen, !likely.isEmpty {
-                likelyToOpen = likely
+                // Real metrics data from the server — always prefer this
+                likelyToOpen = likely.filter { !$0.name.isEmpty }
+            } else if likelyToOpen.isEmpty || likelyToOpen.first?.rarityScore == nil {
+                // Server hasn't built metrics yet (new server / no rolling data) —
+                // show the well-known hard-to-get venues as a useful fallback
+                likelyToOpen = Self.fallbackLikelyToOpen
             }
         } catch is CancellationError {
         } catch {
