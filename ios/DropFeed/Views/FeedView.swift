@@ -530,6 +530,22 @@ struct FeedView: View {
     }
 }
 
+// MARK: - Shared date helper
+
+/// Returns "Today", "Tomorrow", or "3/14" for any date string "yyyy-MM-dd".
+private func friendlyDate(_ dateStr: String?) -> String? {
+    guard let ds = dateStr, !ds.isEmpty else { return nil }
+    let fmt = DateFormatter()
+    fmt.dateFormat = "yyyy-MM-dd"
+    guard let d = fmt.date(from: ds) else { return nil }
+    let cal = Calendar.current
+    if cal.isDateInToday(d) { return "Today" }
+    if cal.isDateInTomorrow(d) { return "Tomorrow" }
+    let month = cal.component(.month, from: d)
+    let day   = cal.component(.day, from: d)
+    return "\(month)/\(day)"
+}
+
 // MARK: - Top drop card (hero, full-bleed image)
 
 private struct TopDropCard: View {
@@ -553,8 +569,10 @@ private struct TopDropCard: View {
 
     private var subtitleText: String {
         let party = drop.partySizesAvailable.sorted().first ?? 2
-        let time = formatTime(drop.slots.first?.time ?? "")
-        return "\(time) • Party of \(party)"
+        let time  = formatTime(drop.slots.first?.time ?? "")
+        let date  = friendlyDate(drop.dateStr ?? drop.slots.first?.dateStr) ?? ""
+        let datePart = date.isEmpty ? "" : "\(date) · "
+        return "\(datePart)\(time) • Party of \(party)"
     }
 
     private func formatTime(_ t: String) -> String {
@@ -687,6 +705,10 @@ private struct RealTimeTickerCard: View {
         return m > 0 ? "\(h12):\(String(format: "%02d", m))\(ap)" : "\(h12):00\(ap)"
     }
 
+    private var dateLabel: String {
+        friendlyDate(drop.dateStr ?? drop.slots.first?.dateStr) ?? ""
+    }
+
     private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
     private var rarityScore: Int { max(0, min(100, Int((drop.rarityScore ?? 0).rounded()))) }
     private var showRarity: Bool { rarityScore > 0 }
@@ -734,11 +756,11 @@ private struct RealTimeTickerCard: View {
 
                 // Chips row
                 HStack(spacing: 12) {
-                    // Time chip
+                    // Date + time chip
                     HStack(spacing: 4) {
                         Image(systemName: "clock.fill")
                             .font(.system(size: 11))
-                        Text(compactTime)
+                        Text(dateLabel.isEmpty ? compactTime : "\(dateLabel) \(compactTime)")
                             .font(.system(size: 13, weight: .semibold))
                     }
                     .foregroundColor(palette.textSecondary)
