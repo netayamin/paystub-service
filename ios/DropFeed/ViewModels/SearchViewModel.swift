@@ -59,14 +59,14 @@ final class SearchViewModel: ObservableObject {
 
     // Shown while waiting for real metrics data from the server
     static let fallbackLikelyToOpen: [LikelyToOpenVenue] = [
-        LikelyToOpenVenue(name: "4 Charles Prime Rib",  neighborhood: "West Village",      rarityScore: 0.95, trendPct:  0.12),
-        LikelyToOpenVenue(name: "Via Carota",           neighborhood: "West Village",      rarityScore: 0.90, trendPct:  0.08),
-        LikelyToOpenVenue(name: "Atomix",               neighborhood: "NoMad",             rarityScore: 0.92, trendPct:  0.00),
-        LikelyToOpenVenue(name: "Tatiana",              neighborhood: "Lincoln Center",    rarityScore: 0.88, trendPct:  0.15),
-        LikelyToOpenVenue(name: "Don Angie",            neighborhood: "West Village",      rarityScore: 0.96, trendPct:  0.05),
-        LikelyToOpenVenue(name: "Lilia",                neighborhood: "Williamsburg",      rarityScore: 0.93, trendPct:  0.10),
-        LikelyToOpenVenue(name: "Carbone",              neighborhood: "Greenwich Village", rarityScore: 0.91, trendPct: -0.03),
-        LikelyToOpenVenue(name: "Minetta Tavern",       neighborhood: "Greenwich Village", rarityScore: 0.87, trendPct:  0.02),
+        LikelyToOpenVenue(name: "4 Charles Prime Rib",  rarityScore: 0.95, neighborhood: "West Village",      trendPct:  0.12),
+        LikelyToOpenVenue(name: "Via Carota",           rarityScore: 0.90, neighborhood: "West Village",      trendPct:  0.08),
+        LikelyToOpenVenue(name: "Atomix",               rarityScore: 0.92, neighborhood: "NoMad",             trendPct:  0.00),
+        LikelyToOpenVenue(name: "Tatiana",              rarityScore: 0.88, neighborhood: "Lincoln Center",    trendPct:  0.15),
+        LikelyToOpenVenue(name: "Don Angie",            rarityScore: 0.96, neighborhood: "West Village",      trendPct:  0.05),
+        LikelyToOpenVenue(name: "Lilia",                rarityScore: 0.93, neighborhood: "Williamsburg",      trendPct:  0.10),
+        LikelyToOpenVenue(name: "Carbone",              rarityScore: 0.91, neighborhood: "Greenwich Village", trendPct: -0.03),
+        LikelyToOpenVenue(name: "Minetta Tavern",       rarityScore: 0.87, neighborhood: "Greenwich Village", trendPct:  0.02),
     ]
 
     // MARK: - Init
