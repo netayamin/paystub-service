@@ -41,9 +41,9 @@ BUILTIN_MARKETS: dict[str, Market] = {
     "miami": Market(
         slug="miami",
         display_name="Miami Beach & Surrounding",
-        # Covers South Beach, Mid Beach, North Beach, Wynwood, Brickell,
-        # Downtown Miami, Coral Gables, and surrounding dining corridors.
-        bounding_box=(25.700, -80.320, 25.920, -80.115),
+        # South Beach, Mid Beach, North Beach, Wynwood, Brickell, Downtown Miami.
+        # Format: south_lat, west_lng, north_lat, east_lng
+        bounding_box=(25.749226959817506, -80.2386971839299, 25.865595772185124, -80.09570325692795),
         timezone="America/New_York",
         location_slug="miami-fl",
     ),

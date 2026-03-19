@@ -7,7 +7,7 @@ struct AnimatedLiveDot: View {
     
     var body: some View {
         Circle()
-            .fill(AppTheme.liveDot)
+            .fill(AppTheme.accentRed)
             .frame(width: 8, height: 8)
             .scaleEffect(reduceMotion ? 1 : (isPulsing ? 1.3 : 0.9))
             .opacity(reduceMotion ? 1 : (isPulsing ? 0.8 : 1))

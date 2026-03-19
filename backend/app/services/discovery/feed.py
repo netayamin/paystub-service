@@ -2,25 +2,13 @@
 Feed curation: ranked board, top opportunities, hot right now.
 
 Moves logic from frontend to backend so the API returns ready-to-render segments.
+Uses market-aware hotlists (NYC / Miami) from app.core.hotspots.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
-# High-demand NYC restaurants (Alex Reichek top list + classics; match frontend HOT_RESTAURANTS for is_hot)
-HOT_RESTAURANTS = frozenset([
-    "theodora", "the corner store", "zou zou", "thai diner", "lilia", "russ & daughters",
-    "ha's snack bar", "via carota", "rule of thirds", "coqodaq", "ippudo", "di an di",
-    "leo", "balthazar", "laser wolf", "gupshup", "planta queen", "bangkok supper club",
-    "nami nori", "margot", "mokbar", "saigon social", "blue ribbon sushi", "l'industrie",
-    "shuka", "pastis", "minetta tavern", "don angie", "cafe spaghetti", "chez ma tante",
-    "misi", "twin tails", "dame", "babbo", "wu's wonton", "miss ada",
-    "carbone", "cote", "le bernardin", "i sodi", "tatiana", "atomix",
-    "4 charles prime rib", "eleven madison park", "per se",
-])
-
-# Names that get a slot in Top Opportunities when present (match frontend)
-TOP_OPPORTUNITY_PRIORITY_NAMES = ("don angie", "i sodi", "tatiana", "lilia", "via carota")
+from app.core.hotspots import is_hotspot, top_priority_names
 
 TOP_OPPORTUNITIES_MAX = 4
 HOT_RIGHT_NOW_MAX = 12
@@ -36,21 +24,15 @@ def _normalize_name(name: str | None) -> str:
     return name.strip().lower()
 
 
-def is_hot_restaurant(name: str | None) -> bool:
+def is_hot_restaurant(name: str | None, market: str = "nyc") -> bool:
+    return is_hotspot(name, market)
+
+
+def _is_top_priority(name: str | None, market: str = "nyc") -> bool:
     n = _normalize_name(name)
     if not n:
         return False
-    for hot in HOT_RESTAURANTS:
-        if hot in n or n in hot:
-            return True
-    return False
-
-
-def _is_top_priority(name: str | None) -> bool:
-    n = _normalize_name(name)
-    if not n:
-        return False
-    return any(p in n or n in p for p in TOP_OPPORTUNITY_PRIORITY_NAMES)
+    return any(p in n or n in p for p in top_priority_names(market))
 
 
 def _venue_key(v: dict) -> str:
@@ -140,6 +122,7 @@ def _consolidate_cards(
                 "resy_popularity_score": payload.get("resy_popularity_score"),
                 "rating_average": payload.get("rating_average"),
                 "rating_count": payload.get("rating_count"),
+                "market": payload.get("market") or "nyc",
             }
         card = by_name[norm]
         slot = {"date_str": date_str, "time": time_str, "resyUrl": resy_url}
@@ -172,6 +155,7 @@ def _consolidate_cards(
                 "resy_popularity_score": payload.get("resy_popularity_score"),
                 "rating_average": payload.get("rating_average"),
                 "rating_count": payload.get("rating_count"),
+                "market": payload.get("market") or "nyc",
             }
         card = by_name[norm]
         slot = {"date_str": date_str, "time": time_str, "resyUrl": resy_url}
@@ -285,24 +269,32 @@ def build_feed(
     now_ts = datetime.now(timezone.utc)
 
     for c in cards:
-        is_hot = is_hot_restaurant(c.get("name"))
+        mkt = c.get("market") or "nyc"
+        is_hot = is_hot_restaurant(c.get("name"), mkt)
         c["feedHot"] = is_hot
         c["_priority"] = _priority_score(c, is_hot)
 
     ranked = sorted(cards, key=lambda x: -(x.get("_priority") or 0))
 
-    # Top opportunities: priority names first, then hot, then fill to 4
+    # Top opportunities: priority names first (per market), then hot, then fill to 4
     priority_picks = []
     used_ids = set()
-    for pname in TOP_OPPORTUNITY_PRIORITY_NAMES:
-        for d in ranked:
-            if d.get("id") in used_ids:
-                continue
-            n = _normalize_name(d.get("name"))
-            if pname in n or n in pname:
-                priority_picks.append(d)
-                used_ids.add(d["id"])
+    for market in ("nyc", "miami"):
+        if len(priority_picks) >= TOP_OPPORTUNITIES_MAX:
+            break
+        for pname in top_priority_names(market):
+            if len(priority_picks) >= TOP_OPPORTUNITIES_MAX:
                 break
+            for d in ranked:
+                if d.get("id") in used_ids:
+                    continue
+                if (d.get("market") or "nyc") != market:
+                    continue
+                n = _normalize_name(d.get("name"))
+                if pname in n or n in pname:
+                    priority_picks.append(d)
+                    used_ids.add(d["id"])
+                    break
     seen_ids = {d["id"] for d in priority_picks}
     hot_only = [d for d in ranked if d.get("feedHot")]
     rest_hot = [d for d in hot_only if d["id"] not in seen_ids]

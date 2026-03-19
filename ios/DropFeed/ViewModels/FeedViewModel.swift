@@ -23,8 +23,23 @@ final class FeedViewModel: ObservableObject {
     @Published var selectedDates: Set<String> = []
     @Published var selectedPartySizes: Set<Int> = []
     @Published var selectedTimeFilter: String = "all"
+    /// Selected market (e.g. "nyc", "miami"); persisted to UserDefaults
+    @Published var selectedMarket: String = "nyc" {
+        didSet { Self.persistMarket(selectedMarket) }
+    }
+
+    private static let marketKey = "feed_selected_market"
+    private static func persistMarket(_ value: String) {
+        UserDefaults.standard.set(value, forKey: marketKey)
+    }
 
     private let service = APIService.shared
+
+    init() {
+        if let saved = UserDefaults.standard.string(forKey: Self.marketKey), !saved.isEmpty {
+            _selectedMarket = Published(initialValue: saved)
+        }
+    }
     private var previousDropIds: Set<String> = []
 
     // MARK: - Derived
@@ -191,7 +206,8 @@ final class FeedViewModel: ObservableObject {
                 dates: selectedDates.isEmpty ? nil : Array(selectedDates),
                 partySizes: selectedPartySizes.isEmpty ? nil : Array(selectedPartySizes),
                 timeAfter: timeAPI.after,
-                timeBefore: timeAPI.before
+                timeBefore: timeAPI.before,
+                market: selectedMarket
             )
 
             var ranked = resp.rankedBoard ?? []

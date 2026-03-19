@@ -5,6 +5,7 @@ struct DateStripView: View {
     let dateOptions: [(dateStr: String, dayName: String, dayNum: String)]
     @Binding var selectedDates: Set<String>
     var calendarCounts: CalendarCounts
+    var palette: FeedPalette = .dark
 
     private var allSelected: Bool { selectedDates.isEmpty }
 
@@ -20,10 +21,10 @@ struct DateStripView: View {
                     } label: {
                         Text("All")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(allSelected ? .white : AppTheme.textSecondary)
+                            .foregroundColor(allSelected ? .white : palette.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(allSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
+                            .background(allSelected ? palette.pillSelected : palette.pillUnselected)
                             .cornerRadius(12)
                     }
                     .buttonStyle(ScaleButtonStyle())
@@ -45,14 +46,14 @@ struct DateStripView: View {
                             VStack(spacing: 2) {
                                 Text(opt.dayName)
                                     .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(isSelected ? .white.opacity(0.8) : AppTheme.textTertiary)
+                                    .foregroundColor(isSelected ? .white.opacity(0.8) : palette.textTertiary)
                                 Text(opt.dayNum)
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
+                                    .foregroundColor(isSelected ? .white : palette.textPrimary)
                                 // Availability dot
                                 if count > 0 {
                                     Circle()
-                                        .fill(isSelected ? Color.white : AppTheme.accentRed)
+                                        .fill(isSelected ? Color.white : palette.accentRed)
                                         .frame(width: 5, height: 5)
                                 } else {
                                     Spacer().frame(height: 5)
@@ -60,7 +61,7 @@ struct DateStripView: View {
                             }
                             .frame(width: 48)
                             .padding(.vertical, 8)
-                            .background(isSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
+                            .background(isSelected ? palette.pillSelected : palette.pillUnselected)
                             .cornerRadius(14)
                         }
                         .buttonStyle(ScaleButtonStyle())
@@ -90,7 +91,8 @@ struct DateStripView: View {
             calendarCounts: CalendarCounts(
                 byDate: ["2026-03-18": 12, "2026-03-19": 8, "2026-03-21": 3],
                 dates: []
-            )
+            ),
+            palette: .liveFeedLight
         )
     }
 }

@@ -77,7 +77,7 @@ final class SearchViewModel: ObservableObject {
         return "\(selectedDates.count) dates"
     }
 
-    func loadResults() async {
+    func loadResults(market: String? = nil) async {
         hasSearched = true
         isLoading = true
         error = nil
@@ -89,7 +89,8 @@ final class SearchViewModel: ObservableObject {
                 dates: selectedDates.isEmpty ? nil : Array(selectedDates),
                 partySizes: selectedPartySizes.isEmpty ? nil : Array(selectedPartySizes),
                 timeAfter: timeAPI.after,
-                timeBefore: timeAPI.before
+                timeBefore: timeAPI.before,
+                market: market
             )
             var ranked = resp.rankedBoard ?? []
             if ranked.isEmpty {

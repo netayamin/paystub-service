@@ -11,6 +11,7 @@ struct FeedView: View {
     var alertBadgeCount: Int = 0
 
     private var vm: FeedViewModel { feedVM }
+    private let palette: FeedPalette = .liveFeedLight
 
     /// Maps internal key → display label for time filter pills
     private let timeFilters: [(key: String, label: String)] = [
@@ -48,7 +49,7 @@ struct FeedView: View {
             }
             .animation(.easeInOut(duration: 0.28), value: viewStateId)
         }
-        .background(AppTheme.background)
+        .background(palette.pageBackground)
         .refreshable { await vm.refresh() }
         .task {
             await vm.refresh()
@@ -66,20 +67,12 @@ struct FeedView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Live Market")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(AppTheme.textPrimary)
-                    HStack(spacing: 5) {
-                        AnimatedLiveDot()
-                        Text(vm.tablesDroppedLastHour > 0
-                             ? "\(vm.tablesDroppedLastHour) tables dropped this hour"
-                             : "Scanning now…")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.textSecondary)
-                    }
+                    Text("Live Feed")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundColor(palette.textPrimary)
                 }
                 Spacer()
-                alertBellButton
+                liveBadge
             }
             .padding(.horizontal, AppTheme.spacingLG)
 
@@ -92,7 +85,20 @@ struct FeedView: View {
         }
         .padding(.top, AppTheme.spacingSM)
         .padding(.bottom, AppTheme.spacingSM)
-        .background(AppTheme.background)
+        .background(palette.pageBackground)
+    }
+
+    private var liveBadge: some View {
+        HStack(spacing: 6) {
+            AnimatedLiveDot()
+            Text("LIVE")
+                .font(.system(size: 12, weight: .bold))
+        }
+        .foregroundColor(palette.accentRed)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(palette.accentRed.opacity(0.12))
+        .clipShape(Capsule())
     }
 
     private var alertBellButton: some View {
@@ -124,10 +130,10 @@ struct FeedView: View {
         } label: {
             Text(label)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(isSelected ? .white : AppTheme.textSecondary)
+                .foregroundColor(isSelected ? .white : palette.textSecondary)
                 .padding(.horizontal, AppTheme.spacingLG)
                 .padding(.vertical, AppTheme.spacingSM)
-                .background(isSelected ? AppTheme.accentOrange : AppTheme.pillUnselected)
+                .background(isSelected ? palette.accentRed : palette.pillUnselected)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(ScaleButtonStyle())
@@ -141,7 +147,8 @@ struct FeedView: View {
             DateStripView(
                 dateOptions: vm.dateOptions,
                 selectedDates: $feedVM.selectedDates,
-                calendarCounts: vm.calendarCounts
+                calendarCounts: vm.calendarCounts,
+                palette: palette
             )
 
             // Time + party size pills
@@ -152,7 +159,7 @@ struct FeedView: View {
                     }
 
                     Rectangle()
-                        .fill(AppTheme.border)
+                        .fill(palette.border)
                         .frame(width: 1, height: 18)
                         .padding(.horizontal, 2)
 
@@ -171,10 +178,10 @@ struct FeedView: View {
             }
 
             Rectangle()
-                .fill(AppTheme.border)
+                .fill(palette.border)
                 .frame(height: 0.5)
         }
-        .background(AppTheme.background)
+        .background(palette.pageBackground)
         .animation(.easeInOut(duration: 0.2), value: hasActiveFilters)
     }
 
@@ -187,10 +194,10 @@ struct FeedView: View {
         } label: {
             Text(filter.label)
                 .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                .foregroundColor(isSelected ? .white : AppTheme.textSecondary)
+                .foregroundColor(isSelected ? .white : palette.textSecondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(isSelected ? AppTheme.accent : AppTheme.pillUnselected)
+                .background(isSelected ? palette.accent : palette.pillUnselected)
                 .clipShape(Capsule())
         }
         .buttonStyle(ScaleButtonStyle())
@@ -213,10 +220,10 @@ struct FeedView: View {
                 Text("\(size)")
                     .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
             }
-            .foregroundColor(isSelected ? .white : AppTheme.textSecondary)
+            .foregroundColor(isSelected ? .white : palette.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(isSelected ? AppTheme.accent : AppTheme.pillUnselected)
+            .background(isSelected ? palette.accent : palette.pillUnselected)
             .clipShape(Capsule())
         }
         .buttonStyle(ScaleButtonStyle())
@@ -256,10 +263,10 @@ struct FeedView: View {
             HStack(spacing: AppTheme.spacingSM) {
                 Text("Filters:")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(AppTheme.textTertiary)
+                    .foregroundColor(palette.textTertiary)
                 // Identifiable data → ForEach(_:content:) has no overload ambiguity
                 ForEach(activeChips) { chip in
-                    ActiveChipView(label: chip.label, onRemove: chip.onRemove)
+                    ActiveChipView(palette: palette, label: chip.label, onRemove: chip.onRemove)
                 }
                 Button {
                     withAnimation {
@@ -270,7 +277,7 @@ struct FeedView: View {
                 } label: {
                     Text("Clear all")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(AppTheme.accentRed)
+                        .foregroundColor(palette.accentRed)
                 }
                 .buttonStyle(.plain)
             }
@@ -294,55 +301,21 @@ struct FeedView: View {
 
     private var mainFeedContent: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                let topOpps = vm.carouselDrops
-                if !topOpps.isEmpty {
-                    FeedTopOpportunitiesSection(drops: Array(topOpps.prefix(6)))
-                        .padding(.bottom, AppTheme.spacingXL)
-                }
-
-                let hotDrops = vm.hottestDrops
-                if !hotDrops.isEmpty {
-                    FeedHotRightNowSection(
-                        drops: Array(hotDrops.prefix(8)),
-                        isWatched: { savedVM.isWatched($0) },
-                        onToggleWatch: { savedVM.toggleWatch($0) }
-                    )
-                    .padding(.bottom, AppTheme.spacingXL)
-                }
-
-                let justDropped = Array(vm.justDropped.prefix(10))
-                if !justDropped.isEmpty {
-                    FeedJustDroppedSection(drops: justDropped)
-                        .padding(.bottom, AppTheme.spacingXL)
-                } else if vm.drops.isEmpty {
+            LazyVStack(spacing: 12) {
+                if vm.drops.isEmpty {
                     contextualEmptyView
-                        .padding(.bottom, AppTheme.spacingXL)
+                } else {
+                    let visibleDrops = Array(vm.drops.prefix(30))
+                    ForEach(visibleDrops) { drop in
+                        LiveFeedRowCard(drop: drop)
+                    }
                 }
-
-                if !vm.likelyToOpen.isEmpty {
-                    FeedLikelyToOpenSection(
-                        venues: vm.likelyToOpen,
-                        isPremium: premium.isPremium,
-                        onPurchase: { Task { try? await premium.purchase() } },
-                        onOpenAlerts: onOpenAlerts
-                    )
-                    .padding(.bottom, AppTheme.spacingXL)
-                }
-
-                FeedWatchlistSection(
-                    watchedNames: Array(savedVM.watchedVenues).sorted(),
-                    onOpenAlerts: onOpenAlerts
-                )
-
-                Spacer(minLength: 120)
             }
-            .animation(
-                .spring(response: 0.4, dampingFraction: 0.85),
-                value: vm.drops.count
-            )
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 120)
         }
-        .background(AppTheme.background)
+        .background(palette.pageBackground)
     }
 
     // MARK: - Contextual empty state
@@ -351,19 +324,19 @@ struct FeedView: View {
         VStack(spacing: AppTheme.spacingXL) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.surface)
+                    .fill(palette.surface)
                     .frame(width: 80, height: 80)
                 Image(systemName: contextualIcon)
                     .font(.system(size: 32))
-                    .foregroundColor(AppTheme.textTertiary)
+                    .foregroundColor(palette.textTertiary)
             }
             VStack(spacing: AppTheme.spacingSM) {
                 Text(contextualTitle)
                     .font(.system(size: 19, weight: .bold))
-                    .foregroundColor(AppTheme.textPrimary)
+                    .foregroundColor(palette.textPrimary)
                 Text(contextualMessage)
                     .font(.system(size: 14))
-                    .foregroundColor(AppTheme.textSecondary)
+                    .foregroundColor(palette.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
@@ -380,7 +353,7 @@ struct FeedView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, AppTheme.spacingXL)
                         .padding(.vertical, 12)
-                        .background(AppTheme.accent)
+                        .background(palette.accent)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(ScaleButtonStyle())
@@ -424,14 +397,14 @@ struct FeedView: View {
             HStack(spacing: 12) {
                 Image(systemName: "wifi.slash")
                     .font(.system(size: 16))
-                    .foregroundColor(AppTheme.accentRed)
+                    .foregroundColor(palette.accentRed)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Connection issue")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AppTheme.textPrimary)
+                        .foregroundColor(palette.textPrimary)
                     Text(message)
                         .font(.system(size: 12))
-                        .foregroundColor(AppTheme.textSecondary)
+                        .foregroundColor(palette.textSecondary)
                         .lineLimit(2)
                 }
                 Spacer()
@@ -441,16 +414,16 @@ struct FeedView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(AppTheme.accent)
+                        .background(palette.accent)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(ScaleButtonStyle())
             }
             .padding(AppTheme.spacingLG)
-            .background(AppTheme.accentRed.opacity(0.10))
+            .background(palette.accentRed.opacity(0.10))
             .overlay(
                 Rectangle()
-                    .fill(AppTheme.accentRed)
+                    .fill(palette.accentRed)
                     .frame(width: 3)
                     .frame(maxHeight: .infinity),
                 alignment: .leading
@@ -458,7 +431,152 @@ struct FeedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppTheme.background)
+        .background(palette.pageBackground)
+    }
+}
+
+// MARK: - Live feed row card (matches screenshot style)
+
+private struct LiveFeedRowCard: View {
+    let drop: Drop
+    private let palette: FeedPalette = .liveFeedLight
+
+    private var resyUrl: URL? {
+        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var rarityInt: Int {
+        let score = drop.rarityScore ?? 0
+        let normalized = score <= 1 ? score * 100 : score
+        return min(100, max(0, Int(normalized.rounded())))
+    }
+
+    private var rarityColor: Color { AppTheme.scarcityColor(for: drop.scarcityTier) }
+
+    private var rarityPillText: String { "\(rarityInt)/100 Rarity" }
+
+    private var guestsText: String? {
+        let sizes = drop.partySizesAvailable.sorted()
+        guard let first = sizes.first else { return nil }
+        return "\(first) Guests"
+    }
+
+    private var dateAndTimeLine: String {
+        let dateStr = drop.dateStr ?? drop.slots.first?.dateStr
+        let timeStr = drop.slots.first?.time ?? ""
+
+        let formattedTime = timeStr.isEmpty ? "" : formatTime(timeStr)
+
+        guard let ds = dateStr else { return formattedTime.isEmpty ? "Availability" : formattedTime }
+
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        guard let d = fmt.date(from: ds) else { return formattedTime.isEmpty ? "Availability" : formattedTime }
+
+        if Calendar.current.isDateInToday(d) {
+            return formattedTime.isEmpty ? "Tonight" : "Tonight, \(formattedTime)"
+        }
+        if Calendar.current.isDateInTomorrow(d) {
+            return formattedTime.isEmpty ? "Tomorrow" : "Tomorrow, \(formattedTime)"
+        }
+
+        if formattedTime.isEmpty { return "Available" }
+        return "\(formattedTime)"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack(alignment: .topLeading) {
+                AsyncImage(url: resyUrl) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    default:
+                        Color(.systemGray5)
+                    }
+                }
+                .frame(width: 78, height: 78)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                )
+                .clipped()
+
+                Text(rarityPillText)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(rarityColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(rarityColor.opacity(0.12))
+                    .clipShape(Capsule())
+                    .padding(8)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(drop.name)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(palette.textPrimary)
+                    .lineLimit(1)
+
+                Text(dateAndTimeLine)
+                    .font(.system(size: 12))
+                    .foregroundColor(palette.textSecondary)
+                    .lineLimit(1)
+
+                if let guestsText {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(palette.textSecondary)
+                        Text(guestsText)
+                            .font(.system(size: 12))
+                            .foregroundColor(palette.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                guard let url = resyUrl else { return }
+                UIApplication.shared.open(url)
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Secure")
+                        .font(.system(size: 13, weight: .bold))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 13, weight: .bold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(palette.accentRed)
+                .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .disabled(resyUrl == nil)
+            .opacity(resyUrl == nil ? 0.6 : 1)
+        }
+        .padding(12)
+        .background(palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(palette.border, lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 2)
+    }
+
+    private func formatTime(_ t: String) -> String {
+        let parts = t.trimmingCharacters(in: .whitespaces).split(separator: ":")
+        guard let h = parts.first.flatMap({ Int($0) }) else { return t }
+        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
+        let hour12 = h % 12 == 0 ? 12 : h % 12
+        let ap = h < 12 ? "AM" : "PM"
+        return "\(hour12):\(String(format: "%02d", m)) \(ap)"
     }
 }
 
@@ -1216,6 +1334,7 @@ struct FilterChipData: Identifiable {
 // MARK: - Active filter chip view
 
 struct ActiveChipView: View {
+    let palette: FeedPalette
     let label: String
     let onRemove: () -> Void
 
@@ -1229,11 +1348,11 @@ struct ActiveChipView: View {
             }
             .buttonStyle(.plain)
         }
-        .foregroundColor(AppTheme.textPrimary)
+        .foregroundColor(palette.textPrimary)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(AppTheme.accent.opacity(0.18))
-        .overlay(Capsule().stroke(AppTheme.accent.opacity(0.4), lineWidth: 0.5))
+        .background(palette.accent.opacity(0.14))
+        .overlay(Capsule().stroke(palette.accent.opacity(0.28), lineWidth: 0.5))
         .clipShape(Capsule())
     }
 }

@@ -2,9 +2,74 @@
 
 Run the **backend in Docker** on a single EC2 instance and use **Amazon RDS for PostgreSQL** for the database. Postgres does **not** run in Docker on the box (avoids RAM issues on t3.micro and keeps the instance stable).
 
-**Your EC2 (this deployment):** `3.19.238.117` — API: **http://3.19.238.117:8000**
+**Your EC2 (this deployment):** `18.118.55.231` — API: **http://18.118.55.231:8000**
 
-**If http://YOUR_EC2_IP:8000/health does nothing (times out or blank):**
+---
+
+## Fix EC2 – API not working (step-by-step)
+
+Do these in order. Stop when something fixes it.
+
+### 1. Open port 8000 in the EC2 security group (most common)
+
+If the browser or iOS app **times out** or says **connection refused** when opening `http://18.118.55.231:8000`:
+
+1. In **AWS Console** → **EC2** → **Instances** → click your instance (`18.118.55.231`).
+2. Open the **Security** tab → click the **Security group** link (e.g. `sg-xxxxx`).
+3. **Edit inbound rules** → **Add rule**:
+   - **Type:** Custom TCP
+   - **Port range:** 8000
+   - **Source:** 0.0.0.0/0 (or “Anywhere-IPv4”)
+   - **Description:** Backend API (optional)
+4. **Save rules**.
+
+Then try again: `http://18.118.55.231:8000/health` (from browser or phone). You should get JSON like `{"status":"ok",...}`.
+
+### 2. Check that the backend is running on EC2
+
+SSH in and run:
+
+```bash
+ssh -i /path/to/your-key.pem ec2-user@18.118.55.231
+cd ~/paystub-service
+docker ps
+curl -s http://localhost:8000/health
+```
+
+- **`curl` returns JSON:** Backend is fine on the server. If you still can’t reach it from outside, go back to **step 1** (security group).
+- **`curl` hangs or fails:** Backend or DB issue. Run:
+
+  ```bash
+  docker compose -f docker-compose.prod.yml ps
+  docker compose -f docker-compose.prod.yml logs --tail=80 backend
+  ```
+
+  (If your EC2 has the older CLI: `docker-compose -f docker-compose.prod.yml logs --tail=80 backend`.)
+
+### 3. If the backend container is Exited or Restarting
+
+- **Database connection errors in logs:** Set `DATABASE_URL` in `backend/.env` correctly. If you use **Postgres in Docker** on the same EC2 (e.g. `docker-compose.yml` with `db`), use the host so the backend can reach the DB:
+  - In `backend/.env`:  
+    `DATABASE_URL=postgresql://paystub:paystub@host.docker.internal:5432/paystub`
+  - And in `docker-compose.prod.yml` the backend service should have `extra_hosts: - "host.docker.internal:host-gateway"` (it already does).
+- **Out of memory:** Use a larger instance (e.g. t3.small).
+- After editing `.env` or fixing config:
+
+  ```bash
+  cd ~/paystub-service
+  docker compose -f docker-compose.prod.yml up -d --force-recreate backend
+  curl -s http://localhost:8000/health
+  ```
+
+### 4. If you use RDS (Postgres not in Docker)
+
+- **RDS security group** must allow **PostgreSQL (5432)** from **this EC2’s security group** (or EC2 private IP). Otherwise the backend cannot connect and requests hang or fail.
+- `backend/.env` must have:  
+  `DATABASE_URL=postgresql://USER:PASSWORD@your-rds-endpoint.region.rds.amazonaws.com:5432/DBNAME`
+
+---
+
+**If http://18.118.55.231:8000/health does nothing (timeout, connection refused, or blank):**
 
 1. **EC2 security group** — Inbound: add **Custom TCP, port 8000**, Source **0.0.0.0/0** (and keep **SSH 22**).
 2. **RDS security group** — Inbound: add **PostgreSQL, port 5432**, Source = **this EC2’s security group** (e.g. `sg-xxx` for the instance). Without this, the backend cannot connect to the database and requests hang or fail.
@@ -22,6 +87,43 @@ sudo docker-compose -f docker-compose.prod.yml logs --tail 80 backend
 - If **curl to localhost:8000/health** returns `200` from EC2 but the app/iOS from outside gets no reply: **EC2 security group** — open **Custom TCP 8000** from `0.0.0.0/0`.
 - If **curl to localhost:8000/health** hangs or fails: backend or DB issue. Check logs; ensure RDS security group allows EC2 on 5432 and `backend/.env` has the correct `DATABASE_URL`.
 - If **/health** works but **/chat/watches/just-opened** never returns: that endpoint can be slow under load (many buckets). On a small instance, consider t3.small or increasing client timeout in the app.
+
+---
+
+## Stale feed / no live updates (same results every time)
+
+If the app or API keeps returning the same just-opened results and never seems to update:
+
+1. **Run the discovery diagnostic** (on EC2 after SSH, or from your Mac with your EC2 IP):
+   ```bash
+   cd ~/paystub-service
+   bash scripts/ec2-diagnose-discovery.sh
+   ```
+   From Mac (replace with your EC2 IP):
+   ```bash
+   BASE_URL=http://18.118.55.231:8000 bash scripts/ec2-diagnose-discovery.sh
+   ```
+   This prints: health, **last_scan_at**, **feed_updating**, job_alive, stale buckets, and compares snapshot vs DB (debug=1).
+
+2. **Interpret the output:**
+   - **last_scan_at is missing or very old:** The discovery job is not updating the DB (scheduler not running, or every bucket is failing). Check backend logs (step 3).
+   - **feed_updating is false:** Scans are not completing within the last 10 minutes — either the job isn’t running or Resy/DB is slow or failing.
+   - **stale_bucket_count > 0:** Some buckets haven’t been scanned in 4+ hours; feed excludes them. Usually means the job crashed or Resy credentials are wrong.
+   - **Snapshot and debug=1 counts both 0:** DB has no just-opened data. Either discovery never ran successfully (e.g. no RESY_API_KEY / RESY_AUTH_TOKEN in `backend/.env` on EC2), or Resy is returning no availability for the polled dates.
+
+3. **Check backend logs on EC2:**
+   ```bash
+   docker compose -f docker-compose.prod.yml logs --tail=150 backend
+   ```
+   Look for: `Discovery bucket job tick`, `Snapshot rebuild failed`, Resy/HTTP errors, or `DATABASE_URL`/connection errors. If the job runs every ~5s you should see periodic discovery activity; if not, the scheduler may not have started.
+
+4. **Confirm env on EC2:** Backend must have Resy and DB set:
+   ```bash
+   grep -E '^DATABASE_URL|^RESY_' backend/.env | sed 's/=.*/=***/'
+   ```
+   If any are missing, add them and restart: `docker compose -f docker-compose.prod.yml up -d --force-recreate backend`.
+
+5. **Optional – force fresh data for one request:** Call the API with `?debug=1` to bypass the in-memory snapshot and read from the DB. If debug=1 returns different/newer data than without, the snapshot isn’t being rebuilt (e.g. job not finishing buckets); if both are the same and old, the DB isn’t being updated (discovery job or Resy issue).
 
 ---
 

@@ -62,9 +62,17 @@ const HOT_RESTAURANT_NAMES = Array.from(HOT_RESTAURANTS).sort((a, b) => a.locale
 /** Names that always get a slot in Top Opportunities when they exist in the feed */
 const TOP_OPPORTUNITY_PRIORITY_NAMES = ["Don Angie", "I Sodi", "Tatiana", "Lilia", "Via Carota"];
 
-function isHotRestaurant(name) {
+/** Use API hotlist when provided (per market); else fall back to NYC HOT_RESTAURANTS. */
+function isHotRestaurant(name, hotlistFromApi = null) {
   if (!name) return false;
   const normalized = name.toLowerCase().trim();
+  if (Array.isArray(hotlistFromApi) && hotlistFromApi.length > 0) {
+    for (const hotName of hotlistFromApi) {
+      const h = (hotName || "").toLowerCase().trim();
+      if (h && (normalized.includes(h) || h.includes(normalized))) return true;
+    }
+    return false;
+  }
   for (const hotName of HOT_RESTAURANTS) {
     if (normalized.includes(hotName.toLowerCase()) || hotName.toLowerCase().includes(normalized)) {
       return true;
@@ -393,9 +401,20 @@ export default function App() {
   const [excludedVenues, setExcludedVenues] = useState(new Set());
   const excludedIdByName = useRef({}); // normalized name -> exclude row id
   const [watchSearch, setWatchSearch] = useState(""); // search/add input in My Watches view
-  /** NYC hotlist names (from API) — user gets notifications for these by default unless excluded */
+  /** Hotlist names (from API, per market) — user gets notifications for these by default unless excluded */
   const [notifyHotlist, setNotifyHotlist] = useState([]);
-  
+  /** Market: nyc | miami — filters feed and hotlist */
+  const [selectedMarket, setSelectedMarket] = useState(() => {
+    try {
+      const s = localStorage.getItem("scout_market");
+      return s === "miami" ? "miami" : "nyc";
+    } catch { return "nyc"; }
+  });
+  const setSelectedMarketPersisted = useCallback((v) => {
+    setSelectedMarket(v);
+    try { localStorage.setItem("scout_market", v); } catch {}
+  }, []);
+
   // Live indicators
   const [scanProgress, setScanProgress] = useState(0);
   const [recentDropIds, setRecentDropIds] = useState(new Set());
@@ -461,6 +480,7 @@ export default function App() {
       if (selectedPartySizes.size > 0 && selectedPartySizes.size < 4) {
         params.set("party_sizes", Array.from(selectedPartySizes).sort((a, b) => a - b).join(","));
       }
+      if (selectedMarket) params.set("market", selectedMarket);
       params.set("_t", String(Date.now()));
       const qs = params.toString();
       const res = await fetchWithTimeout(`${API_BASE}/chat/watches/just-opened?${qs}`);
@@ -582,7 +602,7 @@ export default function App() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [selectedPartySizes, selectedDates]);
+  }, [selectedPartySizes, selectedDates, selectedMarket]);
 
 
   useEffect(() => {
@@ -668,11 +688,11 @@ export default function App() {
         setExcludedVenues(new Set(excluded.map(e => e.venue_name)));
       })
       .catch(() => {});
-    fetchWithTimeout(`${API_BASE}/chat/watches/hotlist`)
+    fetchWithTimeout(`${API_BASE}/chat/watches/hotlist?market=${selectedMarket}`)
       .then(r => r.ok ? r.json() : { hotlist: [] })
       .then(data => setNotifyHotlist(Array.isArray(data.hotlist) ? data.hotlist : []))
       .catch(() => setNotifyHotlist([]));
-  }, [recipientId]);
+  }, [recipientId, selectedMarket]);
 
   const toggleWatch = useCallback(async (rawName) => {
     const name = (rawName || "").trim().toLowerCase();
@@ -1034,7 +1054,7 @@ export default function App() {
 
   /** Priority score: heat × availability × freshness × Resy popularity (rating/collections from backend). */
   const priorityScore = (d) => {
-    const heat = isHotRestaurant(d.name) ? 2 : 1;
+    const heat = isHotRestaurant(d.name, notifyHotlist) ? 2 : 1;
     const availability = (d.slots && d.slots.length > 0) ? 1 : 0.01;
     const minutesAgo = d.created_at ? (Date.now() - new Date(d.created_at).getTime()) / 60000 : 999;
     const freshness = 1 / (1 + minutesAgo / 30);
@@ -1048,13 +1068,13 @@ export default function App() {
     const hotFromFeed = [];
     const rest = [];
     for (const d of filteredDrops) {
-      const isHot = isHotRestaurant(d.name);
+      const isHot = isHotRestaurant(d.name, notifyHotlist);
       if (isHot) hotFromFeed.push(d);
       else rest.push(d);
     }
     const stillOpenDrops = buildDiscoveryDrops(stillOpen, "Anytime");
-    const stillOpenHot = stillOpenDrops.filter((d) => isHotRestaurant(d.name));
-    const stillOpenRest = stillOpenDrops.filter((d) => !isHotRestaurant(d.name));
+    const stillOpenHot = stillOpenDrops.filter((d) => isHotRestaurant(d.name, notifyHotlist));
+    const stillOpenRest = stillOpenDrops.filter((d) => !isHotRestaurant(d.name, notifyHotlist));
     const hotConsolidated = consolidateDrops([...hotFromFeed, ...stillOpenHot]);
     const restConsolidated = consolidateDrops([...rest, ...stillOpenRest]);
     const tag = (list, isHot, isStillOpen) =>
@@ -1066,7 +1086,7 @@ export default function App() {
     return merged
       .map((d) => ({ ...d, _priority: priorityScore(d) }))
       .sort((a, b) => b._priority - a._priority);
-  }, [apiFeed, filteredDrops, stillOpen, rankTick]);
+  }, [apiFeed, filteredDrops, stillOpen, rankTick, notifyHotlist]);
 
   /** Hot items (for Top Opportunities + Hot Right Now) */
   const hotItems = useMemo(
@@ -1523,8 +1543,25 @@ export default function App() {
           <div className="flex-1 overflow-y-auto min-h-0 flex flex-col relative" ref={newDropsSectionRef}>
 
 
-            {/* One compact filter row: pill dropdowns */}
+            {/* One compact filter row: market + pill dropdowns */}
             <div className="sticky top-0 z-10 shrink-0 border-b border-slate-200 bg-white px-6 sm:px-8 md:px-10 py-2 flex flex-wrap items-center gap-2">
+              {/* Market selector: New York | Miami */}
+              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMarketPersisted("nyc")}
+                  className={`px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors ${selectedMarket === "nyc" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-600 hover:text-slate-800"}`}
+                >
+                  New York
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMarketPersisted("miami")}
+                  className={`px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors ${selectedMarket === "miami" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-600 hover:text-slate-800"}`}
+                >
+                  Miami
+                </button>
+              </div>
               {(() => {
                 const fmtTime = (t) => {
                   const [h, m] = t.split(":").map(Number);
@@ -2154,7 +2191,7 @@ export default function App() {
                   )}
                   {/* Per-slot scan age for selected date */}
 
-                  {/* 1) TOP OPPORTUNITIES — premium dark spotlight, ranked by demand */}
+                  {/* 1) Best reservations available — hotlist + rarity metrics */}
                   {topOpportunities.length > 0 && (
                     <section className="mb-10 -mx-6 sm:-mx-8 md:-mx-10 px-6 sm:px-8 md:px-10">
                       <div className="rounded-2xl overflow-hidden spotlight-section p-6 sm:p-8 relative">
@@ -2163,7 +2200,10 @@ export default function App() {
                           <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-red-700 text-white shrink-0 shadow-lg shadow-red-900/30 ring-1 ring-white/10">
                             <Flame className="w-5 h-5" strokeWidth={2} />
                           </span>
-                          <h2 className="text-[15px] font-bold text-white uppercase tracking-wider">Top Opportunities</h2>
+                          <div>
+                            <h2 className="text-[15px] font-bold text-white uppercase tracking-wider">Best reservations available</h2>
+                            <p className="text-[11px] text-white/70 mt-0.5">From our hotlist + rarity — popular &amp; hard to get</p>
+                          </div>
                           <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md bg-white/5 text-white/60 text-[9px] font-semibold uppercase tracking-wider border border-white/10">
                             Live
                           </span>
@@ -2308,7 +2348,7 @@ export default function App() {
                     </section>
                   )}
 
-                  {/* HOT RIGHT NOW — at least 2 rows: row 1 = Top Opportunities, row 2 = hot + padded with rest so never only top opps */}
+                  {/* Hot right now — more best-available from hotlist + metrics (second row) */}
                   {homeFeedSecondRow.length > 0 && (
                     <section className="mb-8 -mx-6 sm:-mx-8 md:-mx-10 px-6 sm:px-8 md:px-10">
                       <div className="rounded-xl border-slate-200 bg-white px-5 sm:px-6">

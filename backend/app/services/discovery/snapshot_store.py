@@ -101,10 +101,10 @@ def rebuild_snapshot(db: Session) -> None:
 
         for day in just_opened:
             for v in day.get("venues") or []:
-                v["is_hotspot"] = is_hotspot(v.get("name"))
+                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
         for day in still_open:
             for v in day.get("venues") or []:
-                v["is_hotspot"] = is_hotspot(v.get("name"))
+                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
 
         # Load rolling metrics FIRST so build_feed can rank by rarity
         rolling_rows = (
@@ -314,13 +314,18 @@ def filter_snapshot_for_request(
             out.append(c)
         return out
 
+    def _filter_likely_to_open(items: list[dict]) -> list[dict]:
+        if not mkt_set:
+            return items
+        return [x for x in items if (x.get("market") or "nyc") in mkt_set]
+
     return {
         "just_opened": _filter_days(snap["just_opened"]),
         "still_open": _filter_days(snap["still_open"]),
         "ranked_board": _filter_cards(snap["ranked_board"]),
         "top_opportunities": _filter_cards(snap["top_opportunities"]),
         "hot_right_now": _filter_cards(snap["hot_right_now"]),
-        "likely_to_open": snap.get("likely_to_open", []),
+        "likely_to_open": _filter_likely_to_open(snap.get("likely_to_open", [])),
         "likely_open_today": [],
         "likely_open_tomorrow": [],
         "likely_open_soon": [],

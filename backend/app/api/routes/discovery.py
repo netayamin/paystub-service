@@ -28,7 +28,7 @@ from app.core.discovery_config import (
     DISCOVERY_PARTY_SIZES,
     DISCOVERY_TIME_SLOTS,
 )
-from app.core.nyc_hotspots import is_hotspot, list_hotspots
+from app.core.hotspots import is_hotspot, list_hotspots
 from app.db.session import get_db, SessionLocal
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
@@ -623,13 +623,14 @@ async def calendar_counts(db: Session = Depends(get_db)):
 
 
 @router.get("/watches/hotlist")
-async def hotlist():
+async def hotlist(market: str | None = None):
     """
-    NYC hotlist (hotspot) restaurant names. By default you get email/push notifications
-    for drops at any of these, plus any venues you add to My Watches. Use in bookmarks UI
-    to show "what you'll get notified about".
+    Hotlist (hotspot) restaurant names for the given market. By default you get push notifications
+    for drops at any of these, plus any venues you add to My Watches.
+    market: nyc (default) or miami.
     """
-    return {"hotlist": list_hotspots()}
+    mkt = (market or "nyc").strip().lower()
+    return {"hotlist": list_hotspots(mkt), "market": mkt}
 
 
 def _normalize_venue(name: str | None) -> str:
@@ -1051,10 +1052,10 @@ async def list_just_opened(
         )
         for day in just_opened:
             for v in day.get("venues") or []:
-                v["is_hotspot"] = is_hotspot(v.get("name"))
+                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
         for day in still_open:
             for v in day.get("venues") or []:
-                v["is_hotspot"] = is_hotspot(v.get("name"))
+                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
 
         # Load rolling metrics FIRST so build_feed ranks by rarity_score
         rolling_rows = (
