@@ -5,6 +5,7 @@ final class FeedViewModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var countdownTask: Task<Void, Never>?
     private var tickerRotationTask: Task<Void, Never>?
+    private var tickerSlotIndex: Int = 0   // which slot gets swapped next
 
     @Published var drops: [Drop] = []
     @Published var topOpportunities: [Drop]?
@@ -125,25 +126,33 @@ final class FeedViewModel: ObservableObject {
         startTickerRotation()
     }
 
-    // MARK: - Ticker rotation (one slot at a time, every 1.5 s)
+    // MARK: - Ticker rotation
+    // Each of the 5 slots shows a venue for ~10 s. We cycle through slots 0→1→2→3→4→0…
+    // with a ~2 s gap between swaps, so they change at different times and never all at once.
 
     private func startTickerRotation() {
         tickerRotationTask?.cancel()
+        tickerSlotIndex = 0
         tickerRotationTask = Task { @MainActor in
             while !Task.isCancelled {
                 rotateOneTickerSlot()
-                try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 s per slot swap
+                // Small random jitter (1.8 – 2.4 s) so the changes feel natural, not robotic
+                let jitterNs = UInt64(1_800_000_000) + UInt64.random(in: 0..<600_000_000)
+                try? await Task.sleep(nanoseconds: jitterNs)
             }
         }
     }
 
-    /// Seed all 5 slots on first load / refresh, then swap one random slot per tick.
+    /// Seed all slots on first load / refresh.
     private func rotateTickerDrops() {
         let pool = justDropped
         guard !pool.isEmpty else { return }
         tickerDrops = Array(pool.shuffled().prefix(min(5, pool.count)))
+        tickerSlotIndex = 0
     }
 
+    /// Swap the *next* slot in sequence (round-robin), so each slot lives ~10 s
+    /// before being replaced (5 slots × ~2 s gap = ~10 s per slot).
     private func rotateOneTickerSlot() {
         let pool = justDropped
         guard pool.count > 1 else { return }
@@ -151,18 +160,19 @@ final class FeedViewModel: ObservableObject {
         // Seed if not yet filled
         if tickerDrops.count < min(5, pool.count) {
             tickerDrops = Array(pool.shuffled().prefix(min(5, pool.count)))
+            tickerSlotIndex = 0
             return
         }
 
-        // Pick a random slot index to replace
-        let slotIndex = Int.random(in: 0..<tickerDrops.count)
+        let slotIndex = tickerSlotIndex % tickerDrops.count
+        tickerSlotIndex += 1
 
-        // Prefer a drop not currently displayed so the swap feels meaningful
+        // Prefer a drop that isn't currently on screen
         let currentIds = Set(tickerDrops.map(\.id))
         let candidates = pool.filter { !currentIds.contains($0.id) }
-        let newDrop = candidates.randomElement() ?? pool.filter { $0.id != tickerDrops[slotIndex].id }.randomElement()
-        guard let drop = newDrop else { return }
-        tickerDrops[slotIndex] = drop
+        let fallback   = pool.filter { $0.id != tickerDrops[slotIndex].id }
+        guard let newDrop = candidates.randomElement() ?? fallback.randomElement() else { return }
+        tickerDrops[slotIndex] = newDrop
     }
 
     private func startCountdownTick() {
