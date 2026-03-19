@@ -31,6 +31,21 @@ struct FeedPalette {
         pillSelected: AppTheme.pillSelected
     )
 
+    /// Deep-black palette for the Real-Time Ticker section.
+    static let liveFeedDark: FeedPalette = FeedPalette(
+        pageBackground: Color(red: 0.07, green: 0.07, blue: 0.09),
+        surface:        Color(red: 0.13, green: 0.12, blue: 0.16),
+        surfaceElevated: Color(red: 0.18, green: 0.17, blue: 0.21),
+        textPrimary:    Color.white,
+        textSecondary:  Color(white: 0.65),
+        textTertiary:   Color(white: 0.42),
+        border:         Color.white.opacity(0.09),
+        accent:         AppTheme.accentRed,
+        accentRed:      AppTheme.accentRed,
+        pillUnselected: Color.white.opacity(0.09),
+        pillSelected:   AppTheme.accentRed
+    )
+
     static let liveFeedLight: FeedPalette = FeedPalette(
         pageBackground: Color(red: 0.97, green: 0.97, blue: 0.98),
         surface: Color.white,

@@ -254,33 +254,78 @@ struct FeedView: View {
                     }
                 }
 
-                // Real-Time Ticker (rotates every 5s)
-                VStack(alignment: .leading, spacing: 12) {
-                    tickerHeader
+                // Real-Time Ticker — full-bleed dark section
+                VStack(alignment: .leading, spacing: 0) {
+                    // ── Header ──────────────────────────────────────────────
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Real-Time Ticker")
+                                .font(.system(size: 28, weight: .black))
+                                .foregroundColor(.white)
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(Color(red: 0.22, green: 0.85, blue: 0.45))
+                                    .frame(width: 7, height: 7)
+                                Text("SYSTEM ONLINE")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .tracking(0.8)
+                                    .foregroundColor(Color(red: 0.22, green: 0.85, blue: 0.45))
+                            }
+                        }
+                        Spacer()
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(palette.accentRed)
+                                .frame(width: 7, height: 7)
+                            Text("STREAMING LIVE")
+                                .font(.system(size: 11, weight: .bold))
+                                .tracking(0.5)
+                                .foregroundColor(palette.accentRed)
+                        }
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 8)
+                        .background(palette.accentRed.opacity(0.15))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(palette.accentRed.opacity(0.3), lineWidth: 1))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 22)
+                    .padding(.bottom, 16)
 
+                    // ── Cards ───────────────────────────────────────────────
                     if vm.tickerDrops.isEmpty && just.isEmpty {
-                        emptySectionHint
+                        Text("Scanning for live drops…")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(white: 0.45))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 24)
                     } else {
                         let visible = vm.tickerDrops.isEmpty ? Array(just.prefix(5)) : vm.tickerDrops
-                        // Fixed indices (0-4) keep slot positions stable — only the card
-                        // *inside* each slot animates when its drop ID changes.
-                        VStack(spacing: 10) {
+                        VStack(spacing: 8) {
                             ForEach(Array(visible.enumerated()), id: \.offset) { _, drop in
                                 RealTimeTickerCard(drop: drop)
                                     .id(drop.id)
-                                    .transition(
-                                        .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
-                                    )
-                                    .animation(
-                                        .easeInOut(duration: 0.55),
-                                        value: drop.id
-                                    )
+                                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .center)))
+                                    .animation(.easeInOut(duration: 0.55), value: drop.id)
                             }
                         }
+                        .padding(.horizontal, 16)
                     }
-                }
 
-                Spacer(minLength: 120)
+                    // ── Footer ──────────────────────────────────────────────
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("UPDATING CORE FEED...")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(0.6)
+                    }
+                    .foregroundColor(Color(white: 0.35))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                }
+                .background(FeedPalette.liveFeedDark.pageBackground)
+                .padding(.horizontal, -16)
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -320,41 +365,7 @@ struct FeedView: View {
             .clipShape(Capsule())
     }
 
-    private var tickerHeader: some View {
-        HStack {
-            Text("Real-Time Ticker")
-                .font(.system(size: 34, weight: .black))
-                .minimumScaleFactor(0.7)
-                .foregroundColor(palette.textPrimary)
-            Spacer()
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(palette.accentRed)
-                    .frame(width: 8, height: 8)
-                Text("STREAMING LIVE")
-                    .font(.system(size: 13, weight: .bold))
-                    .tracking(0.6)
-            }
-            .foregroundColor(palette.accentRed)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(palette.accentRed.opacity(0.10))
-            .clipShape(Capsule())
-        }
-    }
 
-    private var tickerFooter: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 14, weight: .semibold))
-            Text("UPDATING IN REAL-TIME...")
-                .font(.system(size: 13, weight: .bold))
-                .tracking(0.6)
-        }
-        .foregroundColor(palette.textTertiary)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 4)
-    }
 
     private func headerRow(title: String, rightText: String) -> some View {
         HStack {
@@ -705,7 +716,7 @@ private struct TopDropCard: View {
 private struct RealTimeTickerCard: View {
     let drop: Drop
 
-    private let palette: FeedPalette = .liveFeedLight
+    private let palette: FeedPalette = .liveFeedDark
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -828,15 +839,15 @@ private struct RealTimeTickerCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(
-                    drop.feedHot == true ? palette.accentRed.opacity(0.55) : palette.border,
+                    drop.feedHot == true ? palette.accentRed.opacity(0.7) : palette.border,
                     lineWidth: drop.feedHot == true ? 1.5 : 1
                 )
         )
-        // Hot drop glow — warm red outer shadow
+        // Hot drop: vivid red glow pops on dark background
         .shadow(
-            color: drop.feedHot == true ? palette.accentRed.opacity(0.30) : Color.black.opacity(0.04),
-            radius: drop.feedHot == true ? 12 : 8,
-            x: 0, y: drop.feedHot == true ? 4 : 2
+            color: drop.feedHot == true ? palette.accentRed.opacity(0.45) : Color.clear,
+            radius: drop.feedHot == true ? 14 : 0,
+            x: 0, y: 0
         )
     }
 }
