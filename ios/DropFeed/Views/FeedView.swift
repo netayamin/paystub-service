@@ -826,9 +826,17 @@ private struct RealTimeTickerCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(palette.border, lineWidth: 1)
+                .stroke(
+                    drop.feedHot == true ? palette.accentRed.opacity(0.55) : palette.border,
+                    lineWidth: drop.feedHot == true ? 1.5 : 1
+                )
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+        // Hot drop glow — warm red outer shadow
+        .shadow(
+            color: drop.feedHot == true ? palette.accentRed.opacity(0.30) : Color.black.opacity(0.04),
+            radius: drop.feedHot == true ? 12 : 8,
+            x: 0, y: drop.feedHot == true ? 4 : 2
+        )
     }
 }
 
