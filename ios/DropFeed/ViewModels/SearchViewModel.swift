@@ -1,26 +1,66 @@
 import Foundation
 
+// MARK: - Meal preset
+
+enum MealPreset: String, CaseIterable, Identifiable {
+    case lunch  = "Lunch"
+    case dinner = "Dinner"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .lunch:  return "sun.min"
+        case .dinner: return "fork.knife"
+        }
+    }
+
+    var earliestHour: Int { self == .lunch ? 12 : 17 }
+    var latestHour:   Int { self == .lunch ? 15 : 22 }
+
+    static func hourLabel(_ h: Int) -> String {
+        let h12  = h % 12 == 0 ? 12 : h % 12
+        let ampm = h < 12 ? "AM" : "PM"
+        return "\(h12):00 \(ampm)"
+    }
+}
+
+// MARK: - ViewModel
+
 @MainActor
 final class SearchViewModel: ObservableObject {
-    // Filters
-    @Published var selectedDates: Set<String>
-    @Published var selectedPartySize: Int? = nil    // nil = any; 4 means "4+"
-    @Published var earliestHour: Int = 17           // 5 PM default
-    @Published var latestHour: Int  = 22            // 10 PM default
 
-    // Results
+    // MARK: - Filters
+    @Published var selectedDates: Set<String>
+    @Published var partySize: Int = 2                        // 1–8 stepper
+    @Published var selectedMealPreset: MealPreset? = .dinner // nil = any time
+    @Published var venueQuery: String = ""                   // quick-pick / free-text
+
+    // MARK: - Navigation
+    @Published var isSearchActive: Bool = false
+
+    // MARK: - Results
     @Published var results: [Drop] = []
-    @Published var isLoading = false      // true only on first load (no results yet)
+    @Published var likelyToOpen: [LikelyToOpenVenue] = []
+    @Published var isLoading    = false   // true only on first load (no results yet)
     @Published var isRefreshing = false   // true on silent background polls
     @Published var error: String?
-    @Published var hasSearched = false
+    @Published var hasSearched  = false
     @Published var lastUpdated: Date?
 
-    private let service = APIService.shared
+    private let service  = APIService.shared
     private var pollTask: Task<Void, Never>?
 
+    // Quick-pick venue chips (subset of NYC top priority)
+    static let suggestedVenues = [
+        "Carbone", "Don Angie", "Lilia", "I Sodi",
+        "Via Carota", "Tatiana", "Atomix", "4 Charles",
+    ]
+
+    // MARK: - Init
+
     init() {
-        let cal = Calendar.current
+        let cal   = Calendar.current
         let today = Date()
         let y = cal.component(.year,  from: today)
         let m = cal.component(.month, from: today)
@@ -28,71 +68,47 @@ final class SearchViewModel: ObservableObject {
         selectedDates = [String(format: "%04d-%02d-%02d", y, m, d)]
     }
 
-    // MARK: - Time options
+    // MARK: - Date options (next 14 days, month-abbrev style)
 
-    static let timeHours: [(hour: Int, label: String)] = [
-        (11, "11:00 AM"), (12, "12:00 PM"), (13, "1:00 PM"),
-        (14, "2:00 PM"),  (15, "3:00 PM"),  (16, "4:00 PM"),
-        (17, "5:00 PM"),  (18, "6:00 PM"),  (19, "7:00 PM"),
-        (20, "8:00 PM"),  (21, "9:00 PM"),  (22, "10:00 PM"),
-        (23, "11:00 PM"),
-    ]
-
-    static func hourLabel(_ h: Int) -> String {
-        let h12  = h % 12 == 0 ? 12 : h % 12
-        let ampm = h < 12 ? "AM" : "PM"
-        return "\(h12):00 \(ampm)"
-    }
-
-    var earliestLabel: String { Self.hourLabel(earliestHour) }
-    var latestLabel:   String { Self.hourLabel(latestHour)   }
-
-    var timeframeName: String {
-        let e = earliestHour, l = latestHour
-        if e <= 13 && l <= 15 { return "Lunch" }
-        if e >= 15 && l <= 18 { return "Afternoon" }
-        if e >= 17 && l <= 22 { return "Dinner" }
-        if e >= 20             { return "Late Night" }
-        return "\(earliestLabel) – \(latestLabel)"
-    }
-
-    // MARK: - Date options (next 14 days)
-
-    var dateOptions: [(dateStr: String, dayName: String, dayNum: String)] {
-        let cal = Calendar.current
+    var dateOptions: [(dateStr: String, monthAbbrev: String, dayNum: String)] {
+        let cal   = Calendar.current
         let today = Date()
+        let abbrevs = ["JAN","FEB","MAR","APR","MAY","JUN",
+                       "JUL","AUG","SEP","OCT","NOV","DEC"]
         return (0..<14).compactMap { offset in
             guard let d = cal.date(byAdding: .day, value: offset, to: today) else { return nil }
             let y   = cal.component(.year,  from: d)
             let m   = cal.component(.month, from: d)
             let day = cal.component(.day,   from: d)
             let dateStr = String(format: "%04d-%02d-%02d", y, m, day)
-            let name: String = {
-                if offset == 0 { return "Today" }
-                if offset == 1 { return "Tmrw" }
-                let syms = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-                let wd = cal.component(.weekday, from: d)
-                return (wd >= 1 && wd <= 7) ? syms[wd] : ""
-            }()
-            return (dateStr, name, "\(day)")
+            return (dateStr, abbrevs[(m - 1) % 12], "\(day)")
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Computed filter helpers
 
-    private var partyAPIFilter: [Int]? {
-        guard let s = selectedPartySize else { return nil }
-        return s >= 4 ? [4, 6, 8] : [s]
+    var earliestHour: Int { selectedMealPreset?.earliestHour ?? 11 }
+    var latestHour:   Int { selectedMealPreset?.latestHour   ?? 23 }
+
+    /// Results filtered by venueQuery (client-side, instant)
+    var filteredResults: [Drop] {
+        guard !venueQuery.isEmpty else { return results }
+        let q = venueQuery.lowercased()
+        return results.filter { $0.name.lowercased().contains(q) }
     }
 
-    // MARK: - Polling
+    private var partyAPIFilter: [Int] {
+        partySize >= 4 ? [4, 6, 8] : [partySize]
+    }
+
+    // MARK: - Polling (same 20 s cadence as Feed tab)
 
     func startPolling() {
         pollTask?.cancel()
         pollTask = Task { @MainActor in
             while !Task.isCancelled {
                 await loadResults()
-                try? await Task.sleep(nanoseconds: 20_000_000_000) // 20s, same as Feed
+                try? await Task.sleep(nanoseconds: 20_000_000_000)
             }
         }
     }
@@ -105,18 +121,10 @@ final class SearchViewModel: ObservableObject {
     // MARK: - Load
 
     func loadResults() async {
-        hasSearched = true
-        // Show full spinner only on first load; subsequent polls are silent.
-        if results.isEmpty {
-            isLoading = true
-        } else {
-            isRefreshing = true
-        }
+        hasSearched  = true
+        if results.isEmpty { isLoading = true } else { isRefreshing = true }
         error = nil
-        defer {
-            isLoading    = false
-            isRefreshing = false
-        }
+        defer { isLoading = false; isRefreshing = false }
 
         do {
             let resp = try await service.fetchJustOpened(
@@ -127,14 +135,16 @@ final class SearchViewModel: ObservableObject {
             )
             var ranked = resp.rankedBoard ?? []
 
-            // Client-side time window filter
-            let eH = earliestHour, lH = latestHour
-            ranked = ranked.filter { drop in
-                guard !drop.slots.isEmpty else { return true }
-                return drop.slots.contains { slot in
-                    guard let t = slot.time, !t.isEmpty else { return true }
-                    guard let h = t.split(separator: ":").first.flatMap({ Int($0) }) else { return true }
-                    return h >= eH && h <= lH
+            // Client-side time window filter (only when a meal preset is chosen)
+            if selectedMealPreset != nil {
+                let eH = earliestHour, lH = latestHour
+                ranked = ranked.filter { drop in
+                    guard !drop.slots.isEmpty else { return true }
+                    return drop.slots.contains { slot in
+                        guard let t = slot.time, !t.isEmpty else { return true }
+                        guard let h = t.split(separator: ":").first.flatMap({ Int($0) }) else { return true }
+                        return h >= eH && h <= lH
+                    }
                 }
             }
 
@@ -142,8 +152,13 @@ final class SearchViewModel: ObservableObject {
                 let fallback = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
                 ranked = fallback
             }
-            results      = ranked
-            lastUpdated  = Date()
+
+            results     = ranked
+            lastUpdated = Date()
+
+            if let likely = resp.likelyToOpen, !likely.isEmpty {
+                likelyToOpen = likely
+            }
         } catch is CancellationError {
         } catch {
             self.error = Self.userFacingError(error)
@@ -151,9 +166,7 @@ final class SearchViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Backward-compat stubs (referenced by FeedView via feedVM, not this VM)
-    var selectedTimeFilter: String { "all" }
-    var selectedPartySizes: Set<Int> { [] }
+    // MARK: - Helpers
 
     private static func userFacingError(_ e: Error) -> String {
         if let u = e as? URLError {

@@ -244,7 +244,10 @@ struct LikelyToOpenVenue: Codable, Identifiable {
     let rarityScore: Double?
     let lastSeenDescription: String?
     let neighborhood: String?
-    
+    let confidence: String?         // "High", "Medium", "Low"
+    let predictedDropTime: String?  // "Evening", "Dinner", "Midnight"
+    let trendPct: Double?
+
     enum CodingKeys: String, CodingKey {
         case name
         case imageUrl = "image_url"
@@ -253,6 +256,9 @@ struct LikelyToOpenVenue: Codable, Identifiable {
         case rarityScore = "rarity_score"
         case lastSeenDescription = "last_seen_description"
         case neighborhood
+        case confidence
+        case predictedDropTime = "predicted_drop_time"
+        case trendPct = "trend_pct"
     }
 }
 
