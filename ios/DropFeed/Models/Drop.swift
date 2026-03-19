@@ -248,6 +248,31 @@ struct LikelyToOpenVenue: Codable, Identifiable {
     let predictedDropTime: String?  // "Evening", "Dinner", "Midnight"
     let trendPct: Double?
 
+    // Memberwise init with defaults so existing call sites don't need updating
+    init(
+        name: String,
+        imageUrl: String? = nil,
+        availabilityRate14d: Double? = nil,
+        daysWithDrops: Int? = nil,
+        rarityScore: Double? = nil,
+        lastSeenDescription: String? = nil,
+        neighborhood: String? = nil,
+        confidence: String? = nil,
+        predictedDropTime: String? = nil,
+        trendPct: Double? = nil
+    ) {
+        self.name                = name
+        self.imageUrl            = imageUrl
+        self.availabilityRate14d = availabilityRate14d
+        self.daysWithDrops       = daysWithDrops
+        self.rarityScore         = rarityScore
+        self.lastSeenDescription = lastSeenDescription
+        self.neighborhood        = neighborhood
+        self.confidence          = confidence
+        self.predictedDropTime   = predictedDropTime
+        self.trendPct            = trendPct
+    }
+
     enum CodingKeys: String, CodingKey {
         case name
         case imageUrl = "image_url"
