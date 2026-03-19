@@ -212,6 +212,10 @@ def run_sliding_window_job() -> None:
     today = window_start_date()
     db = SessionLocal()
     try:
+        # Rebuild rolling metrics BEFORE pruning so venue_metrics data is still available
+        from app.services.aggregation import compute_venue_rolling_metrics
+        compute_venue_rolling_metrics(db, today)
+
         delete_closed_drop_events(db)
         prune_old_buckets(db, today)
         prune_old_drop_events(db, today)  # Scheduled: only daily, not every tick

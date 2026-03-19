@@ -57,18 +57,6 @@ final class SearchViewModel: ObservableObject {
         "Via Carota", "Tatiana", "Atomix", "4 Charles",
     ]
 
-    // Shown while waiting for real metrics data from the server
-    static let fallbackLikelyToOpen: [LikelyToOpenVenue] = [
-        LikelyToOpenVenue(name: "4 Charles Prime Rib",  rarityScore: 0.95, neighborhood: "West Village",      trendPct:  0.12),
-        LikelyToOpenVenue(name: "Via Carota",           rarityScore: 0.90, neighborhood: "West Village",      trendPct:  0.08),
-        LikelyToOpenVenue(name: "Atomix",               rarityScore: 0.92, neighborhood: "NoMad",             trendPct:  0.00),
-        LikelyToOpenVenue(name: "Tatiana",              rarityScore: 0.88, neighborhood: "Lincoln Center",    trendPct:  0.15),
-        LikelyToOpenVenue(name: "Don Angie",            rarityScore: 0.96, neighborhood: "West Village",      trendPct:  0.05),
-        LikelyToOpenVenue(name: "Lilia",                rarityScore: 0.93, neighborhood: "Williamsburg",      trendPct:  0.10),
-        LikelyToOpenVenue(name: "Carbone",              rarityScore: 0.91, neighborhood: "Greenwich Village", trendPct: -0.03),
-        LikelyToOpenVenue(name: "Minetta Tavern",       rarityScore: 0.87, neighborhood: "Greenwich Village", trendPct:  0.02),
-    ]
-
     // MARK: - Init
 
     init() {
@@ -168,13 +156,9 @@ final class SearchViewModel: ObservableObject {
             results     = ranked
             lastUpdated = Date()
 
-            if let likely = resp.likelyToOpen, !likely.isEmpty {
-                // Real metrics data from the server — always prefer this
+            // Only show venues with real metrics from the server — never show fake data
+            if let likely = resp.likelyToOpen {
                 likelyToOpen = likely.filter { !$0.name.isEmpty }
-            } else if likelyToOpen.isEmpty || likelyToOpen.first?.rarityScore == nil {
-                // Server hasn't built metrics yet (new server / no rolling data) —
-                // show the well-known hard-to-get venues as a useful fallback
-                likelyToOpen = Self.fallbackLikelyToOpen
             }
         } catch is CancellationError {
         } catch {

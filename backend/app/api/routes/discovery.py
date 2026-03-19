@@ -475,6 +475,23 @@ async def prune_now(db: Session = Depends(get_db)):
     }
 
 
+@router.post("/watches/compute-rolling-metrics")
+async def compute_rolling_metrics_now(db: Session = Depends(get_db)):
+    """
+    Rebuild venue_rolling_metrics from venue_metrics right now (normally runs in the daily job).
+    Call this once after deploy to seed "Likely to Open" with real data instead of the fallback.
+    """
+    from datetime import date as date_cls
+    from app.services.aggregation import compute_venue_rolling_metrics
+    today = date_cls.today()
+    try:
+        count = compute_venue_rolling_metrics(db, today)
+        return {"ok": True, "venues_updated": count, "as_of_date": today.isoformat()}
+    except Exception as e:
+        logger.warning("compute-rolling-metrics failed: %s", e, exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/watches/baseline")
 async def get_baseline(db: Session = Depends(get_db)):
     """Initial snapshot per bucket: baseline_count, baseline_slot_ids, baseline_scanned_at. Baseline stores slot_id hashes only (no venue names)."""

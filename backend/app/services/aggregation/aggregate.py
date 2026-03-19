@@ -206,6 +206,88 @@ def _scarcity_score(avg_duration_seconds: float | None, new_drop_count: int, clo
     return round(score, 2)
 
 
+def compute_venue_rolling_metrics(db: Session, today: date) -> int:
+    """
+    Rebuild venue_rolling_metrics from venue_metrics for the last 14 days.
+    Runs every day (called from run_sliding_window_job) so the "Likely to Open"
+    section always reflects real historical drop data.
+    Returns the number of venue rows upserted.
+    """
+    since = today - timedelta(days=ROLLING_WINDOW_DAYS)
+    last_7_cutoff = today - timedelta(days=7)
+    VENUE_METRICS_LIMIT = 50_000
+
+    vm_rows = (
+        db.query(VenueMetrics)
+        .filter(VenueMetrics.window_date >= since)
+        .limit(VENUE_METRICS_LIMIT)
+        .all()
+    )
+    if not vm_rows:
+        logger.info(
+            "compute_venue_rolling_metrics: no venue_metrics in the last %s days — skipping",
+            ROLLING_WINDOW_DAYS,
+        )
+        return 0
+
+    by_venue: dict[str, list[Any]] = defaultdict(list)
+    for r in vm_rows:
+        by_venue[r.venue_id].append(r)
+
+    count = 0
+    for venue_id, group in by_venue.items():
+        total_new_drops = sum(r.new_drop_count for r in group)
+        days_with_drops = len({r.window_date for r in group})
+        venue_name = next((r.venue_name for r in group if r.venue_name), None)
+        drop_frequency_per_day = total_new_drops / float(ROLLING_WINDOW_DAYS)
+        rarity_score = round(100.0 / (1.0 + drop_frequency_per_day), 2)
+        total_last_7d = sum(r.new_drop_count for r in group if r.window_date >= last_7_cutoff)
+        total_prev_7d = sum(r.new_drop_count for r in group if r.window_date < last_7_cutoff)
+        trend_pct = (
+            round((total_last_7d - total_prev_7d) / total_prev_7d, 4)
+            if total_prev_7d and total_prev_7d > 0 else None
+        )
+        availability_rate_14d = round(days_with_drops / float(ROLLING_WINDOW_DAYS), 4)
+        stmt = pg_insert(VenueRollingMetrics).values(
+            venue_id=venue_id,
+            venue_name=venue_name,
+            as_of_date=today,
+            window_days=ROLLING_WINDOW_DAYS,
+            total_new_drops=total_new_drops,
+            days_with_drops=days_with_drops,
+            drop_frequency_per_day=drop_frequency_per_day,
+            rarity_score=rarity_score,
+            total_last_7d=total_last_7d,
+            total_prev_7d=total_prev_7d,
+            trend_pct=trend_pct,
+            availability_rate_14d=availability_rate_14d,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["venue_id", "as_of_date"],
+            set_={
+                "venue_name": stmt.excluded.venue_name,
+                "computed_at": datetime.now(timezone.utc),
+                "window_days": stmt.excluded.window_days,
+                "total_new_drops": stmt.excluded.total_new_drops,
+                "days_with_drops": stmt.excluded.days_with_drops,
+                "drop_frequency_per_day": stmt.excluded.drop_frequency_per_day,
+                "rarity_score": stmt.excluded.rarity_score,
+                "total_last_7d": stmt.excluded.total_last_7d,
+                "total_prev_7d": stmt.excluded.total_prev_7d,
+                "trend_pct": stmt.excluded.trend_pct,
+                "availability_rate_14d": stmt.excluded.availability_rate_14d,
+            },
+        )
+        db.execute(stmt)
+        count += 1
+    db.commit()
+    logger.info(
+        "compute_venue_rolling_metrics: upserted %s venues (as_of_date=%s)",
+        count, today,
+    )
+    return count
+
+
 def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
     """
     Aggregate drop_events with bucket_id < today_15:00 into venue_metrics and
