@@ -2,9 +2,13 @@ import Foundation
 
 @MainActor
 final class SearchViewModel: ObservableObject {
+    // Filters
     @Published var selectedDates: Set<String>
-    @Published var selectedTimeFilter: String = "all"
-    @Published var selectedPartySizes: Set<Int> = []
+    @Published var selectedPartySize: Int? = nil    // nil = any; 4 means "4+"
+    @Published var earliestHour: Int = 17           // 5 PM default
+    @Published var latestHour: Int  = 22            // 10 PM default
+
+    // Results
     @Published var results: [Drop] = []
     @Published var isLoading = false
     @Published var error: String?
@@ -13,88 +17,102 @@ final class SearchViewModel: ObservableObject {
     private let service = APIService.shared
 
     init() {
-        // Default to today so the user immediately sees today's availability
         let cal = Calendar.current
         let today = Date()
-        let y = cal.component(.year, from: today)
+        let y = cal.component(.year,  from: today)
         let m = cal.component(.month, from: today)
-        let d = cal.component(.day, from: today)
+        let d = cal.component(.day,   from: today)
         selectedDates = [String(format: "%04d-%02d-%02d", y, m, d)]
     }
 
-    static let timeOptions: [(key: String, label: String)] = [
-        ("all", "All"),
-        ("lunch", "Lunch"),
-        ("3pm", "Afternoon"),
-        ("7pm", "Early dinner"),
-        ("dinner", "Late dinner"),
+    // MARK: - Time options
+
+    static let timeHours: [(hour: Int, label: String)] = [
+        (11, "11:00 AM"), (12, "12:00 PM"), (13, "1:00 PM"),
+        (14, "2:00 PM"),  (15, "3:00 PM"),  (16, "4:00 PM"),
+        (17, "5:00 PM"),  (18, "6:00 PM"),  (19, "7:00 PM"),
+        (20, "8:00 PM"),  (21, "9:00 PM"),  (22, "10:00 PM"),
+        (23, "11:00 PM"),
     ]
 
-    static let partySizeOptions: [Int] = [2, 4, 6, 8]
+    static func hourLabel(_ h: Int) -> String {
+        let h12  = h % 12 == 0 ? 12 : h % 12
+        let ampm = h < 12 ? "AM" : "PM"
+        return "\(h12):00 \(ampm)"
+    }
+
+    var earliestLabel: String { Self.hourLabel(earliestHour) }
+    var latestLabel:   String { Self.hourLabel(latestHour)   }
+
+    var timeframeName: String {
+        let e = earliestHour, l = latestHour
+        if e <= 13 && l <= 15 { return "Lunch" }
+        if e >= 15 && l <= 18 { return "Afternoon" }
+        if e >= 17 && l <= 22 { return "Dinner" }
+        if e >= 20             { return "Late Night" }
+        return "\(earliestLabel) – \(latestLabel)"
+    }
+
+    // MARK: - Date options (next 14 days)
 
     var dateOptions: [(dateStr: String, dayName: String, dayNum: String)] {
         let cal = Calendar.current
         let today = Date()
         return (0..<14).compactMap { offset in
             guard let d = cal.date(byAdding: .day, value: offset, to: today) else { return nil }
-            let y = cal.component(.year, from: d)
-            let m = cal.component(.month, from: d)
-            let day = cal.component(.day, from: d)
+            let y   = cal.component(.year,  from: d)
+            let m   = cal.component(.month, from: d)
+            let day = cal.component(.day,   from: d)
             let dateStr = String(format: "%04d-%02d-%02d", y, m, day)
-            let dayName: String = {
+            let name: String = {
                 if offset == 0 { return "Today" }
                 if offset == 1 { return "Tmrw" }
-                let symbols = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-                let weekday = cal.component(.weekday, from: d)
-                return weekday >= 1 && weekday <= 7 ? symbols[weekday] : ""
+                let syms = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                let wd = cal.component(.weekday, from: d)
+                return (wd >= 1 && wd <= 7) ? syms[wd] : ""
             }()
-            return (dateStr, dayName, "\(day)")
+            return (dateStr, name, "\(day)")
         }
     }
 
-    var timeFilterAPI: (after: String?, before: String?) {
-        switch selectedTimeFilter {
-        case "lunch": return ("11:00", "15:00")
-        case "3pm": return ("15:00", "18:00")
-        case "7pm": return ("18:00", "20:00")
-        case "dinner": return ("20:00", "24:00")
-        default: return (nil, nil)
-        }
+    // MARK: - Helpers
+
+    private var partyAPIFilter: [Int]? {
+        guard let s = selectedPartySize else { return nil }
+        return s >= 4 ? [4, 6, 8] : [s]
     }
 
-    var selectedDateLabel: String {
-        if selectedDates.isEmpty { return "All dates" }
-        if selectedDates.count == 1, let d = selectedDates.first {
-            let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-            if let date = fmt.date(from: d) {
-                let cal = Calendar.current
-                if cal.isDateInToday(date) { return "Today" }
-                if cal.isDateInTomorrow(date) { return "Tomorrow" }
-                let out = DateFormatter(); out.dateFormat = "EEE, MMM d"
-                return out.string(from: date)
-            }
-        }
-        return "\(selectedDates.count) dates"
-    }
+    // MARK: - Load
 
     func loadResults() async {
         hasSearched = true
-        isLoading = true
-        error = nil
+        isLoading   = true
+        error       = nil
         defer { isLoading = false }
 
-        let timeAPI = timeFilterAPI
         do {
             let resp = try await service.fetchJustOpened(
-                dates: selectedDates.isEmpty ? nil : Array(selectedDates),
-                partySizes: selectedPartySizes.isEmpty ? nil : Array(selectedPartySizes),
-                timeAfter: timeAPI.after,
-                timeBefore: timeAPI.before
+                dates:      selectedDates.isEmpty ? nil : Array(selectedDates),
+                partySizes: partyAPIFilter,
+                timeAfter:  nil,
+                timeBefore: nil
             )
             var ranked = resp.rankedBoard ?? []
+
+            // Client-side time window filter
+            let eH = earliestHour, lH = latestHour
+            ranked = ranked.filter { drop in
+                guard !drop.slots.isEmpty else { return true }
+                return drop.slots.contains { slot in
+                    guard let t = slot.time, !t.isEmpty else { return true }
+                    guard let h = t.split(separator: ":").first.flatMap({ Int($0) }) else { return true }
+                    return h >= eH && h <= lH
+                }
+            }
+
             if ranked.isEmpty {
-                let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
-                if !newDrops.isEmpty { ranked = newDrops }
+                let fallback = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
+                ranked = fallback
             }
             results = ranked
         } catch is CancellationError {
@@ -104,9 +122,13 @@ final class SearchViewModel: ObservableObject {
         }
     }
 
-    private static func userFacingError(_ error: Error) -> String {
-        if let urlError = error as? URLError {
-            switch urlError.code {
+    // MARK: - Backward-compat stubs (referenced by FeedView via feedVM, not this VM)
+    var selectedTimeFilter: String { "all" }
+    var selectedPartySizes: Set<Int> { [] }
+
+    private static func userFacingError(_ e: Error) -> String {
+        if let u = e as? URLError {
+            switch u.code {
             case .notConnectedToInternet, .networkConnectionLost:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
@@ -116,6 +138,6 @@ final class SearchViewModel: ObservableObject {
             default: break
             }
         }
-        return error.localizedDescription
+        return e.localizedDescription
     }
 }
