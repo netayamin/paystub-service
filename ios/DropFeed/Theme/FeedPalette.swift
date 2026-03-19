@@ -32,12 +32,12 @@ struct FeedPalette {
     )
 
     static let liveFeedLight: FeedPalette = FeedPalette(
-        pageBackground: Color(.systemGray6),
+        pageBackground: Color(red: 0.97, green: 0.97, blue: 0.98),
         surface: Color.white,
         surfaceElevated: Color.white,
-        textPrimary: Color(.label),
-        textSecondary: Color(.secondaryLabel),
-        textTertiary: Color(.tertiaryLabel),
+        textPrimary: Color(red: 0.12, green: 0.13, blue: 0.17),
+        textSecondary: Color(red: 0.35, green: 0.37, blue: 0.43),
+        textTertiary: Color(red: 0.56, green: 0.58, blue: 0.63),
         border: Color.black.opacity(0.08),
         accent: AppTheme.accentRed,
         accentRed: AppTheme.accentRed,

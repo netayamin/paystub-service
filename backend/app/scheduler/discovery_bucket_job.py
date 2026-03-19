@@ -35,6 +35,9 @@ _in_flight: set[str] = set()
 _lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
 _tick_count = 0  # for throttled retention pruning
+_snapshot_rebuild_in_flight = False
+_last_snapshot_rebuild_at = datetime.min.replace(tzinfo=timezone.utc)
+_SNAPSHOT_REBUILD_MIN_INTERVAL_SECONDS = 8
 
 
 def _get_executor() -> ThreadPoolExecutor:
@@ -57,6 +60,24 @@ def _rebuild_snapshot_safe() -> None:
         logger.warning("Snapshot rebuild failed: %s", e, exc_info=True)
     finally:
         db.close()
+        global _snapshot_rebuild_in_flight
+        with _lock:
+            _snapshot_rebuild_in_flight = False
+
+
+def _maybe_schedule_snapshot_rebuild(now: datetime) -> bool:
+    """Schedule snapshot rebuild at most once per short interval."""
+    global _snapshot_rebuild_in_flight, _last_snapshot_rebuild_at
+    should_schedule_snapshot = False
+    with _lock:
+        if _snapshot_rebuild_in_flight:
+            return False
+        if (now - _last_snapshot_rebuild_at).total_seconds() < _SNAPSHOT_REBUILD_MIN_INTERVAL_SECONDS:
+            return False
+        _snapshot_rebuild_in_flight = True
+        _last_snapshot_rebuild_at = now
+    _get_executor().submit(_rebuild_snapshot_safe)
+    return True
 
 
 def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str, market: str = "nyc") -> None:
@@ -75,7 +96,7 @@ def _run_bucket_then_reenqueue(bid: str, date_str: str, time_slot: str, market: 
             set_discovery_job_heartbeat(in_flight_count=in_flight)
             if in_flight == 0:
                 set_discovery_job_heartbeat(finished=now, running=False)
-                _get_executor().submit(_rebuild_snapshot_safe)
+        _maybe_schedule_snapshot_rebuild(now)
 
 
 def run_discovery_bucket_job() -> None:
@@ -147,19 +168,25 @@ def run_discovery_bucket_job() -> None:
             set_discovery_job_heartbeat(in_flight_count=in_flight)
             if in_flight == 0:
                 set_discovery_job_heartbeat(finished=now, running=False)
-            return
+            should_schedule_snapshot = True
+        else:
+            for bid, date_str, time_slot, market in to_run:
+                _in_flight.add(bid)
 
-        for bid, date_str, time_slot, market in to_run:
-            _in_flight.add(bid)
+            set_discovery_job_heartbeat(
+                started=now,
+                in_flight_count=len(_in_flight),
+            )
 
-        set_discovery_job_heartbeat(
-            started=now,
-            in_flight_count=len(_in_flight),
-        )
+    if not to_run:
+        if should_schedule_snapshot:
+            _maybe_schedule_snapshot_rebuild(now)
+        return
 
     executor = _get_executor()
     for bid, date_str, time_slot, market in to_run:
         executor.submit(_run_bucket_then_reenqueue, bid, date_str, time_slot, market)
+    _maybe_schedule_snapshot_rebuild(now)
 
     logger.debug("Discovery tick: dispatched %s buckets (markets: %s)", len(to_run), list({m for _, _, _, m in to_run}))
 

@@ -23,7 +23,6 @@ private extension View {
     func applyBG() -> some View {
         self
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea()
     }
 }
 
