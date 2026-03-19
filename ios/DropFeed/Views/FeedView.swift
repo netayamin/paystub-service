@@ -222,32 +222,45 @@ struct FeedView: View {
         .buttonStyle(ScaleButtonStyle())
     }
 
+    private var activeTimeFilterLabel: String {
+        timeFilters.first(where: { $0.key == vm.selectedTimeFilter })?.label ?? vm.selectedTimeFilter
+    }
+
+    /// Build a flat Identifiable array of chips — avoids ForEach(_:id:) overload ambiguity
+    private var activeChips: [FilterChipData] {
+        var chips: [FilterChipData] = []
+        for dateStr in Array(vm.selectedDates).sorted() {
+            let d = dateStr
+            chips.append(FilterChipData(id: "date_\(d)", label: dateChipLabel(d), onRemove: {
+                withAnimation { _ = self.feedVM.selectedDates.remove(d) }
+            }))
+        }
+        if vm.selectedTimeFilter != "all" {
+            let key = vm.selectedTimeFilter
+            let label = activeTimeFilterLabel
+            chips.append(FilterChipData(id: "time_\(key)", label: label, onRemove: {
+                withAnimation { self.feedVM.selectedTimeFilter = "all" }
+            }))
+        }
+        for size in Array(vm.selectedPartySizes).sorted() {
+            let s = size
+            chips.append(FilterChipData(id: "size_\(s)", label: "\(s) guests", onRemove: {
+                withAnimation { _ = self.feedVM.selectedPartySizes.remove(s) }
+            }))
+        }
+        return chips
+    }
+
     private var activeFilterChipBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: AppTheme.spacingSM) {
                 Text("Filters:")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(AppTheme.textTertiary)
-
-                ForEach(Array(vm.selectedDates).sorted(), id: \.self) { dateStr in
-                    activeChip(label: dateChipLabel(dateStr)) {
-                        withAnimation { feedVM.selectedDates.remove(dateStr) }
-                    }
+                // Identifiable data → ForEach(_:content:) has no overload ambiguity
+                ForEach(activeChips) { chip in
+                    ActiveChipView(label: chip.label, onRemove: chip.onRemove)
                 }
-
-                if vm.selectedTimeFilter != "all" {
-                    let label = timeFilters.first(where: { $0.key == vm.selectedTimeFilter })?.label ?? vm.selectedTimeFilter
-                    activeChip(label: label) {
-                        withAnimation { feedVM.selectedTimeFilter = "all" }
-                    }
-                }
-
-                ForEach(Array(vm.selectedPartySizes).sorted(), id: \.self) { size in
-                    activeChip(label: "\(size) guests") {
-                        withAnimation { feedVM.selectedPartySizes.remove(size) }
-                    }
-                }
-
                 Button {
                     withAnimation {
                         feedVM.selectedDates = []
@@ -264,24 +277,6 @@ struct FeedView: View {
             .padding(.horizontal, AppTheme.spacingLG)
             .padding(.vertical, 6)
         }
-    }
-
-    private func activeChip(label: String, onRemove: @escaping () -> Void) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
-            Button { onRemove() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-            }
-            .buttonStyle(.plain)
-        }
-        .foregroundColor(AppTheme.textPrimary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(AppTheme.accent.opacity(0.18))
-        .overlay(Capsule().stroke(AppTheme.accent.opacity(0.4), lineWidth: 0.5))
-        .clipShape(Capsule())
     }
 
     private func dateChipLabel(_ dateStr: String) -> String {
@@ -644,6 +639,13 @@ private struct FeedHotRightNowSection: View {
     let isWatched: (String) -> Bool
     let onToggleWatch: (String) -> Void
 
+    // Pre-compute pairs to avoid compiler type-check timeout in body
+    private var pairs: [(Drop, Drop?)] {
+        stride(from: 0, to: drops.count, by: 2).map { i in
+            (drops[i], i + 1 < drops.count ? drops[i + 1] : nil)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             feedSectionHeader("HOT RIGHT NOW", count: drops.count,
@@ -651,34 +653,35 @@ private struct FeedHotRightNowSection: View {
                 .padding(.horizontal, AppTheme.spacingLG)
                 .padding(.bottom, 12)
 
-            // Pair up cards into rows of 2
-            let pairs = stride(from: 0, to: drops.count, by: 2).map { i in
-                (drops[i], i + 1 < drops.count ? drops[i + 1] : nil)
-            }
             VStack(spacing: 10) {
                 ForEach(Array(pairs.enumerated()), id: \.offset) { pairIdx, pair in
-                    HStack(alignment: .top, spacing: 10) {
-                        HotRightNowGridCard(
-                            drop: pair.0,
-                            isWatched: isWatched(pair.0.name),
-                            onToggleWatch: { onToggleWatch(pair.0.name) }
-                        )
-                        .staggeredAppear(index: pairIdx * 2, delayPerItem: 0.03)
-
-                        if let second = pair.1 {
-                            HotRightNowGridCard(
-                                drop: second,
-                                isWatched: isWatched(second.name),
-                                onToggleWatch: { onToggleWatch(second.name) }
-                            )
-                            .staggeredAppear(index: pairIdx * 2 + 1, delayPerItem: 0.03)
-                        } else {
-                            Spacer().frame(maxWidth: .infinity)
-                        }
-                    }
+                    hotRow(pairIdx: pairIdx, pair: pair)
                 }
             }
             .padding(.horizontal, AppTheme.spacingLG)
+        }
+    }
+
+    @ViewBuilder
+    private func hotRow(pairIdx: Int, pair: (Drop, Drop?)) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            HotRightNowGridCard(
+                drop: pair.0,
+                isWatched: isWatched(pair.0.name),
+                onToggleWatch: { onToggleWatch(pair.0.name) }
+            )
+            .staggeredAppear(index: pairIdx * 2, delayPerItem: 0.03)
+
+            if let second = pair.1 {
+                HotRightNowGridCard(
+                    drop: second,
+                    isWatched: isWatched(second.name),
+                    onToggleWatch: { onToggleWatch(second.name) }
+                )
+                .staggeredAppear(index: pairIdx * 2 + 1, delayPerItem: 0.03)
+            } else {
+                Spacer().frame(maxWidth: .infinity)
+            }
         }
     }
 }
@@ -1199,6 +1202,39 @@ private func feedSectionHeader(_ title: String, count: Int, icon: String?, iconC
                 .background(AppTheme.pillUnselected)
                 .clipShape(Capsule())
         }
+    }
+}
+
+// MARK: - Filter chip data model (Identifiable → ForEach(_:content:) is unambiguous)
+
+struct FilterChipData: Identifiable {
+    let id: String
+    let label: String
+    let onRemove: () -> Void
+}
+
+// MARK: - Active filter chip view
+
+struct ActiveChipView: View {
+    let label: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+            Button { onRemove() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundColor(AppTheme.textPrimary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(AppTheme.accent.opacity(0.18))
+        .overlay(Capsule().stroke(AppTheme.accent.opacity(0.4), lineWidth: 0.5))
+        .clipShape(Capsule())
     }
 }
 

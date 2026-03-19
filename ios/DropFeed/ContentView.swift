@@ -138,9 +138,9 @@ struct SearchView: View {
     private var filterSection: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.spacingLG) {
-                filterGroup("Date", content: datePills)
-                filterGroup("Time", content: timePills)
-                filterGroup("Party size", content: partySizePills)
+                filterGroup("Date")   { datePills }
+                filterGroup("Time")   { timePills }
+                filterGroup("Party size") { partySizePills }
 
                 if let error = searchVM.error {
                     errorBanner(error)
@@ -153,7 +153,7 @@ struct SearchView: View {
         .background(AppTheme.background)
     }
 
-    private func filterGroup<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+    private func filterGroup<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
                 .font(.system(size: 11, weight: .semibold))
