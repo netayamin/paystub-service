@@ -192,8 +192,6 @@ struct FeedView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
-
-                Spacer(minLength: 120)
             }
         }
         .background(AppTheme.background)
@@ -264,17 +262,21 @@ struct FeedView: View {
                         emptySectionHint
                     } else {
                         let visible = vm.tickerDrops.isEmpty ? Array(just.prefix(5)) : vm.tickerDrops
+                        // Fixed indices (0-4) keep slot positions stable — only the card
+                        // *inside* each slot animates when its drop ID changes.
                         VStack(spacing: 10) {
-                            ForEach(visible, id: \.id) { drop in
+                            ForEach(Array(visible.enumerated()), id: \.offset) { _, drop in
                                 RealTimeTickerCard(drop: drop)
-                                .transition(.asymmetric(
-                                    insertion: .move(edge: .top).combined(with: .opacity),
-                                    removal: .move(edge: .bottom).combined(with: .opacity)
-                                ))
+                                    .id(drop.id)
+                                    .transition(
+                                        .opacity.combined(with: .scale(scale: 0.96, anchor: .center))
+                                    )
+                                    .animation(
+                                        .easeInOut(duration: 0.55),
+                                        value: drop.id
+                                    )
                             }
                         }
-                        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: visible.map(\.id))
-                        tickerFooter
                     }
                 }
 
@@ -282,7 +284,6 @@ struct FeedView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .padding(.bottom, 120)
         }
         .background(palette.pageBackground)
     }
