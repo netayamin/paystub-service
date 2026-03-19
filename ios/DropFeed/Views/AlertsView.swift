@@ -8,14 +8,49 @@ struct AlertsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header
+            VStack(alignment: .leading, spacing: 12) {
                 header
-                // Set specific notifications: watch list
-                setNotificationsSection
-                // Recent alerts
-                recentAlertsSection
+
+                if savedVM.watchedVenues.isEmpty {
+                    Text("Add restaurants to watch for new availability.")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppTheme.textTertiary)
+                        .padding(.top, 4)
+                } else {
+                    ForEach(savedVM.watchedVenues.sorted(), id: \.self) { name in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(name.capitalized)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(AppTheme.textPrimary)
+                                    .lineLimit(1)
+                                Text("Watching next 14 days")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(AppTheme.textTertiary)
+                            }
+                            Spacer()
+                            Button {
+                                savedVM.toggleWatch(name)
+                            } label: {
+                                Text("Unwatch")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(AppTheme.accentOrange)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.surface)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(AppTheme.border, lineWidth: 0.5)
+                        )
+                    }
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
             .padding(.bottom, 120)
         }
         .background(AppTheme.background)
@@ -23,9 +58,7 @@ struct AlertsView: View {
             alertsVM.startPolling()
             await savedVM.loadAll()
         }
-        .sheet(isPresented: $showPaywall) {
-            PremiumPaywallView(premium: premium)
-        }
+        .sheet(isPresented: $showPaywall) { PremiumPaywallView(premium: premium) }
     }
 
     private var header: some View {

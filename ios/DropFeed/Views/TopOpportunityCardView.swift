@@ -63,7 +63,7 @@ struct TopOpportunityCardView: View {
                     .foregroundColor(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(drop.feedHot == true ? AppTheme.accentRed.opacity(0.7) : AppTheme.surfaceElevated)
+                    .background(drop.feedHot == true ? AppTheme.badgeHot : AppTheme.badgeTrending)
                     .cornerRadius(8)
 
                     if isJustReleased {
@@ -72,7 +72,7 @@ struct TopOpportunityCardView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
-                            .background(AppTheme.trendUp.opacity(0.7))
+                            .background(AppTheme.badgeNew)
                             .cornerRadius(8)
                     }
                     if let label = freshnessLabel {
@@ -81,7 +81,7 @@ struct TopOpportunityCardView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
-                            .background(Color.white.opacity(0.22))
+                            .background(AppTheme.badgeFreshness)
                             .cornerRadius(8)
                     }
                     Spacer()

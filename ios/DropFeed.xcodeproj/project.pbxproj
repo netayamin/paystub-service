@@ -23,7 +23,6 @@
 		A1000037 /* ShimmerModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000038 /* ShimmerModifier.swift */; };
 		A1000039 /* FeedSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003A /* FeedSkeletonView.swift */; };
 		A1000042 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000041 /* AppTheme.swift */; };
-		A2000022 /* FeedPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020 /* FeedPalette.swift */; };
 		A1000044 /* DateTimeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000045 /* DateTimeFilterSheet.swift */; };
 		A1000048 /* ProfilePlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000049 /* ProfilePlaceholderView.swift */; };
 		A100004A /* CustomTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004B /* CustomTabBar.swift */; };
@@ -40,7 +39,6 @@
 		A2000019 /* PremiumPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* PremiumPaywallView.swift */; };
 		A200001A /* YouView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A /* YouView.swift */; };
 		A200001C /* SearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* SearchViewModel.swift */; };
-		A200001D /* FeedMetricLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000E /* FeedMetricLabels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,7 +60,6 @@
 		A1000038 /* ShimmerModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShimmerModifier.swift; sourceTree = "<group>"; };
 		A100003A /* FeedSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedSkeletonView.swift; sourceTree = "<group>"; };
 		A1000041 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
-		A2000020 /* FeedPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedPalette.swift; sourceTree = "<group>"; };
 		A1000045 /* DateTimeFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateTimeFilterSheet.swift; sourceTree = "<group>"; };
 		A1000049 /* ProfilePlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePlaceholderView.swift; sourceTree = "<group>"; };
 		A100004B /* CustomTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomTabBar.swift; sourceTree = "<group>"; };
@@ -80,7 +77,6 @@
 		A2000009 /* PremiumPaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumPaywallView.swift; sourceTree = "<group>"; };
 		A200000A /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
 		A200000C /* SearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchViewModel.swift; sourceTree = "<group>"; };
-		A200000E /* FeedMetricLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedMetricLabels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -102,7 +98,6 @@
 				A1000032 /* Models */,
 				A1000033 /* Services */,
 				A1000043 /* Theme */,
-				A200000F /* Helpers */,
 				A1000034 /* Views */,
 				A1000035 /* ViewModels */,
 				A1000018 /* Assets.xcassets */,
@@ -110,14 +105,6 @@
 				A1000050 /* DropFeed.entitlements */,
 			);
 			path = DropFeed;
-			sourceTree = "<group>";
-		};
-		A200000F /* Helpers */ = {
-			isa = PBXGroup;
-			children = (
-				A200000E /* FeedMetricLabels.swift */,
-			);
-			path = Helpers;
 			sourceTree = "<group>";
 		};
 		A1000032 /* Models */ = {
@@ -186,7 +173,6 @@
 			isa = PBXGroup;
 			children = (
 				A1000041 /* AppTheme.swift */,
-				A2000020 /* FeedPalette.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -276,7 +262,6 @@
 				A1000006 /* FeedView.swift in Sources */,
 				A1000007 /* FeedViewModel.swift in Sources */,
 				A1000042 /* AppTheme.swift in Sources */,
-				A2000022 /* FeedPalette.swift in Sources */,
 				A1000044 /* DateTimeFilterSheet.swift in Sources */,
 				A1000048 /* ProfilePlaceholderView.swift in Sources */,
 				A100004A /* CustomTabBar.swift in Sources */,
@@ -291,7 +276,6 @@
 				A2000019 /* PremiumPaywallView.swift in Sources */,
 				A200001A /* YouView.swift in Sources */,
 				A200001C /* SearchViewModel.swift in Sources */,
-		A200001D /* FeedMetricLabels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

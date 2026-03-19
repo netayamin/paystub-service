@@ -24,11 +24,6 @@ final class APIService {
     init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
-        // Disable URLSession cache so every request always hits the server.
-        // The backend already adds Cache-Control: no-store but iOS sometimes
-        // ignores it for HTTP. Setting urlCache = nil is the reliable fix.
-        config.urlCache = nil
-        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         session = URLSession(configuration: config)
         decoder = JSONDecoder()
     }
@@ -39,8 +34,7 @@ final class APIService {
         dates: [String]? = nil,
         partySizes: [Int]? = nil,
         timeAfter: String? = nil,
-        timeBefore: String? = nil,
-        market: String? = nil
+        timeBefore: String? = nil
     ) async throws -> JustOpenedResponse {
         var components = URLComponents(string: "\(baseURL)/chat/watches/just-opened")!
         var queryItems: [URLQueryItem] = [URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))")]
@@ -52,7 +46,6 @@ final class APIService {
         }
         if let t = timeAfter, !t.isEmpty { queryItems.append(URLQueryItem(name: "time_after", value: t)) }
         if let t = timeBefore, !t.isEmpty { queryItems.append(URLQueryItem(name: "time_before", value: t)) }
-        if let m = market, !m.isEmpty { queryItems.append(URLQueryItem(name: "market", value: m)) }
         components.queryItems = queryItems
         
         guard let url = components.url else {
@@ -181,12 +174,8 @@ final class APIService {
         }
     }
     
-    func fetchHotlist(market: String? = nil) async throws -> [String] {
-        var components = URLComponents(string: "\(baseURL)/chat/watches/hotlist")!
-        if let m = market, !m.isEmpty {
-            components.queryItems = [URLQueryItem(name: "market", value: m)]
-        }
-        guard let url = components.url else {
+    func fetchHotlist() async throws -> [String] {
+        guard let url = URL(string: "\(baseURL)/chat/watches/hotlist") else {
             throw APIError.invalidURL
         }
         let (data, response) = try await session.data(from: url)

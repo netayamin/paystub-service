@@ -18,12 +18,8 @@ struct YouView: View {
                 VStack(spacing: 24) {
                     // Stats
                     statsSection
-                    // Preferences
-                    preferencesSection
                     // Premium
                     premiumSection
-                    // About
-                    aboutSection
                 }
                 .padding(.vertical, 20)
             }

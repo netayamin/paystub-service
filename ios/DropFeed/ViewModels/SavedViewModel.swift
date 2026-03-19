@@ -40,12 +40,12 @@ final class SavedViewModel: ObservableObject {
         return (hotActive + savedOnly).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    func loadAll(market: String? = nil) async {
+    func loadAll() async {
         isLoading = true
         defer { isLoading = false }
         
         async let watchesTask = service.fetchWatches()
-        async let hotlistTask = service.fetchHotlist(market: market)
+        async let hotlistTask = service.fetchHotlist()
         
         do {
             let resp = try await watchesTask

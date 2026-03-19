@@ -1,41 +1,38 @@
 import SwiftUI
 
-/// Horizontal scrolling date-pill strip with availability dots and ScaleButtonStyle bounce.
 struct DateStripView: View {
     let dateOptions: [(dateStr: String, dayName: String, dayNum: String)]
     @Binding var selectedDates: Set<String>
     var calendarCounts: CalendarCounts
-    var palette: FeedPalette = .dark
-
+    
     private var allSelected: Bool { selectedDates.isEmpty }
-
+    
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     // "All" pill
                     Button {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
                             selectedDates.removeAll()
                         }
                     } label: {
                         Text("All")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(allSelected ? .white : palette.textSecondary)
+                            .foregroundColor(allSelected ? .white : AppTheme.textSecondary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(allSelected ? palette.pillSelected : palette.pillUnselected)
+                            .background(allSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
                             .cornerRadius(12)
                     }
-                    .buttonStyle(ScaleButtonStyle())
-                    .accessibilityLabel("All dates")
-
+                    .buttonStyle(.plain)
+                    
                     ForEach(dateOptions, id: \.dateStr) { opt in
                         let isSelected = selectedDates.contains(opt.dateStr)
                         let count = calendarCounts.byDate[opt.dateStr] ?? 0
-
+                        
                         Button {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
                                 if isSelected {
                                     selectedDates.remove(opt.dateStr)
                                 } else {
@@ -46,14 +43,13 @@ struct DateStripView: View {
                             VStack(spacing: 2) {
                                 Text(opt.dayName)
                                     .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(isSelected ? .white.opacity(0.8) : palette.textTertiary)
+                                    .foregroundColor(isSelected ? .white.opacity(0.8) : AppTheme.textTertiary)
                                 Text(opt.dayNum)
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(isSelected ? .white : palette.textPrimary)
-                                // Availability dot
+                                    .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
                                 if count > 0 {
                                     Circle()
-                                        .fill(isSelected ? Color.white : palette.accentRed)
+                                        .fill(isSelected ? .white : AppTheme.accentRed)
                                         .frame(width: 5, height: 5)
                                 } else {
                                     Spacer().frame(height: 5)
@@ -61,15 +57,14 @@ struct DateStripView: View {
                             }
                             .frame(width: 48)
                             .padding(.vertical, 8)
-                            .background(isSelected ? palette.pillSelected : palette.pillUnselected)
+                            .background(isSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
                             .cornerRadius(14)
                         }
-                        .buttonStyle(ScaleButtonStyle())
+                        .buttonStyle(.plain)
                         .id(opt.dateStr)
-                        .accessibilityLabel("\(opt.dayName) \(opt.dayNum)\(count > 0 ? ", \(count) available" : "")")
                     }
                 }
-                .padding(.horizontal, AppTheme.spacingLG)
+                .padding(.horizontal, 16)
             }
         }
         .padding(.vertical, 4)
@@ -81,18 +76,14 @@ struct DateStripView: View {
         AppTheme.background.ignoresSafeArea()
         DateStripView(
             dateOptions: [
-                ("2026-03-18", "Today", "18"),
-                ("2026-03-19", "Tmrw",  "19"),
-                ("2026-03-20", "Fri",   "20"),
-                ("2026-03-21", "Sat",   "21"),
-                ("2026-03-22", "Sun",   "22"),
+                ("2026-03-04", "Today", "4"),
+                ("2026-03-05", "Tmrw", "5"),
+                ("2026-03-06", "Thu", "6"),
+                ("2026-03-07", "Fri", "7"),
+                ("2026-03-08", "Sat", "8"),
             ],
-            selectedDates: .constant(Set(["2026-03-18"])),
-            calendarCounts: CalendarCounts(
-                byDate: ["2026-03-18": 12, "2026-03-19": 8, "2026-03-21": 3],
-                dates: []
-            ),
-            palette: .liveFeedLight
+            selectedDates: .constant(Set(["2026-03-04"])),
+            calendarCounts: CalendarCounts(byDate: ["2026-03-04": 12, "2026-03-05": 8, "2026-03-07": 3], dates: [])
         )
     }
 }

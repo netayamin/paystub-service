@@ -10,10 +10,10 @@ struct CustomTabBar: View {
     
     var body: some View {
         HStack(spacing: 0) {
-            tabItem(tag: 0, icon: "house.fill", label: "Home", useGoldWhenSelected: true)
-            tabItem(tag: 1, icon: "magnifyingglass", label: "Discover", useGoldWhenSelected: false)
-            tabItem(tag: 2, icon: "bell", label: "Alerts", badge: alertBadgeCount, useGoldWhenSelected: false)
-            tabItem(tag: 3, icon: "person", label: "Profile", useGoldWhenSelected: false)
+            tabItem(tag: 0, icon: "antenna.radiowaves.left.and.right", label: "Live")
+            tabItem(tag: 1, icon: "magnifyingglass", label: "Search")
+            tabItem(tag: 2, icon: "bell", label: "Alerts", badge: alertBadgeCount)
+            tabItem(tag: 3, icon: "person", label: "Profile")
         }
         .frame(height: barHeight)
         .padding(.horizontal, 2)
@@ -35,9 +35,8 @@ struct CustomTabBar: View {
         .frame(height: barHeight + bottomSafeInset)
     }
     
-    private func tabItem(tag: Int, icon: String, label: String, badge: Int = 0, useGoldWhenSelected: Bool = false) -> some View {
+    private func tabItem(tag: Int, icon: String, label: String, badge: Int = 0) -> some View {
         let selected = selectedTab == tag
-        let accentColor = useGoldWhenSelected && selected ? AppTheme.premiumGold : (selected ? AppTheme.tabBarSelected : AppTheme.tabBarUnselected)
         return Button {
             withAnimation(.easeInOut(duration: 0.2)) {
                 selectedTab = tag
@@ -62,10 +61,10 @@ struct CustomTabBar: View {
                                 .offset(x: 8, y: -8)
                         }
                     }
-                    Text(label.uppercased())
+                    Text(label)
                         .font(.system(size: 10, weight: selected ? .semibold : .regular))
                 }
-                .foregroundColor(accentColor)
+                .foregroundColor(selected ? AppTheme.tabBarSelected : AppTheme.tabBarUnselected)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

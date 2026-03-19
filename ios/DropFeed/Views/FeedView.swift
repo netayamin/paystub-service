@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - FeedView
-
 struct FeedView: View {
     @ObservedObject var feedVM: FeedViewModel
     @ObservedObject var savedVM: SavedViewModel
@@ -11,1362 +9,723 @@ struct FeedView: View {
     var alertBadgeCount: Int = 0
 
     private var vm: FeedViewModel { feedVM }
-    private let palette: FeedPalette = .liveFeedLight
 
-    /// Maps internal key → display label for time filter pills
-    private let timeFilters: [(key: String, label: String)] = [
-        ("all",    "Any Time"),
-        ("lunch",  "Lunch"),
-        ("3pm",    "3–5 PM"),
-        ("7pm",    "7–9 PM"),
-        ("dinner", "Late Night"),
-    ]
+    private let partySizeOptions = [2, 3, 4, 5, 6]
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
-        if vm.error != nil && vm.drops.isEmpty { return "error" }
+        if vm.error != nil { return "error" }
         if vm.drops.isEmpty { return "empty" }
         return "content"
-    }
-
-    private var hasActiveFilters: Bool {
-        !vm.selectedDates.isEmpty || vm.selectedTimeFilter != "all" || !vm.selectedPartySizes.isEmpty
     }
 
     var body: some View {
         VStack(spacing: 0) {
             topNavBar
-            filterBar
+
             Group {
                 if vm.isLoading && vm.drops.isEmpty {
                     FeedSkeletonView()
-                        .transition(.opacity)
-                } else if let err = vm.error, vm.drops.isEmpty {
-                    inlineErrorView(err)
+                } else if let err = vm.error {
+                    errorView(err)
+                } else if vm.drops.isEmpty {
+                    emptyView
                 } else {
-                    mainFeedContent
+                    barebonesFeedContent
                 }
             }
-            .animation(.easeInOut(duration: 0.28), value: viewStateId)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
         }
-        .background(palette.pageBackground)
+        .background(AppTheme.background)
         .refreshable { await vm.refresh() }
         .task {
             await vm.refresh()
             vm.startPolling()
         }
-        .onChange(of: feedVM.selectedDates)      { _, _ in Task { await vm.refresh() } }
-        .onChange(of: feedVM.selectedPartySizes) { _, _ in Task { await vm.refresh() } }
-        .onChange(of: feedVM.selectedTimeFilter) { _, _ in Task { await vm.refresh() } }
-        .onChange(of: feedVM.selectedMarket)     { _, _ in Task { await vm.refresh() } }
     }
 
-    // MARK: - Top Nav Bar
+    // MARK: - Top nav bar
 
     private var topNavBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Live Feed")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(palette.textPrimary)
-                }
-                Spacer()
-                liveBadge
+        HStack(spacing: 0) {
+            Button { onOpenSearch?() } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(AppTheme.textPrimary)
+                    .frame(width: 44, height: 44)
             }
-            .padding(.horizontal, AppTheme.spacingLG)
+            .buttonStyle(.plain)
 
-            // Market selector pills
-            HStack(spacing: AppTheme.spacingSM) {
-                marketPill("New York", marketId: "nyc")
-                marketPill("Miami",    marketId: "miami")
+            Spacer()
+            Text("DropFeed")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(AppTheme.textPrimary)
+            Spacer()
+
+            Button { onOpenAlerts?() } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(AppTheme.textPrimary)
+                    if alertBadgeCount > 0 {
+                        Text("\(min(alertBadgeCount, 99))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(Circle().fill(AppTheme.accentOrange))
+                            .offset(x: 6, y: -6)
+                    }
+                }
+                .frame(width: 44, height: 44)
             }
-            .padding(.horizontal, AppTheme.spacingLG)
+            .buttonStyle(.plain)
         }
-        .padding(.top, AppTheme.spacingSM)
-        .padding(.bottom, AppTheme.spacingSM)
-        .background(palette.pageBackground)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background(AppTheme.background)
     }
 
-    private var liveBadge: some View {
-        HStack(spacing: 6) {
+    // MARK: - Feed content
+
+    private var feedContent: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+
+                // ── Live scan bar (slim, always visible)
+                liveScanBar
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+
+                // ── New drops banner (conditional)
+                if vm.newDropsCount > 0 {
+                    newDropsBanner
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                // ── Hero card — #1 ranked opportunity
+                if let hero = vm.heroCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionLabel("🔥 TOP OPPORTUNITY", subtitle: "Most wanted table right now")
+                        HeroCardView(
+                            drop: hero,
+                            isWatched: savedVM.isWatched(hero.name),
+                            onToggleWatch: { savedVM.toggleWatch($0) }
+                        )
+                        .padding(.horizontal, 16)
+                    }
+                    .padding(.bottom, 24)
+                }
+
+                // ── Rare Finds — drops with high rarity score
+                let rares = vm.rareDrops.prefix(10)
+                if !rares.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionLabel("💎 RARE FINDS", subtitle: "Open <15% of days — act fast")
+                            .padding(.horizontal, 16)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(Array(rares), id: \.id) { drop in
+                                    RareDropCard(drop: drop,
+                                                 isWatched: savedVM.isWatched(drop.name),
+                                                 onToggleWatch: { savedVM.toggleWatch($0) })
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                    .padding(.bottom, 24)
+                }
+
+                // ── Trending — high trendPct drops
+                let trending = vm.trendingDrops.prefix(8)
+                if !trending.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionLabel("📈 TRENDING", subtitle: "Availability spiking vs last 14 days")
+                            .padding(.horizontal, 16)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(Array(trending), id: \.id) { drop in
+                                    TrendingDropCard(drop: drop,
+                                                     isWatched: savedVM.isWatched(drop.name),
+                                                     onToggleWatch: { savedVM.toggleWatch($0) })
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                    .padding(.bottom, 24)
+                }
+
+                // ── All drops (rich rows with date + metrics)
+                if !vm.feedCards.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionLabel("⚡ LATEST DROPS", subtitle: "\(vm.feedCards.count) tables spotted across 14 days")
+                            .padding(.horizontal, 16)
+                        ForEach(Array(vm.feedCards.enumerated()), id: \.element.id) { idx, drop in
+                            LatestDropRowView(
+                                drop: drop,
+                                isWatched: savedVM.isWatched(drop.name),
+                                onToggleWatch: { savedVM.toggleWatch($0) }
+                            )
+                            .padding(.horizontal, 16)
+                            .staggeredAppear(index: idx, delayPerItem: 0.025)
+                        }
+                    }
+                    .padding(.bottom, 24)
+                }
+
+                // ── Likely to Open (predictive)
+                if !vm.likelyToOpen.isEmpty {
+                    LikelyToOpenSection(
+                        venues: vm.likelyToOpen,
+                        premium: premium,
+                        onNotifyMe: { savedVM.toggleWatch($0) },
+                        isWatched: { savedVM.isWatched($0) }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                }
+
+                Spacer(minLength: 120)
+            }
+        }
+        .background(AppTheme.background)
+    }
+
+    // MARK: - Barebones feed content (reset UI)
+
+    private var barebonesFeedContent: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                ForEach(Array(vm.drops.prefix(25))) { drop in
+                    BarebonesDropRow(
+                        drop: drop,
+                        isWatched: savedVM.isWatched(drop.name),
+                        onToggleWatch: { savedVM.toggleWatch($0) }
+                    )
+                    .padding(.horizontal, 16)
+                }
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 120)
+        }
+        .background(AppTheme.background)
+    }
+
+    // MARK: - Live scan bar
+
+    private var liveScanBar: some View {
+        HStack(spacing: 10) {
             AnimatedLiveDot()
-            Text("LIVE")
-                .font(.system(size: 12, weight: .bold))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("LIVE")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AppTheme.liveDot)
+                        .tracking(0.8)
+                    Text("·")
+                        .foregroundColor(AppTheme.textTertiary)
+                    Text("\(vm.totalVenuesScanned > 0 ? "\(vm.totalVenuesScanned)" : "698") venues scanned")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+                Text(vm.secondsUntilNextScan > 0 ? vm.nextScanLabel : (vm.lastScanAt != nil ? "Last scan \(vm.lastScanText)" : "Scanning…"))
+                    .font(.system(size: 11))
+                    .foregroundColor(AppTheme.textTertiary)
+            }
+            Spacer()
+            if vm.totalVenuesScanned > 0 || vm.lastScanAt != nil {
+                Text(vm.lastScanText == "—" ? "" : "Updated \(vm.lastScanText)")
+                    .font(.system(size: 10))
+                    .foregroundColor(AppTheme.textTertiary)
+            }
         }
-        .foregroundColor(palette.accentRed)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(palette.accentRed.opacity(0.12))
-        .clipShape(Capsule())
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppTheme.liveDot.opacity(0.3), lineWidth: 0.5)
+        )
     }
 
-    private var alertBellButton: some View {
-        Button { onOpenAlerts?() } label: {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: alertBadgeCount > 0 ? "bell.fill" : "bell")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(alertBadgeCount > 0 ? AppTheme.accentOrange : AppTheme.textSecondary)
-                if alertBadgeCount > 0 {
-                    Text("\(min(alertBadgeCount, 99))")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(minWidth: 16, minHeight: 16)
-                        .background(Circle().fill(AppTheme.accentRed))
-                        .offset(x: 6, y: -6)
-                }
+    // MARK: - New drops banner
+
+    private var newDropsBanner: some View {
+        Button {
+            vm.acknowledgeNewDrops()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(AppTheme.accentOrange)
+                Text("\(vm.newDropsCount) new drop\(vm.newDropsCount == 1 ? "" : "s") just detected")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AppTheme.textPrimary)
+                Spacer()
+                Text("Dismiss")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.textTertiary)
             }
-            .frame(width: 44, height: 44)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(AppTheme.accentOrange.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(AppTheme.accentOrange.opacity(0.4), lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
     }
 
-    private func marketPill(_ label: String, marketId: String) -> some View {
-        let isSelected = vm.selectedMarket == marketId
-        return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                feedVM.selectedMarket = marketId
-            }
-        } label: {
-            Text(label)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(isSelected ? .white : palette.textSecondary)
-                .padding(.horizontal, AppTheme.spacingLG)
-                .padding(.vertical, AppTheme.spacingSM)
-                .background(isSelected ? palette.accentRed : palette.pillUnselected)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
+    // MARK: - Section label
 
-    // MARK: - Filter Bar (sticky below nav)
-
-    private var filterBar: some View {
-        VStack(spacing: 0) {
-            // Date strip — shows availability dots per date
-            DateStripView(
-                dateOptions: vm.dateOptions,
-                selectedDates: $feedVM.selectedDates,
-                calendarCounts: vm.calendarCounts,
-                palette: palette
-            )
-
-            // Time + party size pills
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppTheme.spacingSM) {
-                    ForEach(timeFilters, id: \.key) { filter in
-                        timeFilterPill(filter)
-                    }
-
-                    Rectangle()
-                        .fill(palette.border)
-                        .frame(width: 1, height: 18)
-                        .padding(.horizontal, 2)
-
-                    ForEach([2, 4, 6], id: \.self) { size in
-                        partySizePill(size)
-                    }
-                }
-                .padding(.horizontal, AppTheme.spacingLG)
-            }
-            .padding(.vertical, 6)
-
-            // Active filter chips — appear when any filter is set
-            if hasActiveFilters {
-                activeFilterChipBar
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            Rectangle()
-                .fill(palette.border)
-                .frame(height: 0.5)
-        }
-        .background(palette.pageBackground)
-        .animation(.easeInOut(duration: 0.2), value: hasActiveFilters)
-    }
-
-    private func timeFilterPill(_ filter: (key: String, label: String)) -> some View {
-        let isSelected = vm.selectedTimeFilter == filter.key
-        return Button {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                feedVM.selectedTimeFilter = filter.key
-            }
-        } label: {
-            Text(filter.label)
-                .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                .foregroundColor(isSelected ? .white : palette.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(isSelected ? palette.accent : palette.pillUnselected)
-                .clipShape(Capsule())
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
-
-    private func partySizePill(_ size: Int) -> some View {
-        let isSelected = vm.selectedPartySizes.contains(size)
-        return Button {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                if isSelected {
-                    feedVM.selectedPartySizes.remove(size)
-                } else {
-                    feedVM.selectedPartySizes.insert(size)
-                }
-            }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: size > 2 ? "person.2" : "person")
-                    .font(.system(size: 10, weight: .medium))
-                Text("\(size)")
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-            }
-            .foregroundColor(isSelected ? .white : palette.textSecondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(isSelected ? palette.accent : palette.pillUnselected)
-            .clipShape(Capsule())
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
-
-    private var activeTimeFilterLabel: String {
-        timeFilters.first(where: { $0.key == vm.selectedTimeFilter })?.label ?? vm.selectedTimeFilter
-    }
-
-    /// Build a flat Identifiable array of chips — avoids ForEach(_:id:) overload ambiguity
-    private var activeChips: [FilterChipData] {
-        var chips: [FilterChipData] = []
-        for dateStr in Array(vm.selectedDates).sorted() {
-            let d = dateStr
-            chips.append(FilterChipData(id: "date_\(d)", label: dateChipLabel(d), onRemove: {
-                withAnimation { _ = self.feedVM.selectedDates.remove(d) }
-            }))
-        }
-        if vm.selectedTimeFilter != "all" {
-            let key = vm.selectedTimeFilter
-            let label = activeTimeFilterLabel
-            chips.append(FilterChipData(id: "time_\(key)", label: label, onRemove: {
-                withAnimation { self.feedVM.selectedTimeFilter = "all" }
-            }))
-        }
-        for size in Array(vm.selectedPartySizes).sorted() {
-            let s = size
-            chips.append(FilterChipData(id: "size_\(s)", label: "\(s) guests", onRemove: {
-                withAnimation { _ = self.feedVM.selectedPartySizes.remove(s) }
-            }))
-        }
-        return chips
-    }
-
-    private var activeFilterChipBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: AppTheme.spacingSM) {
-                Text("Filters:")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(palette.textTertiary)
-                // Identifiable data → ForEach(_:content:) has no overload ambiguity
-                ForEach(activeChips) { chip in
-                    ActiveChipView(palette: palette, label: chip.label, onRemove: chip.onRemove)
-                }
-                Button {
-                    withAnimation {
-                        feedVM.selectedDates = []
-                        feedVM.selectedTimeFilter = "all"
-                        feedVM.selectedPartySizes = []
-                    }
-                } label: {
-                    Text("Clear all")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(palette.accentRed)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, AppTheme.spacingLG)
-            .padding(.vertical, 6)
+    @ViewBuilder
+    private func sectionLabel(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(AppTheme.textSecondary)
+                .tracking(0.4)
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundColor(AppTheme.textTertiary)
         }
     }
 
-    private func dateChipLabel(_ dateStr: String) -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
-        guard let d = fmt.date(from: dateStr) else { return dateStr }
-        if Calendar.current.isDateInToday(d) { return "Today" }
-        if Calendar.current.isDateInTomorrow(d) { return "Tomorrow" }
-        let out = DateFormatter()
-        out.dateFormat = "EEE d"
-        return out.string(from: d)
-    }
+    // MARK: - Error / empty
 
-    // MARK: - Main feed content
-
-    private var mainFeedContent: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                if vm.drops.isEmpty {
-                    contextualEmptyView
-                } else {
-                    let visibleDrops = Array(vm.drops.prefix(30))
-                    ForEach(visibleDrops) { drop in
-                        LiveFeedRowCard(drop: drop)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 120)
-        }
-        .background(palette.pageBackground)
-    }
-
-    // MARK: - Contextual empty state
-
-    private var contextualEmptyView: some View {
-        VStack(spacing: AppTheme.spacingXL) {
-            ZStack {
-                Circle()
-                    .fill(palette.surface)
-                    .frame(width: 80, height: 80)
-                Image(systemName: contextualIcon)
-                    .font(.system(size: 32))
-                    .foregroundColor(palette.textTertiary)
-            }
-            VStack(spacing: AppTheme.spacingSM) {
-                Text(contextualTitle)
-                    .font(.system(size: 19, weight: .bold))
-                    .foregroundColor(palette.textPrimary)
-                Text(contextualMessage)
-                    .font(.system(size: 14))
-                    .foregroundColor(palette.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-            }
-            if hasActiveFilters {
-                Button {
-                    withAnimation {
-                        feedVM.selectedDates = []
-                        feedVM.selectedTimeFilter = "all"
-                        feedVM.selectedPartySizes = []
-                    }
-                } label: {
-                    Text("Clear filters")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, AppTheme.spacingXL)
-                        .padding(.vertical, 12)
-                        .background(palette.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(ScaleButtonStyle())
-            }
-        }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 48)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var contextualIcon: String {
-        if !vm.selectedDates.isEmpty        { return "calendar.badge.exclamationmark" }
-        if vm.selectedTimeFilter != "all"   { return "clock.badge.exclamationmark" }
-        if !vm.selectedPartySizes.isEmpty   { return "person.2.slash" }
-        return "fork.knife"
-    }
-
-    private var contextualTitle: String {
-        hasActiveFilters ? "No tables match" : "No drops yet"
-    }
-
-    private var contextualMessage: String {
-        if !vm.selectedDates.isEmpty {
-            let label = vm.selectedDates.sorted().first.map { dateChipLabel($0) } ?? "that date"
-            return "No tables for \(label). Try another date or remove the filter."
-        }
-        if vm.selectedTimeFilter != "all" {
-            let label = timeFilters.first(where: { $0.key == vm.selectedTimeFilter })?.label ?? "that time"
-            return "No tables for \(label). Try a different time window."
-        }
-        if !vm.selectedPartySizes.isEmpty {
-            return "No tables for that party size right now. Try a different size."
-        }
-        return "We're scanning 698+ venues. New tables appear here the moment they drop."
-    }
-
-    // MARK: - Inline error view
-
-    private func inlineErrorView(_ message: String) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "wifi.slash")
-                    .font(.system(size: 16))
-                    .foregroundColor(palette.accentRed)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Connection issue")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(palette.textPrimary)
-                    Text(message)
-                        .font(.system(size: 12))
-                        .foregroundColor(palette.textSecondary)
-                        .lineLimit(2)
-                }
-                Spacer()
-                Button { Task { await vm.refresh() } } label: {
-                    Text("Retry")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(palette.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-                .buttonStyle(ScaleButtonStyle())
-            }
-            .padding(AppTheme.spacingLG)
-            .background(palette.accentRed.opacity(0.10))
-            .overlay(
-                Rectangle()
-                    .fill(palette.accentRed)
-                    .frame(width: 3)
-                    .frame(maxHeight: .infinity),
-                alignment: .leading
-            )
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 44))
+                .foregroundColor(AppTheme.textTertiary)
+            Text(message)
+                .font(.system(size: 16))
+                .foregroundColor(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Button("Retry") { Task { await vm.refresh() } }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(AppTheme.accent)
+                .cornerRadius(12)
             Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.pageBackground)
+        .frame(maxWidth: .infinity)
+        .background(AppTheme.background)
+    }
+
+    private var hasActiveFilters: Bool {
+        !feedVM.selectedDates.isEmpty || !feedVM.selectedPartySizes.isEmpty || feedVM.selectedTimeFilter != "all"
+    }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "fork.knife")
+                .font(.system(size: 44))
+                .foregroundColor(AppTheme.textTertiary)
+            Text("No drops yet")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(AppTheme.textPrimary)
+            Text("We scan continuously. Check back soon.")
+                .font(.system(size: 15))
+                .foregroundColor(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .background(AppTheme.background)
     }
 }
 
-// MARK: - Live feed row card (matches screenshot style)
+// MARK: - Barebones Drop Row
 
-private struct LiveFeedRowCard: View {
+private struct BarebonesDropRow: View {
     let drop: Drop
-    private let palette: FeedPalette = .liveFeedLight
+    let isWatched: Bool
+    let onToggleWatch: (String) -> Void
 
     private var resyUrl: URL? {
         guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
         return URL(string: s)
     }
 
-    private var rarityInt: Int {
-        let score = drop.rarityScore ?? 0
-        let normalized = score <= 1 ? score * 100 : score
-        return min(100, max(0, Int(normalized.rounded())))
-    }
-
-    private var rarityColor: Color { AppTheme.scarcityColor(for: drop.scarcityTier) }
-
-    private var rarityPillText: String { "\(rarityInt)/100 Rarity" }
-
-    private var guestsText: String? {
-        let sizes = drop.partySizesAvailable.sorted()
-        guard let first = sizes.first else { return nil }
-        return "\(first) Guests"
-    }
-
-    private var dateAndTimeLine: String {
+    private var dateAndTimeText: String {
         let dateStr = drop.dateStr ?? drop.slots.first?.dateStr
-        let timeStr = drop.slots.first?.time ?? ""
+        let timeStr = drop.slots.first?.time
 
-        let formattedTime = timeStr.isEmpty ? "" : formatTime(timeStr)
+        let dateText: String? = {
+            guard let ds = dateStr, !ds.isEmpty else { return nil }
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            guard let d = fmt.date(from: ds) else { return nil }
+            let cal = Calendar.current
+            if cal.isDateInToday(d) { return "Tonight" }
+            if cal.isDateInTomorrow(d) { return "Tomorrow" }
+            let out = DateFormatter()
+            out.dateFormat = "EEE, MMM d"
+            return out.string(from: d)
+        }()
 
-        guard let ds = dateStr else { return formattedTime.isEmpty ? "Availability" : formattedTime }
+        let timeText: String? = {
+            guard let t = timeStr, !t.isEmpty else { return nil }
+            return formatTime(t)
+        }()
 
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd"
-        guard let d = fmt.date(from: ds) else { return formattedTime.isEmpty ? "Availability" : formattedTime }
-
-        if Calendar.current.isDateInToday(d) {
-            return formattedTime.isEmpty ? "Tonight" : "Tonight, \(formattedTime)"
+        switch (dateText, timeText) {
+        case let (d?, t?) : return "\(d), \(t)"
+        case let (d?, nil): return d
+        case let (nil, t?): return t
+        default: return "Availability"
         }
-        if Calendar.current.isDateInTomorrow(d) {
-            return formattedTime.isEmpty ? "Tomorrow" : "Tomorrow, \(formattedTime)"
-        }
+    }
 
-        if formattedTime.isEmpty { return "Available" }
-        return "\(formattedTime)"
+    private func formatTime(_ time: String) -> String {
+        let parts = time.split(separator: ":")
+        guard let h = parts.first.flatMap({ Int($0) }) else { return String(time.prefix(5)) }
+        let m = parts.count > 1 ? (Int(parts[1].prefix(2)) ?? 0) : 0
+        let hour12 = h % 12 == 0 ? 12 : h % 12
+        let ap = h < 12 ? "AM" : "PM"
+        return m > 0 ? "\(hour12):\(String(format: "%02d", m)) \(ap)" : "\(hour12) \(ap)"
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            ZStack(alignment: .topLeading) {
-                AsyncImage(url: resyUrl) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        Color(.systemGray5)
-                    }
+            AsyncImage(url: resyUrl) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFill()
+                default:
+                    LinearGradient(
+                        colors: [AppTheme.surfaceElevated, AppTheme.surface],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
-                .frame(width: 78, height: 78)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
-                )
-                .clipped()
-
-                Text(rarityPillText)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(rarityColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(rarityColor.opacity(0.12))
-                    .clipShape(Capsule())
-                    .padding(8)
             }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(drop.name)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(palette.textPrimary)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppTheme.textPrimary)
                     .lineLimit(1)
 
-                Text(dateAndTimeLine)
-                    .font(.system(size: 12))
-                    .foregroundColor(palette.textSecondary)
-                    .lineLimit(1)
-
-                if let guestsText {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(palette.textSecondary)
-                        Text(guestsText)
-                            .font(.system(size: 12))
-                            .foregroundColor(palette.textSecondary)
-                            .lineLimit(1)
-                    }
+                if let loc = drop.neighborhood ?? drop.location, !loc.isEmpty {
+                    Text("\(loc) · \(dateAndTimeText)")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppTheme.textSecondary)
+                        .lineLimit(1)
+                } else {
+                    Text(dateAndTimeText)
+                        .font(.system(size: 12))
+                        .foregroundColor(AppTheme.textSecondary)
+                        .lineLimit(1)
                 }
             }
 
             Spacer(minLength: 0)
 
-            Button {
-                guard let url = resyUrl else { return }
-                UIApplication.shared.open(url)
-            } label: {
-                HStack(spacing: 8) {
-                    Text("Secure")
-                        .font(.system(size: 13, weight: .bold))
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 13, weight: .bold))
+            VStack(spacing: 10) {
+                Button {
+                    guard let url = resyUrl else { return }
+                    UIApplication.shared.open(url)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Secure")
+                            .font(.system(size: 13, weight: .bold))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(AppTheme.accentRed)
+                    .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(palette.accentRed)
-                .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
+                .buttonStyle(ScaleButtonStyle())
+                .disabled(resyUrl == nil)
+                .opacity(resyUrl == nil ? 0.6 : 1)
+
+                Button {
+                    onToggleWatch(drop.name)
+                } label: {
+                    Image(systemName: isWatched ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(isWatched ? AppTheme.accentOrange : AppTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(ScaleButtonStyle())
-            .disabled(resyUrl == nil)
-            .opacity(resyUrl == nil ? 0.6 : 1)
         }
-        .padding(12)
-        .background(palette.surface)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .background(AppTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(palette.border, lineWidth: 0.5)
+                .stroke(AppTheme.border, lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 2)
-    }
-
-    private func formatTime(_ t: String) -> String {
-        let parts = t.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        guard let h = parts.first.flatMap({ Int($0) }) else { return t }
-        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
-        let hour12 = h % 12 == 0 ? 12 : h % 12
-        let ap = h < 12 ? "AM" : "PM"
-        return "\(hour12):\(String(format: "%02d", m)) \(ap)"
     }
 }
 
-// MARK: - TOP OPPORTUNITIES (hero carousel)
+// MARK: - Rare Drop Card (vertical card for horizontal scroll)
 
-private struct FeedTopOpportunitiesSection: View {
-    let drops: [Drop]
-
-    private var cardWidth: CGFloat { UIScreen.main.bounds.width * 0.82 }
-    private let cardHeight: CGFloat = 284
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            feedSectionHeader("TOP OPPORTUNITIES", count: drops.count,
-                              icon: "star.fill", iconColor: AppTheme.premiumGold)
-                .padding(.horizontal, AppTheme.spacingLG)
-                .padding(.bottom, 12)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(Array(drops.enumerated()), id: \.element.id) { idx, drop in
-                        TopOpportunityHeroCard(drop: drop, rank: idx + 1)
-                            .frame(width: cardWidth, height: cardHeight)
-                            .staggeredAppear(index: idx, delayPerItem: 0.05)
-                    }
-                }
-                .padding(.horizontal, AppTheme.spacingLG)
-                .scrollTargetLayout()
-            }
-            .scrollTargetBehavior(.viewAligned)
-        }
-    }
-}
-
-private struct TopOpportunityHeroCard: View {
+private struct RareDropCard: View {
     let drop: Drop
-    let rank: Int
+    let isWatched: Bool
+    let onToggleWatch: (String) -> Void
+
+    private var rarityInt: Int {
+        guard let r = drop.rarityScore else { return 0 }
+        return min(100, max(0, r <= 1 ? Int(r * 100) : Int(r.rounded())))
+    }
+
+    private var daysLabel: String {
+        if let d = drop.daysWithDrops { return "\(d)/14 days" }
+        return "Rare"
+    }
 
     private var resyUrl: URL? {
         guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
         return URL(string: s)
     }
 
-    private var availabilityText: String {
-        if let days = drop.daysWithDrops { return "Open \(days) of last 14 days" }
-        if let rate = drop.availabilityRate14d {
-            let pct = Int(rate * 100)
-            return pct < 20 ? "Very rare — \(pct)% avail." : "\(pct)% availability"
-        }
-        return ""
-    }
-
-    private var detailLine: String {
-        var parts: [String] = []
-        if let ds = drop.dateStr {
-            let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-            if let d = fmt.date(from: ds) {
-                if Calendar.current.isDateInToday(d)     { parts.append("Tonight") }
-                else if Calendar.current.isDateInTomorrow(d) { parts.append("Tomorrow") }
-                else { let o = DateFormatter(); o.dateFormat = "EEE MMM d"; parts.append(o.string(from: d)) }
-            }
-        }
-        if let t = drop.slots.first?.time, !t.isEmpty { parts.append(formatTime(t)) }
-        if let nb = drop.neighborhood, !nb.isEmpty    { parts.append(nb) }
-        return parts.joined(separator: " · ")
+    private var dateLabel: String {
+        guard let ds = drop.dateStr ?? drop.slots.first?.dateStr else { return "" }
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        guard let d = fmt.date(from: ds) else { return ds }
+        let out = DateFormatter(); out.dateFormat = "EEE, MMM d"
+        return out.string(from: d)
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Photo
+        VStack(alignment: .leading, spacing: 0) {
+            // Image
             Group {
                 if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
                     AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        default: heroFallback
-                        }
+                        if case .success(let img) = phase { img.resizable().scaledToFill() }
+                        else { AppTheme.surface }
                     }
-                } else { heroFallback }
+                } else {
+                    LinearGradient(colors: [Color(red: 0.18, green: 0.12, blue: 0.22),
+                                            Color(red: 0.1, green: 0.08, blue: 0.14)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: 160, height: 100)
             .clipped()
-
-            // Gradient
-            LinearGradient(
-                stops: [
-                    .init(color: .clear,               location: 0),
-                    .init(color: .black.opacity(0.25), location: 0.42),
-                    .init(color: .black.opacity(0.88), location: 1),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-
-            // Top badges
-            VStack {
-                HStack(alignment: .top) {
-                    Text("#\(rank) TOP PICK")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, AppTheme.spacingSM)
-                        .padding(.vertical, 5)
-                        .background(AppTheme.premiumGold)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    Spacer()
-                    ScarcityBadge(tier: drop.scarcityTier)
-                }
-                .padding(12)
-                Spacer()
-            }
-
-            // Bottom content
-            VStack(alignment: .leading, spacing: 6) {
-                if !availabilityText.isEmpty {
-                    HStack(spacing: 4) {
-                        TrendIndicator(trendPct: drop.trendPct)
-                        Text(availabilityText)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                }
-                Text(drop.name)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                if !detailLine.isEmpty {
-                    Text(detailLine)
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.82))
-                        .lineLimit(1)
-                }
-                if let url = resyUrl {
-                    Button { UIApplication.shared.open(url) } label: {
-                        HStack {
-                            Text("Reserve on Resy")
-                                .font(.system(size: 15, weight: .bold))
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        .foregroundColor(.black)
-                        .padding(.horizontal, AppTheme.spacingLG)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.premiumGold)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(ScaleButtonStyle())
-                    .padding(.top, 4)
-                }
-            }
-            .padding(14)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.28), radius: 12, x: 0, y: 4)
-    }
-
-    private var heroFallback: some View {
-        LinearGradient(
-            colors: [Color(red: 0.14, green: 0.12, blue: 0.20),
-                     Color(red: 0.08, green: 0.06, blue: 0.12)],
-            startPoint: .topLeading, endPoint: .bottomTrailing
-        )
-    }
-
-    private func formatTime(_ t: String) -> String {
-        let parts = t.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        guard let h = parts.first.flatMap({ Int($0) }) else { return t }
-        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
-        let h12 = h % 12 == 0 ? 12 : h % 12
-        let ap = h < 12 ? "AM" : "PM"
-        return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
-    }
-}
-
-// MARK: - HOT RIGHT NOW (2-column grid)
-
-private struct FeedHotRightNowSection: View {
-    let drops: [Drop]
-    let isWatched: (String) -> Bool
-    let onToggleWatch: (String) -> Void
-
-    // Pre-compute pairs to avoid compiler type-check timeout in body
-    private var pairs: [(Drop, Drop?)] {
-        stride(from: 0, to: drops.count, by: 2).map { i in
-            (drops[i], i + 1 < drops.count ? drops[i + 1] : nil)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            feedSectionHeader("HOT RIGHT NOW", count: drops.count,
-                              icon: "flame.fill", iconColor: AppTheme.accentOrange)
-                .padding(.horizontal, AppTheme.spacingLG)
-                .padding(.bottom, 12)
-
-            VStack(spacing: 10) {
-                ForEach(Array(pairs.enumerated()), id: \.offset) { pairIdx, pair in
-                    hotRow(pairIdx: pairIdx, pair: pair)
-                }
-            }
-            .padding(.horizontal, AppTheme.spacingLG)
-        }
-    }
-
-    @ViewBuilder
-    private func hotRow(pairIdx: Int, pair: (Drop, Drop?)) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            HotRightNowGridCard(
-                drop: pair.0,
-                isWatched: isWatched(pair.0.name),
-                onToggleWatch: { onToggleWatch(pair.0.name) }
-            )
-            .staggeredAppear(index: pairIdx * 2, delayPerItem: 0.03)
-
-            if let second = pair.1 {
-                HotRightNowGridCard(
-                    drop: second,
-                    isWatched: isWatched(second.name),
-                    onToggleWatch: { onToggleWatch(second.name) }
-                )
-                .staggeredAppear(index: pairIdx * 2 + 1, delayPerItem: 0.03)
-            } else {
-                Spacer().frame(maxWidth: .infinity)
-            }
-        }
-    }
-}
-
-private struct HotRightNowGridCard: View {
-    let drop: Drop
-    let isWatched: Bool
-    let onToggleWatch: () -> Void
-
-    private var freshnessColor: Color {
-        AppTheme.trendColor(for: drop.trendPct)
-    }
-
-    private var heatBadge: String {
-        FeedMetricLabels.heatLabel(trendPct: drop.trendPct)
-    }
-
-    private var freshnessLabel: String {
-        FeedMetricLabels.freshnessText(secondsSinceDetected: drop.secondsSinceDetected)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .topTrailing) {
-                Group {
-                    if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { phase in
-                            if case .success(let img) = phase { img.resizable().scaledToFill() }
-                            else { AppTheme.surfaceElevated }
-                        }
-                    } else { AppTheme.surfaceElevated }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 110)
-                .clipped()
-
-                Text(heatBadge)
-                    .font(.system(size: 9, weight: .bold))
+            .overlay(alignment: .topLeading) {
+                Text("RARE")
+                    .font(.system(size: 9, weight: .black))
                     .foregroundColor(.white)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
-                    .background(freshnessColor.opacity(0.88))
-                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                    .padding(7)
+                    .background(AppTheme.scarcityRare)
+                    .cornerRadius(6)
+                    .padding(8)
             }
 
-            VStack(alignment: .leading, spacing: 5) {
+            // Info
+            VStack(alignment: .leading, spacing: 4) {
                 Text(drop.name)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(AppTheme.textPrimary)
                     .lineLimit(1)
-
+                if !dateLabel.isEmpty {
+                    Text(dateLabel)
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.textTertiary)
+                }
                 HStack(spacing: 4) {
-                    Circle()
-                        .fill(freshnessColor)
-                        .frame(width: 5, height: 5)
-                    Text(freshnessLabel)
+                    if rarityInt > 0 {
+                        Text("\(rarityInt)/100")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AppTheme.scarcityRare)
+                    }
+                    Text(daysLabel)
                         .font(.system(size: 10))
-                        .foregroundColor(freshnessColor)
-                        .lineLimit(1)
+                        .foregroundColor(AppTheme.textTertiary)
                 }
 
+                Button {
+                    if let u = resyUrl { UIApplication.shared.open(u) }
+                } label: {
+                    Text("Reserve")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(AppTheme.accentOrange)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(10)
+        }
+        .frame(width: 160)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppTheme.scarcityRare.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+}
+
+// MARK: - Trending Drop Card
+
+private struct TrendingDropCard: View {
+    let drop: Drop
+    let isWatched: Bool
+    let onToggleWatch: (String) -> Void
+
+    private var trendStr: String {
+        guard let t = drop.trendPct, t != 0 else { return "" }
+        return t > 0 ? "+\(Int(t))%" : "\(Int(t))%"
+    }
+
+    private var resyUrl: URL? {
+        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var dateLabel: String {
+        guard let ds = drop.dateStr ?? drop.slots.first?.dateStr else { return "" }
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        guard let d = fmt.date(from: ds) else { return ds }
+        let out = DateFormatter(); out.dateFormat = "EEE, MMM d"
+        return out.string(from: d)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let img) = phase { img.resizable().scaledToFill() }
+                        else { AppTheme.surface }
+                    }
+                } else {
+                    LinearGradient(colors: [Color(red: 0.12, green: 0.18, blue: 0.22),
+                                            Color(red: 0.08, green: 0.1, blue: 0.14)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
+            }
+            .frame(width: 150, height: 95)
+            .clipped()
+            .overlay(alignment: .topLeading) {
+                if !trendStr.isEmpty {
+                    Text(trendStr)
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(AppTheme.liveDot)
+                        .cornerRadius(6)
+                        .padding(8)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(drop.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AppTheme.textPrimary)
+                    .lineLimit(1)
+                if !dateLabel.isEmpty {
+                    Text(dateLabel)
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.textTertiary)
+                }
                 if let nb = drop.neighborhood, !nb.isEmpty {
                     Text(nb)
                         .font(.system(size: 10))
                         .foregroundColor(AppTheme.textTertiary)
                         .lineLimit(1)
                 }
-
-                Button { onToggleWatch() } label: {
-                    Text(isWatched ? "Watching ✓" : "Set Alert")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(isWatched ? AppTheme.accentOrange : .white)
+                Button {
+                    if let u = resyUrl { UIApplication.shared.open(u) }
+                } label: {
+                    Text("Reserve")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(isWatched ? AppTheme.accentOrange.opacity(0.14) : AppTheme.surfaceElevated)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .stroke(isWatched ? AppTheme.accentOrange.opacity(0.4) : Color.clear, lineWidth: 0.5)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .padding(.vertical, 7)
+                        .background(AppTheme.accent)
+                        .cornerRadius(8)
                 }
-                .buttonStyle(ScaleButtonStyle())
-                .padding(.top, 2)
+                .buttonStyle(.plain)
             }
             .padding(10)
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: 150)
         .background(AppTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(AppTheme.border, lineWidth: 0.5)
+                .stroke(AppTheme.liveDot.opacity(0.3), lineWidth: 0.5)
         )
     }
 }
 
-// MARK: - JUST DROPPED (vertical list, thumbnails + badges)
-
-private struct FeedJustDroppedSection: View {
-    let drops: [Drop]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                feedSectionHeader("JUST DROPPED", count: drops.count, icon: nil, iconColor: .clear)
-                AnimatedLiveDot()
-            }
-            .padding(.horizontal, AppTheme.spacingLG)
-            .padding(.bottom, 12)
-
-            VStack(spacing: AppTheme.spacingSM) {
-                ForEach(Array(drops.enumerated()), id: \.element.id) { idx, drop in
-                    JustDroppedRowView(drop: drop)
-                        .staggeredAppear(index: idx, delayPerItem: 0.03)
-                }
-            }
-            .padding(.horizontal, AppTheme.spacingLG)
-        }
-    }
-}
-
-private struct JustDroppedRowView: View {
-    let drop: Drop
-
-    private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private var detailLine: String {
-        var parts: [String] = []
-        if let ds = drop.dateStr {
-            let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-            if let d = fmt.date(from: ds) {
-                if Calendar.current.isDateInToday(d)         { parts.append("Tonight") }
-                else if Calendar.current.isDateInTomorrow(d) { parts.append("Tomorrow") }
-                else { let o = DateFormatter(); o.dateFormat = "EEE"; parts.append(o.string(from: d)) }
-            }
-        }
-        if let t = drop.slots.first?.time, !t.isEmpty { parts.append(formatTime(t)) }
-        if let first = drop.partySizesAvailable.sorted().first {
-            parts.append(first > 8 ? "8+ Guests" : "\(first) Guests")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Thumbnail
-            Group {
-                if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let img) = phase { img.resizable().scaledToFill() }
-                        else { AppTheme.surfaceElevated }
-                    }
-                } else { AppTheme.surfaceElevated }
-            }
-            .frame(width: 64, height: 64)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(drop.name)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(AppTheme.textPrimary)
-                        .lineLimit(1)
-                    if drop.secondsSinceDetected < 600 {
-                        Text("JUST NOW")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(AppTheme.accentRed)
-                            .clipShape(Capsule())
-                    }
-                }
-                if !detailLine.isEmpty {
-                    Text(detailLine)
-                        .font(.system(size: 12))
-                        .foregroundColor(AppTheme.textSecondary)
-                        .lineLimit(1)
-                }
-                HStack(spacing: 6) {
-                    ScarcityBadge(tier: drop.scarcityTier)
-                    TrendIndicator(trendPct: drop.trendPct)
-                    if let nb = drop.neighborhood, !nb.isEmpty {
-                        Text(nb)
-                            .font(.system(size: 10))
-                            .foregroundColor(AppTheme.textTertiary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            if let url = resyUrl {
-                Button { UIApplication.shared.open(url) } label: {
-                    Text("Book")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(AppTheme.premiumGold)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-                .buttonStyle(ScaleButtonStyle())
-            }
-        }
-        .padding(12)
-        .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppTheme.border, lineWidth: 0.5)
-        )
-    }
-
-    private func formatTime(_ t: String) -> String {
-        let parts = t.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        guard let h = parts.first.flatMap({ Int($0) }) else { return t }
-        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
-        let h12 = h % 12 == 0 ? 12 : h % 12
-        let ap = h < 12 ? "AM" : "PM"
-        return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
-    }
-}
-
-// MARK: - LIKELY TO OPEN TODAY (predictive, premium gated)
-
-private struct FeedLikelyToOpenSection: View {
-    let venues: [LikelyToOpenVenue]
-    let isPremium: Bool
-    let onPurchase: () -> Void
-    var onOpenAlerts: (() -> Void)?
-
-    private let freeLimit = 3
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            feedSectionHeader("LIKELY TO OPEN TODAY", count: venues.count,
-                              icon: "chart.line.uptrend.xyaxis", iconColor: AppTheme.accent)
-                .padding(.horizontal, AppTheme.spacingLG)
-                .padding(.bottom, 12)
-
-            VStack(spacing: AppTheme.spacingSM) {
-                let visibleVenues = isPremium ? venues : Array(venues.prefix(freeLimit))
-                ForEach(Array(visibleVenues.enumerated()), id: \.element.id) { idx, venue in
-                    LikelyToOpenRow(venue: venue, onNotify: onOpenAlerts)
-                        .staggeredAppear(index: idx, delayPerItem: 0.04)
-                }
-
-                if !isPremium && venues.count > freeLimit {
-                    premiumGateRow(hiddenCount: venues.count - freeLimit)
-                }
-            }
-            .padding(.horizontal, AppTheme.spacingLG)
-        }
-    }
-
-    private func premiumGateRow(hiddenCount: Int) -> some View {
-        VStack(spacing: 12) {
-            HStack(spacing: AppTheme.spacingSM) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 15))
-                    .foregroundColor(AppTheme.premiumGold)
-                Text("+\(hiddenCount) more predicted venues")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(AppTheme.textPrimary)
-            }
-            Text("Upgrade to see all predicted drops and get ahead of everyone else.")
-                .font(.system(size: 13))
-                .foregroundColor(AppTheme.textSecondary)
-                .multilineTextAlignment(.center)
-            Button { onPurchase() } label: {
-                Text("Unlock Premium")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(AppTheme.premiumGold)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(ScaleButtonStyle())
-        }
-        .padding(AppTheme.spacingLG)
-        .background(AppTheme.premiumGoldBg)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(AppTheme.premiumGold.opacity(0.3), lineWidth: 0.5)
-        )
-    }
-}
-
-private struct LikelyToOpenRow: View {
-    let venue: LikelyToOpenVenue
-    var onNotify: (() -> Void)?
-
-    private var confidenceInt: Int {
-        let rarity = min(max(venue.rarityScore ?? 0, 0), 1)
-        let scarcity = 1 - min(max(venue.availabilityRate14d ?? 1, 0), 1)
-        return Int(((rarity * 0.65) + (scarcity * 0.35)) * 100)
-    }
-
-    private var daysText: String {
-        if let days = venue.daysWithDrops { return "Open \(days)/14 days" }
-        if let rate = venue.availabilityRate14d { return "\(Int(rate * 100))% avail." }
-        return ""
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Venue icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(AppTheme.surfaceElevated)
-                    .frame(width: 52, height: 52)
-                Image(systemName: "fork.knife")
-                    .font(.system(size: 18))
-                    .foregroundColor(AppTheme.textTertiary)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(venue.name)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(AppTheme.textPrimary)
-                    .lineLimit(1)
-
-                HStack(spacing: AppTheme.spacingSM) {
-                    if let nb = venue.neighborhood, !nb.isEmpty {
-                        Text(nb)
-                            .font(.system(size: 11))
-                            .foregroundColor(AppTheme.textTertiary)
-                    }
-                    if !daysText.isEmpty {
-                        Text(daysText)
-                            .font(.system(size: 11))
-                            .foregroundColor(AppTheme.textTertiary)
-                    }
-                }
-
-                if let predicted = venue.predictedDropTime, !predicted.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 10))
-                        Text("Expected around \(predicted)")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundColor(AppTheme.accent)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            VStack(alignment: .trailing, spacing: 6) {
-                Text("\(confidenceInt)%")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(AppTheme.liveDot)
-                    .padding(.horizontal, AppTheme.spacingSM)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.liveDot.opacity(0.15))
-                    .clipShape(Capsule())
-
-                Button { onNotify?() } label: {
-                    Text("Notify Me")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(AppTheme.surfaceElevated)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-                .buttonStyle(ScaleButtonStyle())
-            }
-        }
-        .padding(12)
-        .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppTheme.border, lineWidth: 0.5)
-        )
-    }
-}
-
-// MARK: - YOUR WATCHLIST
-
-private struct FeedWatchlistSection: View {
-    let watchedNames: [String]
-    var onOpenAlerts: (() -> Void)?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            feedSectionHeader("YOUR WATCHLIST", count: watchedNames.count,
-                              icon: "bookmark.fill", iconColor: AppTheme.accentOrange)
-                .padding(.horizontal, AppTheme.spacingLG)
-                .padding(.bottom, 12)
-
-            if watchedNames.isEmpty {
-                Text("Add venues from the Alerts tab to track when they drop.")
-                    .font(.system(size: 14))
-                    .foregroundColor(AppTheme.textSecondary)
-                    .padding(AppTheme.spacingLG)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AppTheme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .padding(.horizontal, AppTheme.spacingLG)
-            } else {
-                VStack(spacing: AppTheme.spacingSM) {
-                    ForEach(watchedNames, id: \.self) { name in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(name)
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(AppTheme.textPrimary)
-                                Text("Watching next 14 days")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(AppTheme.textTertiary)
-                            }
-                            Spacer()
-                            Button { onOpenAlerts?() } label: {
-                                Image(systemName: "gearshape")
-                                    .font(.system(size: 17))
-                                    .foregroundColor(AppTheme.textTertiary)
-                                    .frame(width: 44, height: 44)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.surfaceElevated)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(AppTheme.border, lineWidth: 0.5)
-                        )
-                    }
-                }
-                .padding(.horizontal, AppTheme.spacingLG)
-            }
-        }
-    }
-}
-
-// MARK: - Reusable badge components (module-level for use in other views)
-
-/// Color-coded scarcity pill: Rare / Scarce / Available
-struct ScarcityBadge: View {
-    let tier: Drop.ScarcityTier
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Circle()
-                .fill(color)
-                .frame(width: 5, height: 5)
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(color)
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(color.opacity(0.15))
-        .clipShape(Capsule())
-        .accessibilityLabel(label)
-    }
-
-    private var color: Color { AppTheme.scarcityColor(for: tier) }
-
-    private var label: String {
-        switch tier {
-        case .rare:      return "Rare"
-        case .uncommon:  return "Scarce"
-        case .available: return "Available"
-        case .unknown:   return "Limited"
-        }
-    }
-}
-
-/// Trend arrow + percentage (only shown when significant)
-struct TrendIndicator: View {
-    let trendPct: Double?
-
-    var body: some View {
-        if let pct = trendPct, abs(pct) > 5 {
-            HStack(spacing: 2) {
-                Image(systemName: pct > 0 ? "arrow.up.right" : "arrow.down.right")
-                    .font(.system(size: 9, weight: .bold))
-                Text("\(Int(abs(pct)))%")
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            .foregroundColor(pct > 0 ? AppTheme.trendUp : AppTheme.trendDown)
-            .accessibilityLabel(pct > 0 ? "Trending up \(Int(abs(pct)))%" : "Trending down \(Int(abs(pct)))%")
-        }
-    }
-}
-
-// MARK: - Section header helper
-
-private func feedSectionHeader(_ title: String, count: Int, icon: String?, iconColor: Color) -> some View {
-    HStack(spacing: 6) {
-        if let icon {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(iconColor)
-        }
-        Text(title)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundColor(AppTheme.textPrimary)
-            .tracking(0.4)
-        if count > 0 {
-            Text("\(count)")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(AppTheme.textTertiary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2)
-                .background(AppTheme.pillUnselected)
-                .clipShape(Capsule())
-        }
-    }
-}
-
-// MARK: - Filter chip data model (Identifiable → ForEach(_:content:) is unambiguous)
-
-struct FilterChipData: Identifiable {
-    let id: String
-    let label: String
-    let onRemove: () -> Void
-}
-
-// MARK: - Active filter chip view
-
-struct ActiveChipView: View {
-    let palette: FeedPalette
-    let label: String
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
-            Button { onRemove() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-            }
-            .buttonStyle(.plain)
-        }
-        .foregroundColor(palette.textPrimary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(palette.accent.opacity(0.14))
-        .overlay(Capsule().stroke(palette.accent.opacity(0.28), lineWidth: 0.5))
-        .clipShape(Capsule())
-    }
-}
-
-// MARK: - Legacy public view (kept for external use)
+// MARK: - Latest Drop Row (with rich metrics)
 
 struct LatestDropRowView: View {
     let drop: Drop
     let isWatched: Bool
     let onToggleWatch: (String) -> Void
 
+    private var statusBadge: (text: String, color: Color)? {
+        let sec = drop.secondsSinceDetected
+        if sec >= 0 && sec < 300 { return ("NEW", Color(red: 0.4, green: 0.6, blue: 0.95)) }
+        if drop.scarcityTier == .rare { return ("RARE", AppTheme.scarcityRare) }
+        return nil
+    }
+
+    private var timestampLabel: String {
+        let sec = drop.secondsSinceDetected
+        if sec < 60 { return "JUST NOW" }
+        if sec < 3600 { return "\(sec / 60)M AGO" }
+        if sec < 86400 { return "\(sec / 3600)H AGO" }
+        return "1D+ AGO"
+    }
+
     private var resyUrl: URL? {
         guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
         return URL(string: s)
+    }
+
+    private var dateLabel: String {
+        guard let ds = drop.dateStr ?? drop.slots.first?.dateStr else { return "" }
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
+        guard let d = fmt.date(from: ds) else { return ds }
+        let out = DateFormatter(); out.dateFormat = "MMM d"
+        return out.string(from: d)
+    }
+
+    private var subLabel: String {
+        var parts: [String] = []
+        if !dateLabel.isEmpty { parts.append(dateLabel) }
+        if let nb = drop.neighborhood, !nb.isEmpty { parts.append(nb) }
+        if let sl = drop.scarcityLabel { parts.append(sl) }
+        return parts.joined(separator: " · ")
+    }
+
+    private var trendBadge: String? {
+        guard let t = drop.trendPct, t > 15 else { return nil }
+        return "+\(Int(t))% trend"
     }
 
     var body: some View {
@@ -1374,6 +733,103 @@ struct LatestDropRowView: View {
             if let url = resyUrl { UIApplication.shared.open(url) }
         } label: {
             HStack(spacing: 12) {
+                // Thumbnail
+                Group {
+                    if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { phase in
+                            if case .success(let img) = phase { img.resizable().scaledToFill() }
+                            else { AppTheme.surface }
+                        }
+                    } else {
+                        AppTheme.surface
+                    }
+                }
+                .frame(width: 58, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // Name + badges + sublabel
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(drop.name)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(AppTheme.textPrimary)
+                            .lineLimit(1)
+                        if let badge = statusBadge {
+                            Text(badge.text)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(badge.color)
+                                .cornerRadius(4)
+                        }
+                    }
+                    if !subLabel.isEmpty {
+                        Text(subLabel)
+                            .font(.system(size: 11))
+                            .foregroundColor(AppTheme.textTertiary)
+                            .lineLimit(1)
+                    }
+                    if let trend = trendBadge {
+                        Text(trend)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(AppTheme.liveDot)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                // Timestamp + bookmark
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text(timestampLabel)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(AppTheme.textTertiary)
+                    Button { onToggleWatch(drop.name) } label: {
+                        Image(systemName: isWatched ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 14))
+                            .foregroundColor(isWatched ? AppTheme.accentOrange : AppTheme.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(12)
+            .background(AppTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(AppTheme.border, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Hot Right Now compact card (kept for compatibility)
+
+struct HotRightNowCard: View {
+    let drop: Drop
+    let isWatched: Bool
+    let onToggleWatch: (String) -> Void
+
+    private var resyUrl: URL? {
+        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var trendStr: String {
+        guard let t = drop.trendPct, t > 0 else { return "" }
+        return "+\(Int(t))%"
+    }
+
+    private var neighborhoodStr: String {
+        drop.neighborhood ?? (drop.location ?? "")
+    }
+
+    var body: some View {
+        Button {
+            if let url = resyUrl { UIApplication.shared.open(url) }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
                 Group {
                     if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
                         AsyncImage(url: url) { phase in
@@ -1382,33 +838,24 @@ struct LatestDropRowView: View {
                         }
                     } else { AppTheme.surface }
                 }
-                .frame(width: 54, height: 54)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(width: 120, height: 80)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(drop.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(AppTheme.textPrimary)
-                        .lineLimit(1)
-                    if let sl = drop.scarcityLabel {
-                        Text(sl)
-                            .font(.system(size: 11))
-                            .foregroundColor(AppTheme.textTertiary)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(drop.name).font(.system(size: 12, weight: .semibold)).foregroundColor(AppTheme.textPrimary).lineLimit(1)
+                        Spacer(minLength: 0)
+                        if !trendStr.isEmpty {
+                            Text(trendStr).font(.system(size: 10, weight: .bold)).foregroundColor(AppTheme.liveDot)
+                        }
+                    }
+                    if !neighborhoodStr.isEmpty {
+                        Text(neighborhoodStr).font(.system(size: 10)).foregroundColor(AppTheme.textTertiary).lineLimit(1)
                     }
                 }
-                Spacer(minLength: 4)
-                Button { onToggleWatch(drop.name) } label: {
-                    Image(systemName: isWatched ? "bookmark.fill" : "bookmark")
-                        .font(.system(size: 14))
-                        .foregroundColor(isWatched ? AppTheme.accentOrange : AppTheme.textTertiary)
-                }
-                .buttonStyle(.plain)
+                .frame(width: 120)
             }
-            .padding(12)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(AppTheme.border, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }
