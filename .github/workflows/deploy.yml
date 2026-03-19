@@ -1,39 +1,58 @@
 # Deploy to EC2 on every push to main.
-# Add repo secrets: EC2_HOST, EC2_SSH_KEY (see docs/DEPLOY_AWS.md).
-# Uses same steps as manual update: plain docker build (no compose build), then compose up.
+# Repo secrets required: EC2_HOST, EC2_SSH_KEY (see docs/DEPLOY_AWS.md).
+#
+# Strategy: GitHub Actions pushes code to EC2 via SCP, then SSHs in to build.
+# This means EC2 never needs outbound access to github.com.
 
 name: Deploy to AWS
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # Allow manual run from Actions tab
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: PROD
+
     steps:
-      - name: Deploy to EC2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Push backend source + compose file to EC2
+      - name: Copy backend to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "backend/,docker-compose.prod.yml"
+          target: "~/paystub-service/"
+
+      # Build image and restart the container on EC2
+      - name: Build and deploy on EC2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 15m
-          script_stderr: true
           script: |
             set -e
-            cd ~/paystub-service || { echo "Missing ~/paystub-service"; exit 1; }
-            if command -v docker-compose >/dev/null 2>&1; then DC="sudo docker-compose -f docker-compose.prod.yml"; else DC="sudo docker compose -f docker-compose.prod.yml"; fi
-            echo "==> git pull..."
-            git pull origin main
-            GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
-            echo "==> docker build (GIT_SHA=$GIT_SHA)..."
-            sudo docker build --build-arg GIT_SHA="$GIT_SHA" --no-cache -t paystub-service-backend ./backend
+            cd ~/paystub-service
+            if command -v docker-compose >/dev/null 2>&1; then
+              DC="sudo docker-compose -f docker-compose.prod.yml"
+            else
+              DC="sudo docker compose -f docker-compose.prod.yml"
+            fi
+            GIT_SHA="${{ github.sha }}"
+            SHORT_SHA="${GIT_SHA:0:7}"
+            echo "==> docker build (GIT_SHA=$SHORT_SHA)..."
+            sudo docker build --build-arg GIT_SHA="$SHORT_SHA" --no-cache -t paystub-service-backend ./backend
             echo "==> migrations..."
             $DC run --rm backend alembic upgrade head || true
             echo "==> up -d --force-recreate backend..."
             $DC up -d --force-recreate backend
             $DC ps
-            echo "Deploy done."
+            echo "Deploy done (sha=$SHORT_SHA)."
