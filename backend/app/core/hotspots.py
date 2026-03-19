@@ -24,8 +24,15 @@ NYC_HOTSPOT_NAMES = sorted({
     "4 Charles Prime Rib", "Eleven Madison Park", "Per Se",
 })
 
-# Top-priority names for "Top Opportunities" slot (NYC)
-NYC_TOP_OPPORTUNITY_PRIORITY = ("don angie", "i sodi", "tatiana", "lilia", "via carota")
+# Top-priority names for "Top Drops" — the absolute hardest to get in NYC.
+# Ordered by prestige / scarcity. Matched as substrings (case-insensitive).
+NYC_TOP_OPPORTUNITY_PRIORITY = (
+    "don angie", "lilia", "i sodi", "via carota", "tatiana",
+    "carbone", "le bernardin", "atomix", "four charles", "4 charles",
+    "eleven madison", "per se", "minetta tavern", "cote", "babbo",
+    "laser wolf", "coqodaq", "rule of thirds", "chez ma tante", "misi",
+    "cafe spaghetti", "gupshup", "balthazar", "pastis", "dame",
+)
 
 # ---------------------------------------------------------------------------
 # Miami Beach & Miami: popular / tough-to-get spots

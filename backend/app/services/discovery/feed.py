@@ -180,8 +180,7 @@ def _consolidate_cards(
 
 
 def _priority_score(card: dict, is_hot: bool) -> float:
-    # Scarcity: rarity_score (0-1, higher = rarer) is the strongest signal.
-    # Fall back to is_hot boolean for venues without metrics yet.
+    """General ranked-board score: freshness + scarcity + popularity."""
     rarity = card.get("rarity_score")
     if isinstance(rarity, (int, float)) and rarity > 0:
         scarcity = 1.0 + rarity * 3.0  # range 1.0 – 4.0
@@ -214,6 +213,43 @@ def _priority_score(card: dict, is_hot: bool) -> float:
     popularity = (0.5 + float(pop)) if isinstance(pop, (int, float)) else 1.0
 
     return scarcity * availability * freshness * popularity
+
+
+def _top_opportunity_score(card: dict) -> float:
+    """
+    Score for Top Drops section: quality + scarcity, NOT freshness.
+
+    We deliberately ignore when a slot was detected so that a random
+    low-quality restaurant freshly detected 2 minutes ago never outranks
+    an iconic hard-to-get restaurant detected 20 minutes ago.
+
+    Factors (additive, all 0-based):
+      • hotspot bonus  — is it on our curated NYC hard-to-get list?  (0 or 2.0)
+      • rarity         — rarity_score 0-1: how rarely it appears on Resy (×2)
+      • popularity     — Resy's own popularity/demand score            (×1.5)
+      • quality        — rating_average weighted by review credibility  (×1.0)
+    """
+    if not card.get("slots"):
+        return 0.0
+
+    # Known hard-to-get restaurant bonus
+    hot_bonus = 2.0 if card.get("feedHot") else 0.0
+
+    # Scarcity from rolling metrics (opens rarely = high rarity_score)
+    rarity = card.get("rarity_score")
+    scarcity = float(rarity) * 2.0 if isinstance(rarity, (int, float)) and rarity > 0 else 0.0
+
+    # Resy's own popularity/demand signal
+    pop = card.get("resy_popularity_score")
+    popularity = float(pop) * 1.5 if isinstance(pop, (int, float)) and pop > 0 else 0.0
+
+    # Rating quality — credibility grows with review count (saturates ~300 reviews)
+    rating = card.get("rating_average") or 0
+    count = card.get("rating_count") or 0
+    credibility = min(1.0, count / 300)
+    quality = (float(rating) / 5.0) * credibility
+
+    return hot_bonus + scarcity + popularity + quality
 
 
 def build_feed(
@@ -276,41 +312,56 @@ def build_feed(
 
     ranked = sorted(cards, key=lambda x: -(x.get("_priority") or 0))
 
-    # Top opportunities: priority names first (per market), then hot, then fill to 4
+    # Score every card for Top Drops (quality + scarcity, no freshness bias)
+    for c in cards:
+        c["_top_score"] = _top_opportunity_score(c)
+    quality_ranked = sorted(cards, key=lambda x: -(x.get("_top_score") or 0))
+
+    # Top opportunities:
+    #   1. Named priority restaurants (iconic / hardest-to-get) that are live right now
+    #   2. Fill remaining slots from quality_ranked (best score first, no freshness bias)
     priority_picks = []
-    used_ids = set()
+    used_ids: set[str] = set()
     for market in ("nyc", "miami"):
         if len(priority_picks) >= TOP_OPPORTUNITIES_MAX:
             break
         for pname in top_priority_names(market):
             if len(priority_picks) >= TOP_OPPORTUNITIES_MAX:
                 break
-            for d in ranked:
+            # Find the highest quality-scored match for this priority name.
+            # Use word-level matching to avoid "misi" matching "misipasta" etc.
+            for d in quality_ranked:
                 if d.get("id") in used_ids:
                     continue
                 if (d.get("market") or "nyc") != market:
                     continue
                 n = _normalize_name(d.get("name"))
-                if pname in n or n in pname:
+                n_words = set(n.split())
+                p_words = set(pname.split())
+                # Match if all priority words appear as whole words in the venue name,
+                # or the full priority string is a prefix/suffix of the venue name.
+                word_match = p_words.issubset(n_words)
+                phrase_match = (n == pname or n.startswith(pname + " ") or n.endswith(" " + pname))
+                if word_match or phrase_match:
                     priority_picks.append(d)
                     used_ids.add(d["id"])
                     break
+
     seen_ids = {d["id"] for d in priority_picks}
-    hot_only = [d for d in ranked if d.get("feedHot")]
-    rest_hot = [d for d in hot_only if d["id"] not in seen_ids]
-    rest_other = [d for d in ranked if not d.get("feedHot") and d["id"] not in seen_ids]
     top_list = list(priority_picks)
-    for d in rest_hot:
+
+    # Fill remaining slots from quality_ranked — hotspot venues first, then best scored
+    for d in quality_ranked:
         if len(top_list) >= TOP_OPPORTUNITIES_MAX:
             break
-        top_list.append(d)
-    for d in rest_other:
-        if len(top_list) >= TOP_OPPORTUNITIES_MAX:
-            break
-        top_list.append(d)
+        if d["id"] not in seen_ids:
+            top_list.append(d)
+            seen_ids.add(d["id"])
+
     top_opportunities = top_list[:TOP_OPPORTUNITIES_MAX]
     top_ids = {d["id"] for d in top_opportunities}
 
+    hot_only = [d for d in ranked if d.get("feedHot")]
     # Hot right now: hot cards not in top 4, then pad with non-hot so frontend can fill rows (min 8, multiple of 5)
     hot_right_now = [d for d in hot_only if d["id"] not in top_ids][:HOT_RIGHT_NOW_MAX]
     seen_hrn_ids = {d["id"] for d in hot_right_now}
