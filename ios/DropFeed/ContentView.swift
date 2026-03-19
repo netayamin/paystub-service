@@ -3,49 +3,33 @@ import SwiftUI
 // MARK: - Root container
 
 struct ContentView: View {
-    @StateObject private var feedVM   = FeedViewModel()
-    @StateObject private var savedVM  = SavedViewModel()
-    @StateObject private var premium  = PremiumManager()
-    @StateObject private var alertsVM = AlertsViewModel()
+    @StateObject private var feedVM  = FeedViewModel()
+    @StateObject private var savedVM = SavedViewModel()
+    @StateObject private var premium = PremiumManager()
     @State private var selectedTab = 0
 
     var body: some View {
         GeometryReader { geo in
             let bottomInset = geo.safeAreaInsets.bottom
-            ZStack(alignment: .bottom) {
-                // ── Active tab ────────────────────────────────────────────
+            // VStack: content fills remaining space, tab bar sits below — no overlap.
+            VStack(spacing: 0) {
                 Group {
                     switch selectedTab {
                     case 0:
                         FeedView(feedVM: feedVM, savedVM: savedVM, premium: premium)
-                    case 1:
-                        SearchView(savedVM: savedVM)
-                    case 2:
-                        AlertsView(alertsVM: alertsVM, savedVM: savedVM, premium: premium)
                     default:
-                        YouView(savedVM: savedVM, feedVM: feedVM, premium: premium)
+                        SearchView(savedVM: savedVM)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Push scroll content above the floating tab bar
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    Color.clear.frame(height: 56 + bottomInset + 14)
-                }
 
-                // ── Floating custom tab bar ───────────────────────────────
-                CustomTabBar(
-                    selectedTab: $selectedTab,
-                    alertBadgeCount: alertsVM.unreadCount,
-                    bottomSafeInset: bottomInset
-                )
-                .padding(.horizontal, 16)
+                CustomTabBar(selectedTab: $selectedTab, bottomSafeInset: bottomInset)
             }
         }
         .ignoresSafeArea(edges: .bottom)
         .task {
             await savedVM.loadAll()
             await premium.checkEntitlements()
-            alertsVM.startPolling()
         }
     }
 }

@@ -1,71 +1,44 @@
 import SwiftUI
 
-/// Pill-style tab bar: frosted glass (blur + dark tint), selected tab has a light pill.
+/// Card-style tab bar: white background, rounded top corners, upward shadow.
+/// Two tabs only: LIVE (feed) and SEARCH.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
+    /// Legacy params kept so existing call sites compile without changes.
     var alertBadgeCount: Int = 0
-    
-    private let barHeight: CGFloat = 56
     var bottomSafeInset: CGFloat = 0
-    
+
     var body: some View {
-        HStack(spacing: 0) {
-            tabItem(tag: 0, icon: "antenna.radiowaves.left.and.right", label: "Live")
-            tabItem(tag: 1, icon: "magnifyingglass", label: "Search")
-            tabItem(tag: 2, icon: "bell", label: "Alerts", badge: alertBadgeCount)
-            tabItem(tag: 3, icon: "person", label: "Profile")
-        }
-        .frame(height: barHeight)
-        .padding(.horizontal, 2)
-        .padding(.all, 4)
-        .padding(.bottom, bottomSafeInset)
-        .background {
-            ZStack {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                Color.black.opacity(0.35)
+        VStack(spacing: 0) {
+            // Tab items row
+            HStack(spacing: 0) {
+                tabItem(tag: 0, icon: "antenna.radiowaves.left.and.right", label: "LIVE")
+                tabItem(tag: 1, icon: "magnifyingglass", label: "SEARCH")
             }
+            .frame(height: 64)
+            .frame(maxWidth: .infinity)
+
+            // White spacer that fills the home-indicator safe area
+            Color.white.frame(height: bottomSafeInset)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 40, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
-        .frame(height: barHeight + bottomSafeInset)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: Color.black.opacity(0.08), radius: 18, x: 0, y: -4)
     }
-    
-    private func tabItem(tag: Int, icon: String, label: String, badge: Int = 0) -> some View {
-        let selected = selectedTab == tag
+
+    private func tabItem(tag: Int, icon: String, label: String) -> some View {
+        let sel = selectedTab == tag
         return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedTab = tag
-            }
+            withAnimation(.easeInOut(duration: 0.18)) { selectedTab = tag }
         } label: {
-            ZStack {
-                if selected {
-                    RoundedRectangle(cornerRadius: 30, style: .continuous)
-                        .fill(AppTheme.tabBarPillSelected)
-                        .padding(4)
-                }
-                VStack(spacing: 4) {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: selected ? icon : icon.replacingOccurrences(of: ".fill", with: ""))
-                            .font(.system(size: 20, weight: .medium))
-                        if badge > 0 {
-                            Text("\(min(badge, 99))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(minWidth: 16, minHeight: 16)
-                                .background(Circle().fill(Color.red))
-                                .offset(x: 8, y: -8)
-                        }
-                    }
-                    Text(label)
-                        .font(.system(size: 10, weight: selected ? .semibold : .regular))
-                }
-                .foregroundColor(selected ? AppTheme.tabBarSelected : AppTheme.tabBarUnselected)
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: sel ? .semibold : .regular))
+                Text(label)
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.0)
             }
+            .foregroundColor(sel ? AppTheme.accentRed : Color(white: 0.55))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .buttonStyle(.plain)
@@ -74,12 +47,10 @@ struct CustomTabBar: View {
 
 #Preview("Tab bar") {
     ZStack {
-        AppTheme.background.ignoresSafeArea()
+        Color(white: 0.95).ignoresSafeArea()
         VStack {
             Spacer()
-            CustomTabBar(selectedTab: .constant(0), alertBadgeCount: 3)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+            CustomTabBar(selectedTab: .constant(0))
         }
     }
 }
