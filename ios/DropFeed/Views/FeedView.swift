@@ -41,7 +41,6 @@ struct FeedView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
         }
-        .background(palette.pageBackground)
         .refreshable { await vm.refresh() }
         .task {
             await vm.refresh()
