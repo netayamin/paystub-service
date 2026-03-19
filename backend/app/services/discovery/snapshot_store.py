@@ -34,16 +34,26 @@ from app.core.nyc_hotspots import is_hotspot
 logger = logging.getLogger(__name__)
 
 _snapshot: dict | None = None
-_snapshot_json: bytes | None = None  # pre-serialized JSON for zero-copy no-filter path
+_snapshot_json: bytes | None = None         # full response (for debug / web clients)
+_snapshot_json_mobile: bytes | None = None  # compact response for iOS (ranked_board capped, no day arrays)
 _calendar_json: bytes | None = None
 _bucket_health_json: bytes | None = None
 _snapshot_lock = threading.Lock()
+
+# How many ranked_board items to include in the mobile snapshot.
+_MOBILE_RANKED_BOARD_LIMIT = 60
 
 
 def get_snapshot_json() -> bytes | None:
     """Return pre-serialized JSON bytes for the no-filter just-opened response, or None."""
     with _snapshot_lock:
         return _snapshot_json
+
+
+def get_snapshot_json_mobile() -> bytes | None:
+    """Compact mobile snapshot: ranked_board capped at 60, no day arrays. ~10x smaller."""
+    with _snapshot_lock:
+        return _snapshot_json_mobile
 
 
 def get_calendar_json() -> bytes | None:
@@ -254,15 +264,34 @@ def rebuild_snapshot(db: Session) -> None:
         }
         bh_bytes = _json.dumps(bh_payload, separators=(",", ":"), default=str).encode()
 
+        # Build compact mobile snapshot: drop heavy day arrays, cap ranked_board.
+        mobile_payload = {
+            "ranked_board":      ranked_board[:_MOBILE_RANKED_BOARD_LIMIT],
+            "top_opportunities": top_opportunities,
+            "hot_right_now":     hot_right_now,
+            "likely_to_open":    likely_to_open,
+            "likely_open_today": [],
+            "likely_open_tomorrow": [],
+            "likely_open_soon":  [],
+        }
+        mobile_payload.update({k: v for k, v in info.items()})
+        mobile_bytes = _json.dumps(mobile_payload, separators=(",", ":"), default=str).encode()
+
         with _snapshot_lock:
-            global _snapshot, _snapshot_json, _calendar_json, _bucket_health_json
+            global _snapshot, _snapshot_json, _snapshot_json_mobile, _calendar_json, _bucket_health_json
             _snapshot = snap
             _snapshot_json = api_bytes
+            _snapshot_json_mobile = mobile_bytes
             _calendar_json = cal_bytes
             _bucket_health_json = bh_bytes
 
-        logger.info("Discovery snapshot rebuilt (%d KB): %d just-opened days, %d still-open days",
-                     len(api_bytes) // 1024, len(just_opened), len(still_open))
+        logger.info(
+            "Discovery snapshot rebuilt — full: %d KB, mobile: %d KB (%d ranked items capped to %d)",
+            len(api_bytes) // 1024,
+            len(mobile_bytes) // 1024,
+            len(ranked_board),
+            _MOBILE_RANKED_BOARD_LIMIT,
+        )
 
     except Exception:
         logger.exception("Failed to rebuild discovery snapshot")

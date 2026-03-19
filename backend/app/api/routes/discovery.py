@@ -71,6 +71,7 @@ from app.services.discovery.feed import attach_likely_open_labels, build_feed
 from app.services.discovery.snapshot_store import (
     get_snapshot,
     get_snapshot_json,
+    get_snapshot_json_mobile,
     get_calendar_json,
     get_bucket_health_json,
     filter_snapshot_for_request,
@@ -992,16 +993,31 @@ async def list_just_opened(
     party_sizes: str | None = None,
     market: str | None = None,
     debug: str | None = None,
+    mobile: str | None = None,
 ):
-    """Just opened + still open. Serves from pre-computed snapshot (zero DB queries). Optional: dates, party_sizes, market (e.g. nyc, miami)."""
+    """Just opened + still open. Serves from pre-computed snapshot (zero DB queries).
+    Pass ?mobile=1 for a compact payload (ranked_board capped at 60, no day arrays) —
+    ~10x smaller and much faster for iOS clients.
+    """
     try:
         is_debug = debug and str(debug).strip() in ("1", "true", "yes")
+        is_mobile = bool(mobile and str(mobile).strip() in ("1", "true", "yes"))
         date_filter = [s.strip() for s in dates.split(",") if s.strip()] if dates else None
         party_size_list = _parse_ints(party_sizes)
         market_list = [s.strip() for s in market.split(",") if s.strip()] if market else None
         has_filters = date_filter or party_size_list or market_list
 
-        # Fast path: no filters → return pre-serialized JSON bytes directly
+        # Mobile fast path: compact pre-serialized snapshot (zero DB queries, ~10x smaller)
+        if is_mobile and not has_filters and not is_debug:
+            raw = get_snapshot_json_mobile()
+            if raw is not None:
+                return Response(
+                    content=raw,
+                    media_type="application/json",
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+                )
+
+        # Full fast path: no filters → return pre-serialized JSON bytes directly
         # (skips deepcopy, jsonable_encoder, json.dumps — sub-millisecond)
         if not has_filters and not is_debug:
             raw = get_snapshot_json()

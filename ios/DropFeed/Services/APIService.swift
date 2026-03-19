@@ -37,7 +37,10 @@ final class APIService {
         timeBefore: String? = nil
     ) async throws -> JustOpenedResponse {
         var components = URLComponents(string: "\(baseURL)/chat/watches/just-opened")!
-        var queryItems: [URLQueryItem] = [URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))")]
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
+            URLQueryItem(name: "mobile", value: "1"),
+        ]
         if let dates = dates, !dates.isEmpty {
             queryItems.append(URLQueryItem(name: "dates", value: dates.joined(separator: ",")))
         }
