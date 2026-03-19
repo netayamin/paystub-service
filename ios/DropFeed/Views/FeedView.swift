@@ -23,6 +23,11 @@ struct FeedView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Extend the Top Drops dark background into the top safe area (status bar region).
+            FeedPalette.liveFeedDark.pageBackground
+                .frame(height: 0)
+                .ignoresSafeArea(edges: .top)
+
             Group {
                 if vm.isLoading && vm.drops.isEmpty {
                     FeedSkeletonView()
