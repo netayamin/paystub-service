@@ -266,11 +266,7 @@ struct FeedView: View {
                         let visible = vm.tickerDrops.isEmpty ? Array(just.prefix(5)) : vm.tickerDrops
                         VStack(spacing: 10) {
                             ForEach(visible, id: \.id) { drop in
-                                RealTimeTickerCard(
-                                    drop: drop,
-                                    isWatched: savedVM.isWatched(drop.name),
-                                    onToggleWatch: { savedVM.toggleWatch($0) }
-                                )
+                                RealTimeTickerCard(drop: drop)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: .top).combined(with: .opacity),
                                     removal: .move(edge: .bottom).combined(with: .opacity)
@@ -681,8 +677,6 @@ private struct TopDropCard: View {
 
 private struct RealTimeTickerCard: View {
     let drop: Drop
-    let isWatched: Bool
-    let onToggleWatch: (String) -> Void
 
     private let palette: FeedPalette = .liveFeedLight
 
@@ -798,20 +792,6 @@ private struct RealTimeTickerCard: View {
                 }
             }
 
-            Spacer(minLength: 4)
-
-            // SNAG button
-            Button { onToggleWatch(drop.name) } label: {
-                Text(isWatched ? "SNAGGED" : "SNAG")
-                    .font(.system(size: 15, weight: .black))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(palette.accentRed)
-                    .clipShape(Capsule())
-                    .shadow(color: palette.accentRed.opacity(0.30), radius: 6, x: 0, y: 3)
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
