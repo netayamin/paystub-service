@@ -256,22 +256,28 @@ struct FeedView: View {
                     }
                 }
 
-                // Just dropped (live)
+                // Real-Time Ticker (rotates every 5s)
                 VStack(alignment: .leading, spacing: 12) {
                     tickerHeader
 
-                    if just.isEmpty {
+                    if vm.tickerDrops.isEmpty && just.isEmpty {
                         emptySectionHint
                     } else {
-                        VStack(spacing: 12) {
-                            ForEach(Array(just), id: \.id) { drop in
+                        let visible = vm.tickerDrops.isEmpty ? Array(just.prefix(5)) : vm.tickerDrops
+                        VStack(spacing: 10) {
+                            ForEach(visible, id: \.id) { drop in
                                 RealTimeTickerCard(
                                     drop: drop,
                                     isWatched: savedVM.isWatched(drop.name),
                                     onToggleWatch: { savedVM.toggleWatch($0) }
                                 )
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: .top).combined(with: .opacity),
+                                    removal: .move(edge: .bottom).combined(with: .opacity)
+                                ))
                             }
                         }
+                        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: visible.map(\.id))
                         tickerFooter
                     }
                 }

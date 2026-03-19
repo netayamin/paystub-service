@@ -4,6 +4,7 @@ import Foundation
 final class FeedViewModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var countdownTask: Task<Void, Never>?
+    private var tickerRotationTask: Task<Void, Never>?
 
     @Published var drops: [Drop] = []
     @Published var topOpportunities: [Drop]?
@@ -17,6 +18,7 @@ final class FeedViewModel: ObservableObject {
     @Published var totalVenuesScanned: Int = 0
     @Published var newDropsCount: Int = 0
     @Published var secondsUntilNextScan: Int = 0
+    @Published var tickerDrops: [Drop] = []
 
     @Published var selectedDates: Set<String> = []
     @Published var selectedPartySizes: Set<Int> = []
@@ -120,6 +122,27 @@ final class FeedViewModel: ObservableObject {
             }
         }
         startCountdownTick()
+        startTickerRotation()
+    }
+
+    // MARK: - Ticker rotation (5s)
+
+    private func startTickerRotation() {
+        tickerRotationTask?.cancel()
+        tickerRotationTask = Task { @MainActor in
+            while !Task.isCancelled {
+                rotateTickerDrops()
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s rotation
+            }
+        }
+    }
+
+    private func rotateTickerDrops() {
+        let pool = justDropped
+        guard !pool.isEmpty else { return }
+        let count = min(5, pool.count)
+        // Shuffle the pool each time so a different set of 5 appears
+        tickerDrops = Array(pool.shuffled().prefix(count))
     }
 
     private func startCountdownTick() {
@@ -168,6 +191,7 @@ final class FeedViewModel: ObservableObject {
             previousDropIds = Set(ranked.map { $0.id })
 
             drops = ranked
+            rotateTickerDrops()   // seed ticker immediately on each refresh
             topOpportunities = top.isEmpty ? nil : top
             hotRightNow = hot.isEmpty ? nil : hot
             totalVenuesScanned = scanned
