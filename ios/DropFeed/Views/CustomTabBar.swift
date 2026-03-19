@@ -9,20 +9,18 @@ struct CustomTabBar: View {
     var bottomSafeInset: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Tab items row
-            HStack(spacing: 0) {
-                tabItem(tag: 0, icon: "antenna.radiowaves.left.and.right", label: "LIVE")
-                tabItem(tag: 1, icon: "magnifyingglass", label: "SEARCH")
-            }
-            .frame(height: 64)
-            .frame(maxWidth: .infinity)
-
-            // White spacer that fills the home-indicator safe area
-            Color.white.frame(height: bottomSafeInset)
+        HStack(spacing: 0) {
+            tabItem(tag: 0, icon: "antenna.radiowaves.left.and.right", label: "LIVE")
+            tabItem(tag: 1, icon: "magnifyingglass", label: "SEARCH")
         }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .frame(height: 64)
+        .frame(maxWidth: .infinity)
+        // White background that also fills the safe-area region below (home indicator).
+        .background(
+            Color.white
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .ignoresSafeArea(edges: .bottom)
+        )
         .shadow(color: Color.black.opacity(0.08), radius: 18, x: 0, y: -4)
     }
 

@@ -9,24 +9,20 @@ struct ContentView: View {
     @State private var selectedTab = 0
 
     var body: some View {
-        GeometryReader { geo in
-            let bottomInset = geo.safeAreaInsets.bottom
-            // VStack: content fills remaining space, tab bar sits below — no overlap.
-            VStack(spacing: 0) {
-                Group {
-                    switch selectedTab {
-                    case 0:
-                        FeedView(feedVM: feedVM, savedVM: savedVM, premium: premium)
-                    default:
-                        SearchView(savedVM: savedVM)
-                    }
+        // VStack: content fills remaining space, tab bar sits at the safe-area bottom.
+        VStack(spacing: 0) {
+            Group {
+                switch selectedTab {
+                case 0:
+                    FeedView(feedVM: feedVM, savedVM: savedVM, premium: premium)
+                default:
+                    SearchView(savedVM: savedVM)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                CustomTabBar(selectedTab: $selectedTab, bottomSafeInset: bottomInset)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            CustomTabBar(selectedTab: $selectedTab)
         }
-        .ignoresSafeArea(edges: .bottom)
         .task {
             await savedVM.loadAll()
             await premium.checkEntitlements()
