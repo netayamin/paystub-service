@@ -116,7 +116,7 @@ final class FeedViewModel: ObservableObject {
         refreshTask = Task { @MainActor in
             while !Task.isCancelled {
                 await refresh()
-                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s polling
+                try? await Task.sleep(nanoseconds: 20_000_000_000) // 20s polling
             }
         }
         startCountdownTick()
