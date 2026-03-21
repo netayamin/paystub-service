@@ -446,6 +446,7 @@ struct ExploreView: View {
         }
     }
 
+    @ViewBuilder
     private var gridSection: some View {
         let items = gridDrops
         if items.isEmpty, vm.rankedResults.count > 1 {
@@ -454,9 +455,7 @@ struct ExploreView: View {
                 .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
-        } else if items.isEmpty {
-            EmptyView()
-        } else {
+        } else if !items.isEmpty {
             LazyVGrid(columns: gridColumns, spacing: 16) {
                 ForEach(items) { drop in
                     exploreGridCell(drop)
