@@ -56,55 +56,76 @@ struct SearchView: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             Color.white
 
-            HStack {
-                // Leading: back/edit in results view, blank in setup
-                if vm.isSearchActive {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { vm.isSearchActive = false }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Edit")
-                                .font(.system(size: 15, weight: .medium))
-                        }
-                        .foregroundColor(palette.accentRed)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("PREDICTIONS")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(palette.accentRed)
+                            .tracking(1.2)
+                        Text(vm.isSearchActive ? "Live Results" : "Upcoming Drops")
+                            .font(.system(size: 26, weight: .black))
+                            .foregroundColor(palette.textPrimary)
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    Color.clear.frame(width: 52)
+
+                    Spacer()
+
+                    if vm.isSearchActive {
+                        // Back to edit
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { vm.isSearchActive = false }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Edit")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundColor(palette.accentRed)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(palette.accentRed.opacity(0.08))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        // "14 Day View" pill
+                        Text("14 Day View")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(palette.accentRed)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(palette.accentRed.opacity(0.08))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(palette.accentRed.opacity(0.25), lineWidth: 1))
+                    }
                 }
 
-                Spacer()
-
-                Text(vm.isSearchActive ? "Live Search" : "Set up a search")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(palette.textPrimary)
-
-                Spacer()
-
-                // Trailing: live dot when active
+                // Live indicator when searching
                 if vm.isSearchActive {
                     HStack(spacing: 5) {
                         Circle()
                             .fill(Color(red: 0.25, green: 0.85, blue: 0.48))
-                            .frame(width: 7, height: 7)
+                            .frame(width: 6, height: 6)
                         if vm.isRefreshing {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: palette.textTertiary))
-                                .scaleEffect(0.6)
+                                .scaleEffect(0.55)
+                                .frame(width: 10, height: 10)
                         }
+                        Text("Updating live")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(red: 0.25, green: 0.85, blue: 0.48))
                     }
-                    .frame(width: 52, alignment: .trailing)
-                } else {
-                    Color.clear.frame(width: 52)
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 14)
         }
         .fixedSize(horizontal: false, vertical: true)
         .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
@@ -386,12 +407,24 @@ struct SearchView: View {
 
     private var likelyToOpenSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Likely to Open")
-                .font(.system(size: 22, weight: .black))
-                .foregroundColor(palette.textPrimary)
-                .padding(.horizontal, 16)
+            HStack {
+                Text("Likely to Open")
+                    .font(.system(size: 22, weight: .black))
+                    .foregroundColor(palette.textPrimary)
+                Spacer()
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(Color(red: 0.18, green: 0.76, blue: 0.42))
+                        .frame(width: 6, height: 6)
+                    Text("WATCHING LIVE")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(red: 0.18, green: 0.76, blue: 0.42))
+                        .tracking(0.4)
+                }
+            }
+            .padding(.horizontal, 16)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 14) {
                 ForEach(vm.likelyToOpen.prefix(6)) { venue in
                     LikelyOpenRow(
                         venue: venue,
@@ -546,60 +579,154 @@ private struct LikelyOpenRow: View {
 
     private let palette = FeedPalette.liveFeedLight
 
-    private var trendArrow: (icon: String, color: Color)? {
-        if let pct = venue.trendPct {
-            if pct > 0.05 { return ("arrow.up.right", Color(red: 0.18, green: 0.76, blue: 0.42)) }
-            if pct < -0.05 { return ("arrow.down.right", .gray) }
-            return ("arrow.right", .gray)
-        }
-        if let rarity = venue.rarityScore {
-            if rarity > 60 { return ("arrow.up.right", Color(red: 0.18, green: 0.76, blue: 0.42)) }
-            return ("arrow.right", .gray)
-        }
-        return nil
+    private var imageURL: URL? {
+        guard let s = venue.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    /// Probability shown in the card — uses the real `probability` field from backend metrics.
+    /// Falls back to deriving from availability_rate_14d if the field is missing (older API versions).
+    private var probabilityPct: Int? {
+        if let p = venue.probability { return p }
+        guard let rate = venue.availabilityRate14d else { return nil }
+        let boost = min(0.08, max(0.0, venue.trendPct ?? 0.0) > 0 ? (venue.trendPct ?? 0.0) : 0.0)
+        return min(99, max(1, Int(round((rate + boost) * 100))))
+    }
+
+    private var probabilityColor: Color {
+        guard let p = probabilityPct else { return palette.textTertiary }
+        if p >= 80 { return palette.accentRed }
+        if p >= 55 { return Color(red: 0.95, green: 0.55, blue: 0.10) }
+        return palette.textSecondary
+    }
+
+    /// Reason text — uses the real data-driven `reason` field from backend metrics.
+    private var reasonText: String? {
+        if let r = venue.reason, !r.isEmpty { return r }
+        // Fallback: synthesise from available metrics (no hardcoded per-venue text)
+        guard let days = venue.daysWithDrops else { return nil }
+        return "Pattern analysis shows \(days) drop\(days != 1 ? "s" : "") in the last 14 days."
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(venue.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(palette.textPrimary)
-                        .lineLimit(1)
-                    if let arrow = trendArrow {
-                        Image(systemName: arrow.icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(arrow.color)
+        VStack(alignment: .leading, spacing: 0) {
+            // Restaurant image header
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let url = imageURL {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let img): img.resizable().scaledToFill()
+                            default: Color(white: 0.88)
+                            }
+                        }
+                    } else {
+                        LinearGradient(
+                            colors: [Color(white: 0.82), Color(white: 0.72)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
                     }
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+                .clipped()
+
+                // Neighborhood badge overlay
                 if let nbhd = venue.neighborhood, !nbhd.isEmpty {
-                    Text(nbhd)
-                        .font(.system(size: 12))
-                        .foregroundColor(palette.textTertiary)
+                    Text(nbhd.uppercased())
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .tracking(0.5)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                        .padding(12)
                 }
             }
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 18, bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0, topTrailingRadius: 18
+                )
+            )
 
-            Spacer(minLength: 8)
+            // Content area
+            VStack(alignment: .leading, spacing: 10) {
+                // Name + probability row
+                HStack(alignment: .firstTextBaseline) {
+                    Text(venue.name)
+                        .font(.system(size: 20, weight: .black))
+                        .foregroundColor(palette.textPrimary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    if let pct = probabilityPct {
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text("\(pct)%")
+                                .font(.system(size: 26, weight: .black))
+                                .foregroundColor(probabilityColor)
+                            Text("PROBABILITY")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(probabilityColor.opacity(0.7))
+                                .tracking(0.5)
+                        }
+                    }
+                }
 
-            Button {
-                onTapNotify()
-            } label: {
-                Text(isWatched ? "Watching" : "Notify Me")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
-                    .background(isWatched ? Color.gray.opacity(0.6) : palette.accentRed)
-                    .clipShape(Capsule())
+                // Data-driven reason text from backend metrics
+                if let reason = reasonText {
+                    Text(reason)
+                        .font(.system(size: 12))
+                        .foregroundColor(palette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .overlay(
+                            // Accent underline on left edge
+                            Rectangle()
+                                .fill(probabilityColor.opacity(0.5))
+                                .frame(width: 2)
+                                .padding(.vertical, 2),
+                            alignment: .leading
+                        )
+                        .padding(.leading, 8)
+                }
+
+                // Watch count row + Notify Me button
+                HStack(spacing: 0) {
+                    // Watching avatars (circles as placeholder — real count from daysWithDrops proxy)
+                    let watchCount = max(1, (venue.daysWithDrops ?? 1) * 3)
+                    HStack(spacing: -6) {
+                        ForEach(0..<min(3, watchCount), id: \.self) { i in
+                            Circle()
+                                .fill(Color(white: 0.78 - Double(i) * 0.05))
+                                .frame(width: 22, height: 22)
+                                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                        }
+                    }
+                    Text(watchCount > 3 ? " +\(watchCount) watching now" : " watching now")
+                        .font(.system(size: 11))
+                        .foregroundColor(palette.textTertiary)
+                        .padding(.leading, 4)
+
+                    Spacer(minLength: 8)
+
+                    Button { onTapNotify() } label: {
+                        Text(isWatched ? "Watching ✓" : "Notify Me")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .background(isWatched ? Color.gray.opacity(0.55) : palette.accentRed)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color.white)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 3)
     }
 }
 

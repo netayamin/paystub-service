@@ -91,6 +91,21 @@ final class FeedViewModel: ObservableObject {
         likelyToOpen.filter { ($0.rarityScore ?? 0) > 0.5 }.prefix(5).map { $0 }
     }
 
+    /// Neighborhoods with active drop counts — fully derived from live drops, no hardcoding.
+    var hotZones: [(name: String, activeCount: Int)] {
+        var counts: [String: Int] = [:]
+        for drop in drops {
+            let nb = drop.neighborhood ?? ""
+            if !nb.isEmpty {
+                counts[nb, default: 0] += 1
+            }
+        }
+        return counts
+            .sorted { $0.value > $1.value }
+            .prefix(6)
+            .map { (name: $0.key, activeCount: $0.value) }
+    }
+
     /// Next 14 days for date picker (YYYY-MM-DD)
     var dateOptions: [(dateStr: String, dayName: String, dayNum: String)] {
         let cal = Calendar.current

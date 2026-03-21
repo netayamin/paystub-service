@@ -247,6 +247,8 @@ struct LikelyToOpenVenue: Identifiable {
     let confidence: String?         // "High", "Medium", "Low"
     let predictedDropTime: String?  // "Evening", "Dinner", "Midnight"
     let trendPct: Double?
+    let probability: Int?           // 1–99 — computed from availability_rate_14d + trend
+    let reason: String?             // data-driven explanation from backend metrics
 
     /// Memberwise init — all fields except `name` default to nil.
     init(
@@ -259,7 +261,9 @@ struct LikelyToOpenVenue: Identifiable {
         neighborhood: String? = nil,
         confidence: String? = nil,
         predictedDropTime: String? = nil,
-        trendPct: Double? = nil
+        trendPct: Double? = nil,
+        probability: Int? = nil,
+        reason: String? = nil
     ) {
         self.name                = name
         self.imageUrl            = imageUrl
@@ -271,6 +275,8 @@ struct LikelyToOpenVenue: Identifiable {
         self.confidence          = confidence
         self.predictedDropTime   = predictedDropTime
         self.trendPct            = trendPct
+        self.probability         = probability
+        self.reason              = reason
     }
 }
 
@@ -287,6 +293,8 @@ extension LikelyToOpenVenue: Codable {
         case confidence
         case predictedDropTime   = "predicted_drop_time"
         case trendPct            = "trend_pct"
+        case probability
+        case reason
     }
 
     init(from decoder: Decoder) throws {
@@ -304,6 +312,8 @@ extension LikelyToOpenVenue: Codable {
         confidence          = try? c.decodeIfPresent(String.self, forKey: .confidence)
         predictedDropTime   = try? c.decodeIfPresent(String.self, forKey: .predictedDropTime)
         trendPct            = try? c.decodeIfPresent(Double.self, forKey: .trendPct)
+        probability         = try? c.decodeIfPresent(Int.self,    forKey: .probability)
+        reason              = try? c.decodeIfPresent(String.self, forKey: .reason)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -318,6 +328,8 @@ extension LikelyToOpenVenue: Codable {
         try c.encodeIfPresent(confidence,          forKey: .confidence)
         try c.encodeIfPresent(predictedDropTime,   forKey: .predictedDropTime)
         try c.encodeIfPresent(trendPct,            forKey: .trendPct)
+        try c.encodeIfPresent(probability,         forKey: .probability)
+        try c.encodeIfPresent(reason,              forKey: .reason)
     }
 }
 

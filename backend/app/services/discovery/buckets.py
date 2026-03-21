@@ -905,24 +905,40 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     if not rows:
         return []
 
-    # Best-effort neighborhood lookup from recent drop events
+    import json as _json
+
+    # Best-effort enrichment from recent drop events: neighborhood + image_url
     venue_ids = [r.venue_id for r in rows if r.venue_id]
     neighborhood_by_vid: dict[str, str] = {}
+    image_url_by_vid: dict[str, str] = {}
     if venue_ids:
         try:
             recent_events = (
-                db.query(DropEvent.venue_id, DropEvent.neighborhood)
+                db.query(DropEvent.venue_id, DropEvent.neighborhood, DropEvent.payload_json)
                 .filter(
                     DropEvent.venue_id.in_(venue_ids),
-                    DropEvent.neighborhood.isnot(None),
                 )
                 .order_by(DropEvent.opened_at.desc())
-                .limit(len(venue_ids) * 5)
+                .limit(len(venue_ids) * 8)
                 .all()
             )
-            for vid, nbhd in recent_events:
-                if vid and nbhd and vid not in neighborhood_by_vid:
+            for vid, nbhd, payload_str in recent_events:
+                if not vid:
+                    continue
+                if nbhd and vid not in neighborhood_by_vid:
                     neighborhood_by_vid[vid] = nbhd
+                if payload_str and vid not in image_url_by_vid:
+                    try:
+                        payload = _json.loads(payload_str)
+                        img = (
+                            payload.get("image_url")
+                            or payload.get("images", {}).get("thumbnail")
+                            or payload.get("images", {}).get("small")
+                        )
+                        if img:
+                            image_url_by_vid[vid] = img
+                    except (ValueError, AttributeError, TypeError):
+                        pass
         except Exception:
             pass
 
@@ -932,6 +948,7 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
             "venue_name": r.venue_name or "",
             "name": r.venue_name or "",          # iOS CodingKey expects "name"
             "neighborhood": neighborhood_by_vid.get(r.venue_id or ""),
+            "image_url": image_url_by_vid.get(r.venue_id or ""),
             "availability_rate_14d": r.availability_rate_14d,
             "days_with_drops": r.days_with_drops,
             "rarity_score": r.rarity_score,

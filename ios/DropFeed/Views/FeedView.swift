@@ -14,6 +14,8 @@ struct FeedView: View {
 
     private let partySizeOptions = [2, 3, 4, 5, 6]
 
+    @State private var crownPage = 0
+
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
         if vm.error != nil { return "error" }
@@ -201,158 +203,240 @@ struct FeedView: View {
         .background(AppTheme.background)
     }
 
-    // MARK: - Barebones feed content (reset UI)
+    // MARK: - Main feed layout
 
     private var barebonesFeedContent: some View {
-        let top = vm.topDrops.prefix(3)
-        let just = vm.justDropped.prefix(6)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                snagAppHeader
 
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
                 if vm.newDropsCount > 0 {
                     HStack {
                         Spacer(minLength: 0)
                         newDropPill(count: vm.newDropsCount)
                         Spacer(minLength: 0)
                     }
-                }
-
-                // ── Top Drops — full-bleed dark premium section ──────────
-                VStack(alignment: .leading, spacing: 0) {
-                    // Header
-                    HStack(alignment: .bottom) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Top Drops")
-                                .font(.system(size: 28, weight: .black))
-                                .foregroundColor(.white)
-                            Text("Reserved for the elite")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(white: 0.55))
-                        }
-                        Spacer()
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(palette.accentRed)
-                                .frame(width: 7, height: 7)
-                            Text("LIVE NOW")
-                                .font(.system(size: 11, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundColor(palette.accentRed)
-                        }
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 8)
-                        .background(palette.accentRed.opacity(0.15))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(palette.accentRed.opacity(0.3), lineWidth: 1))
-                    }
                     .padding(.horizontal, 16)
-                    .padding(.top, 22)
-                    .padding(.bottom, 14)
-
-                    // Cards
-                    if top.isEmpty {
-                        Text("Scanning for top drops…")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Color(white: 0.45))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 24)
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 14) {
-                                ForEach(Array(top), id: \.id) { drop in
-                                    TopDropCard(
-                                        drop: drop,
-                                        isWatched: savedVM.isWatched(drop.name),
-                                        onToggleWatch: { savedVM.toggleWatch($0) }
-                                    )
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                    }
-
-                    // Footer
-                    HStack(spacing: 6) {
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("NYC'S HARDEST RESERVATIONS")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(0.8)
-                    }
-                    .foregroundColor(Color(white: 0.30))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                }
-                .background(Color.black)
-                .padding(.horizontal, -16)
-
-                // ── Snag Pulse — metrics snapshot strip ──────────────
-                if !vm.drops.isEmpty {
-                    snagPulseStrip
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
-                // ── Real-Time Ticker — light section ─────────────────────
-                VStack(alignment: .leading, spacing: 12) {
-                    // Header
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Live Drops")
-                                .font(.system(size: 26, weight: .black))
-                                .foregroundColor(palette.textPrimary)
-                            Text("All open tables ranked by rarity")
-                                .font(.system(size: 12))
-                                .foregroundColor(palette.textTertiary)
-                        }
-                        Spacer()
-                        HStack(spacing: 5) {
+                crownJewelsSection
+                    .padding(.bottom, 32)
+
+                velocityFeedSection
+                    .padding(.bottom, 32)
+
+                if !vm.hotZones.isEmpty {
+                    hotZonesSection
+                        .padding(.bottom, 28)
+                }
+            }
+            .padding(.bottom, 24)
+        }
+    }
+
+    // MARK: - App header
+
+    private var snagAppHeader: some View {
+        HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(palette.accentRed)
+                        .frame(width: 32, height: 32)
+                    Text("S")
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundColor(.white)
+                }
+                Text("Snag")
+                    .font(.system(size: 24, weight: .black))
+                    .foregroundColor(palette.textPrimary)
+            }
+            Spacer()
+            Button { onOpenSearch?() } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(palette.textPrimary)
+                    .frame(width: 36, height: 36)
+                    .background(Color(white: 0.93))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
+    }
+
+    // MARK: - Crown Jewels (paginated hero cards)
+
+    private var crownJewelsSection: some View {
+        let top = Array(vm.topDrops)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("THE CROWN JEWELS")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(palette.accentRed)
+                        .tracking(1.2)
+                    Text("Rare Finds")
+                        .font(.system(size: 28, weight: .black))
+                        .foregroundColor(palette.textPrimary)
+                }
+                Spacer()
+                if top.count > 1 {
+                    HStack(spacing: 5) {
+                        ForEach(0..<min(top.count, 4), id: \.self) { i in
                             Circle()
-                                .fill(palette.accentRed)
-                                .frame(width: 7, height: 7)
-                            Text("LIVE")
-                                .font(.system(size: 11, weight: .bold))
-                                .tracking(0.5)
-                                .foregroundColor(palette.accentRed)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(palette.accentRed.opacity(0.08))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(palette.accentRed.opacity(0.2), lineWidth: 1))
-                    }
-
-                    // Cards
-                    if vm.tickerDrops.isEmpty && just.isEmpty {
-                        Text("Scanning for live drops…")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(palette.textTertiary)
-                            .padding(.vertical, 12)
-                    } else {
-                        let visible = vm.tickerDrops.isEmpty ? Array(just.prefix(5)) : vm.tickerDrops
-                        VStack(spacing: 10) {
-                            ForEach(Array(visible.enumerated()), id: \.offset) { _, drop in
-                                RealTimeTickerCard(drop: drop)
-                                    .id(drop.id)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .center)))
-                                    .animation(.easeInOut(duration: 0.55), value: drop.id)
-                            }
+                                .fill(i == crownPage ? palette.accentRed : Color(white: 0.80))
+                                .frame(width: 6, height: 6)
+                                .animation(.easeInOut(duration: 0.2), value: crownPage)
                         }
                     }
-
-                    // Footer
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("ROTATES EVERY ~10 SECONDS")
-                            .font(.system(size: 11, weight: .bold))
-                            .tracking(0.6)
-                    }
-                    .foregroundColor(palette.textTertiary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.bottom, 14)
+
+            if top.isEmpty {
+                Text("Scanning for top drops…")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(palette.textTertiary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 24)
+            } else if top.count == 1 {
+                TopDropCard(
+                    drop: top[0],
+                    isWatched: savedVM.isWatched(top[0].name),
+                    onToggleWatch: { savedVM.toggleWatch($0) }
+                )
+                .padding(.horizontal, 16)
+            } else {
+                TabView(selection: $crownPage) {
+                    ForEach(top.indices, id: \.self) { i in
+                        TopDropCard(
+                            drop: top[i],
+                            isWatched: savedVM.isWatched(top[i].name),
+                            onToggleWatch: { savedVM.toggleWatch($0) }
+                        )
+                        .padding(.horizontal, 16)
+                        .tag(i)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 340)
+            }
+
+            HStack(spacing: 6) {
+                if let refreshed = vm.lastRefreshed {
+                    if vm.isRefreshing {
+                        ProgressView().scaleEffect(0.55).frame(width: 10, height: 10)
+                    } else {
+                        Circle()
+                            .fill(Color(red: 0.22, green: 0.75, blue: 0.40))
+                            .frame(width: 5, height: 5)
+                    }
+                    Text(topDropsUpdatedLabel(refreshed))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(palette.textTertiary)
+                }
+                Spacer()
+                HStack(spacing: 4) {
+                    Image(systemName: "crown.fill").font(.system(size: 9))
+                    Text("NYC'S HARDEST RESERVATIONS · LIVE EVERY 20S")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.4)
+                }
+                .foregroundColor(palette.textTertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+        }
+    }
+
+    // MARK: - Velocity Feed
+
+    private var velocityFeedSection: some View {
+        let visible: [Drop] = vm.tickerDrops.isEmpty
+            ? Array(vm.justDropped.prefix(5))
+            : vm.tickerDrops
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Velocity Feed")
+                        .font(.system(size: 26, weight: .black))
+                        .foregroundColor(palette.textPrimary)
+                    Text("Live drops happening right now")
+                        .font(.system(size: 12))
+                        .foregroundColor(palette.textTertiary)
+                }
+                Spacer()
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(palette.accentRed)
+                        .frame(width: 6, height: 6)
+                    Text("LIVE")
+                        .font(.system(size: 11, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundColor(palette.accentRed)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(palette.accentRed.opacity(0.08))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(palette.accentRed.opacity(0.2), lineWidth: 1))
+            }
+            .padding(.horizontal, 16)
+
+            if visible.isEmpty {
+                Text("Scanning for live drops…")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(palette.textTertiary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(Array(visible.enumerated()), id: \.offset) { _, drop in
+                        VelocityFeedRow(drop: drop)
+                            .id(drop.id)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .center)))
+                            .animation(.easeInOut(duration: 0.55), value: drop.id)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    // MARK: - Hot Zones
+
+    private var hotZonesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Hot Zones")
+                    .font(.system(size: 26, weight: .black))
+                    .foregroundColor(palette.textPrimary)
+                Spacer()
+                ZStack {
+                    Circle()
+                        .fill(palette.accentRed.opacity(0.10))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(palette.accentRed)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(vm.hotZones, id: \.name) { zone in
+                        HotZoneCard(name: zone.name, activeCount: zone.activeCount)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 
@@ -546,54 +630,6 @@ struct FeedView: View {
         if s < 5  { return "updated just now" }
         if s < 60 { return "updated \(s)s ago" }
         return "updated \(s / 60)m ago"
-    }
-
-    // ── Snag Pulse strip ──────────────────────────────────────────────────
-    // One-line metrics snapshot between Top Drops and Live Drops.
-    // Explains *why* the numbers are interesting using our real metrics.
-
-    private var snagPulseStrip: some View {
-        let total   = vm.drops.count
-        let elite   = vm.eliteDropsCount
-        let rare    = vm.rareDropsCount
-        let trend   = vm.trendingCount
-
-        return HStack(spacing: 0) {
-            pulseCell(value: "\(total)", label: "open\nnow",  icon: "checkmark.circle.fill", color: Color(red: 0.22, green: 0.75, blue: 0.40))
-            pulseDivider
-            pulseCell(value: "\(elite)", label: "elite\nvenues", icon: "flame.fill",          color: palette.accentRed)
-            pulseDivider
-            pulseCell(value: "\(rare)",  label: "rare\ndrops",   icon: "bolt.fill",            color: Color(red: 0.95, green: 0.65, blue: 0.10))
-            pulseDivider
-            pulseCell(value: "\(trend)", label: "trending\nup",  icon: "arrow.up.right",       color: Color(red: 0.22, green: 0.75, blue: 0.40))
-        }
-        .padding(.vertical, 14)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
-    }
-
-    private func pulseCell(value: String, label: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(color)
-            Text(value)
-                .font(.system(size: 22, weight: .black))
-                .foregroundColor(palette.textPrimary)
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(palette.textTertiary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var pulseDivider: some View {
-        Divider()
-            .frame(height: 44)
-            .background(palette.border)
     }
 
     private var emptyView: some View {
@@ -954,6 +990,179 @@ private struct RealTimeTickerCard: View {
             radius: drop.feedHot == true ? 10 : 6,
             x: 0, y: drop.feedHot == true ? 3 : 2
         )
+    }
+}
+
+// MARK: - Velocity Feed Row
+
+private struct VelocityFeedRow: View {
+    let drop: Drop
+
+    private let palette: FeedPalette = .liveFeedLight
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var statusBadge: (label: String, color: Color) {
+        if drop.feedHot == true {
+            return ("HOT DROP", Color(red: 0.10, green: 0.72, blue: 0.40))
+        }
+        let secs = drop.secondsSinceDetected
+        if secs <= 300 {
+            return ("NEW", Color(red: 0.20, green: 0.55, blue: 0.95))
+        }
+        return ("PRIME", Color(red: 0.95, green: 0.60, blue: 0.10))
+    }
+
+    private var rarityScore: Int { max(0, min(100, Int((drop.rarityScore ?? 0).rounded()))) }
+    private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
+    private var compactTime: String {
+        let t = drop.slots.first?.time ?? ""
+        let p = t.split(separator: ":")
+        guard let h = p.first.flatMap({ Int($0) }) else { return t.isEmpty ? "—" : String(t.prefix(5)) }
+        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+        let h12 = h % 12 == 0 ? 12 : h % 12
+        let ap = h < 12 ? "AM" : "PM"
+        return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
+    }
+    private var resyUrl: URL? {
+        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .success(let img): img.resizable().scaledToFill()
+                default:
+                    LinearGradient(
+                        colors: [Color(white: 0.82), Color(white: 0.72)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                }
+            }
+            .frame(width: 62, height: 62)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Text(drop.name)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(palette.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 2)
+                    let badge = statusBadge
+                    Text(badge.label)
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundColor(.white)
+                        .tracking(0.3)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(badge.color)
+                        .clipShape(Capsule())
+                }
+
+                HStack(spacing: 10) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock").font(.system(size: 11))
+                        Text(compactTime).font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(palette.textSecondary)
+
+                    HStack(spacing: 3) {
+                        Image(systemName: "person.2.fill").font(.system(size: 11))
+                        Text("\(partySize)p").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(palette.textSecondary)
+                }
+
+                if rarityScore > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "bolt.fill").font(.system(size: 10, weight: .bold))
+                        Text("\(rarityScore)/100 Rarity").font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(rarityScore >= 70 ? palette.accentRed : palette.textTertiary)
+                }
+            }
+
+            Button {
+                guard let url = resyUrl else { return }
+                UIApplication.shared.open(url)
+            } label: {
+                Text("Snag")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(palette.accentRed)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(palette.accentRed.opacity(0.10))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(palette.accentRed.opacity(0.25), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    drop.feedHot == true ? palette.accentRed.opacity(0.5) : palette.border,
+                    lineWidth: 1
+                )
+        )
+        .shadow(
+            color: drop.feedHot == true ? palette.accentRed.opacity(0.15) : Color.black.opacity(0.04),
+            radius: drop.feedHot == true ? 8 : 5,
+            x: 0, y: 2
+        )
+    }
+}
+
+// MARK: - Hot Zone Card
+
+private struct HotZoneCard: View {
+    let name: String
+    let activeCount: Int
+
+    private let gradientPairs: [[Color]] = [
+        [Color(red: 0.12, green: 0.12, blue: 0.18), Color(red: 0.22, green: 0.16, blue: 0.20)],
+        [Color(red: 0.10, green: 0.16, blue: 0.24), Color(red: 0.16, green: 0.12, blue: 0.20)],
+        [Color(red: 0.20, green: 0.10, blue: 0.10), Color(red: 0.26, green: 0.16, blue: 0.10)],
+        [Color(red: 0.08, green: 0.18, blue: 0.16), Color(red: 0.16, green: 0.20, blue: 0.14)],
+        [Color(red: 0.16, green: 0.10, blue: 0.22), Color(red: 0.22, green: 0.14, blue: 0.18)],
+    ]
+
+    private var gradient: [Color] {
+        gradientPairs[abs(name.hashValue) % gradientPairs.count]
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: gradient,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name.uppercased())
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(.white)
+                    .tracking(0.5)
+                    .lineLimit(2)
+                Text("\(activeCount) Active")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.75))
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 14)
+        }
+        .frame(width: 150, height: 96)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
