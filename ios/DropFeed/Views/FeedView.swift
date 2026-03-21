@@ -1321,8 +1321,9 @@ private struct MarketLeaderHeroCard: View {
             LinearGradient(
                 stops: [
                     .init(color: .black.opacity(0.0), location: 0.0),
-                    .init(color: .black.opacity(0.25), location: 0.38),
-                    .init(color: .black.opacity(0.72), location: 0.68),
+                    .init(color: .black.opacity(0.0), location: 0.5),
+                    .init(color: .black.opacity(0.4), location: 0.62),
+                    .init(color: .black.opacity(0.78), location: 0.82),
                     .init(color: .black.opacity(0.94), location: 1.0)
                 ],
                 startPoint: .top,
@@ -1686,8 +1687,9 @@ private struct MockLiveNowRow: View {
             LinearGradient(
                 stops: [
                     .init(color: .black.opacity(0.0), location: 0.0),
-                    .init(color: .black.opacity(0.45), location: 0.52),
-                    .init(color: .black.opacity(0.91), location: 1.0)
+                    .init(color: .black.opacity(0.0), location: 0.5),
+                    .init(color: .black.opacity(0.44), location: 0.64),
+                    .init(color: .black.opacity(0.9), location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -2023,12 +2025,13 @@ private struct CrownJewelCard: View {
             .clipped()
 
             LinearGradient(
-                colors: [
-                    .clear,
-                    .black.opacity(0.25),
-                    .black.opacity(0.82),
+                stops: [
+                    .init(color: .black.opacity(0.0), location: 0.0),
+                    .init(color: .black.opacity(0.0), location: 0.5),
+                    .init(color: .black.opacity(0.32), location: 0.64),
+                    .init(color: .black.opacity(0.82), location: 1.0)
                 ],
-                startPoint: .center,
+                startPoint: .top,
                 endPoint: .bottom
             )
             .frame(width: cardWidth, height: cardHeight)
