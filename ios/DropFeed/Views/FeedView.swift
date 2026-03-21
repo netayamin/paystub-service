@@ -14,7 +14,6 @@ struct FeedView: View {
     private let partySizeOptions = [2, 3, 4, 5, 6]
 
     @State private var showFilterSheet = false
-    @State private var liveGlanceCarouselIndex: Int = 0
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
@@ -269,27 +268,8 @@ struct FeedView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     feedSectionHeader(eyebrow: "Real-time feed", title: "Live updates")
                         .padding(.horizontal, 18)
-                    TabView(selection: $liveGlanceCarouselIndex) {
-                        ForEach(Array(liveGlanceCarouselDrops.enumerated()), id: \.element.id) { idx, drop in
-                            LiveGlanceCard(drop: drop)
-                                .padding(.horizontal, 18)
-                                .tag(idx)
-                        }
-                    }
-                    .frame(height: 124)
-                    .tabViewStyle(.page(indexDisplayMode: liveGlanceCarouselDrops.count > 1 ? .automatic : .never))
-                    .onChange(of: liveGlanceCarouselDrops.count) { _, newCount in
-                        if liveGlanceCarouselIndex >= newCount {
-                            liveGlanceCarouselIndex = max(0, newCount - 1)
-                        }
-                    }
-                    .onReceive(Timer.publish(every: 3.2, tolerance: 0.2, on: .main, in: .common).autoconnect()) { _ in
-                        let n = liveGlanceCarouselDrops.count
-                        guard n > 1 else { return }
-                        withAnimation(.easeInOut(duration: 0.45)) {
-                            liveGlanceCarouselIndex = (liveGlanceCarouselIndex + 1) % n
-                        }
-                    }
+                    LiveDropsMarqueeTrain(drops: liveGlanceCarouselDrops)
+                        .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -1068,8 +1048,11 @@ private func feedGlanceSeatPill(for drop: Drop) -> (text: String, emphasized: Bo
     return ("OPEN", false)
 }
 
-private struct LiveGlanceCard: View {
+/// Compact live-drop tile for the horizontal “train” marquee (~2.5 cards visible).
+private struct LiveGlanceCompactCard: View {
     let drop: Drop
+
+    private static let maroonPill = Color(red: 0.42, green: 0.14, blue: 0.16)
 
     private var pill: (text: String, emphasized: Bool) { feedGlanceSeatPill(for: drop) }
 
@@ -1081,52 +1064,107 @@ private struct LiveGlanceCard: View {
 
     var body: some View {
         Button(action: openResy) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(feedGlanceTopBadge(for: drop))
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundColor(SnagDesignSystem.darkTextSecondary)
-                        .tracking(0.35)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(SnagDesignSystem.salmonAccent)
+                        .textCase(.uppercase)
+                        .tracking(0.55)
                         .lineLimit(1)
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 0)
                     Text(feedGlanceAgeLabel(for: drop))
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.42))
                 }
                 Text(drop.name.uppercased())
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                    .minimumScaleFactor(0.85)
-                HStack {
-                    Text(pill.text)
-                        .font(.system(size: 9, weight: .heavy))
-                        .foregroundColor(pill.emphasized ? SnagDesignSystem.salmonAccent : SnagDesignSystem.darkTextMuted)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color(white: 0.18))
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(
-                                    pill.emphasized ? SnagDesignSystem.salmonAccent.opacity(0.45) : Color.white.opacity(0.1),
-                                    lineWidth: 1
-                                )
-                        )
-                    Spacer(minLength: 0)
-                }
+                    .minimumScaleFactor(0.8)
+                Text(pill.text)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(pill.emphasized ? Color.white.opacity(0.95) : SnagDesignSystem.salmonAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(pill.emphasized ? Self.maroonPill : Color(white: 0.16))
+                    )
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(white: 0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(white: 0.11))
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.07), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Continuous horizontal scroll of compact live tiles (seamless loop).
+private struct LiveDropsMarqueeTrain: View {
+    let drops: [Drop]
+
+    private let cardW: CGFloat = 152
+    private let cardH: CGFloat = 108
+    private let spacing: CGFloat = 10
+
+    @State private var offset: CGFloat = 0
+
+    private var loopItems: [(id: String, drop: Drop)] {
+        var out: [(String, Drop)] = []
+        for (i, d) in drops.enumerated() {
+            out.append(("a-\(i)-\(d.id)", d))
+        }
+        for (i, d) in drops.enumerated() {
+            out.append(("b-\(i)-\(d.id)", d))
+        }
+        return out
+    }
+
+    private var segmentWidth: CGFloat {
+        guard !drops.isEmpty else { return 0 }
+        return CGFloat(drops.count) * cardW + CGFloat(max(0, drops.count - 1)) * spacing
+    }
+
+    var body: some View {
+        GeometryReader { _ in
+            HStack(spacing: spacing) {
+                ForEach(loopItems, id: \.id) { item in
+                    LiveGlanceCompactCard(drop: item.drop)
+                        .frame(width: cardW, height: cardH)
+                }
+            }
+            .offset(x: offset)
+        }
+        .frame(height: cardH)
+        .clipped()
+        .padding(.leading, 18)
+        .task(id: segmentWidth) {
+            guard segmentWidth > 1 else { return }
+            while !Task.isCancelled {
+                offset = 0
+                let pxPerSec: Double = 42
+                let dur = max(14, min(48, Double(segmentWidth) / pxPerSec))
+                withAnimation(.linear(duration: dur)) {
+                    offset = -segmentWidth
+                }
+                try? await Task.sleep(nanoseconds: UInt64(dur * 1_000_000_000))
+                var tr = Transaction()
+                tr.disablesAnimations = true
+                withTransaction(tr) {
+                    offset = 0
+                }
+            }
+        }
     }
 }
 
