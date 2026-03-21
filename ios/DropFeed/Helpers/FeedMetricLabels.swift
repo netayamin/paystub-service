@@ -63,12 +63,15 @@ enum FeedMetricLabels {
         return "Dropped \(secondsSinceDetected / 86400)d ago"
     }
 
-    /// Demand level for Hot Right Now secondary (e.g. "High Demand")
+    /// Demand level for Hot Right Now secondary (e.g. "High Demand").
+    /// rarityScore is on the backend 0–100 scale.
     static func demandLevel(rarityScore: Double?, availabilityRate: Double?) -> String {
-        let r = rarityScore ?? 0
+        let raw = rarityScore ?? 0
+        // Normalise: accept both 0–1 (legacy) and 0–100 (current backend)
+        let r = raw <= 1 ? raw * 100 : raw
         let rate = availabilityRate ?? 1
-        if r >= 0.8 || rate < 0.1 { return "Very High Demand" }
-        if r >= 0.5 || rate < 0.25 { return "High Demand" }
+        if r >= 80 || rate < 0.1 { return "Very High Demand" }
+        if r >= 50 || rate < 0.25 { return "High Demand" }
         return "Popular"
     }
 }

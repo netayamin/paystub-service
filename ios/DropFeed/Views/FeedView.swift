@@ -917,16 +917,25 @@ private struct TopOpportunitySnagRow: View {
         return fmt.string(from: date).uppercased()
     }
 
-    private var snagScore: Int {
-        let r = Int((drop.rarityScore ?? 0) * 100)
-        if drop.feedHot == true { return min(99, max(88, r == 0 ? 92 : r)) }
-        return min(99, max(38, r))
+    /// Demand score 0-99 derived from real signals, or nil when we have no data.
+    /// rarity_score arrives from the backend on a 0–100 scale — no ×100 needed.
+    private var snagScore: Int? {
+        if let r = drop.rarityScore, r > 0 {
+            let raw = Int(r.rounded())
+            if drop.feedHot == true { return min(99, max(70, raw)) }
+            return min(99, max(20, raw))
+        }
+        // Fall back to Resy popularity (0–1 → scale to 0–99)
+        if let pop = drop.resyPopularityScore, pop > 0 {
+            let scaled = Int(min(0.99, pop) * 99)
+            if drop.feedHot == true { return max(60, scaled) }
+            return max(15, scaled)
+        }
+        return nil
     }
 
-    private var speedPair: (String, Color) {
-        guard let sec = drop.avgDropDurationSeconds, sec > 0 else {
-            return ("FAST", SnagDesignSystem.mint)
-        }
+    private var speedPair: (String, Color)? {
+        guard let sec = drop.avgDropDurationSeconds, sec > 0 else { return nil }
         if sec < 180 { return ("FAST", SnagDesignSystem.mint) }
         if sec < 900 { return ("MED", Color(red: 0.95, green: 0.75, blue: 0.22)) }
         return ("SLOW", Color(red: 0.95, green: 0.75, blue: 0.22))
@@ -964,21 +973,25 @@ private struct TopOpportunitySnagRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 14) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "flame.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(SnagDesignSystem.coral)
-                        Text("\(snagScore)")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(SnagDesignSystem.coral)
+                    if let score = snagScore {
+                        HStack(spacing: 4) {
+                            Image(systemName: "flame.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(SnagDesignSystem.coral)
+                            Text("\(score)")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(SnagDesignSystem.coral)
+                        }
                     }
-                    HStack(spacing: 4) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(sp.1)
-                        Text(sp.0)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(sp.1)
+                    if let sp = speedPair {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(sp.1)
+                            Text(sp.0)
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(sp.1)
+                        }
                     }
                     if let rc = drop.ratingCount, rc > 0 {
                         HStack(spacing: 4) {
