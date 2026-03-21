@@ -28,6 +28,24 @@ def sanitize_feed_cards_for_client(cards: list[dict]) -> None:
             c.pop(k, None)
 
 
+def _snag_score_display_int(top_raw: float) -> int:
+    """
+    Map _top_opportunity_score (additive model, typically ~0–9) to 1–99 for clients.
+    Keeps spread without a fake floor: weak ≈ low 20s, iconic ≈ 90s.
+    """
+    r = max(0.0, float(top_raw))
+    v = int(round(14.0 + r * 11.5))
+    return min(99, max(1, v))
+
+
+def attach_snag_display_scores(cards: list[dict]) -> None:
+    """Set snag_score on each card from _top_opportunity_score (before sanitize strips _top_score)."""
+    for c in cards:
+        ts = c.get("_top_score")
+        r = float(ts) if isinstance(ts, (int, float)) else 0.0
+        c["snag_score"] = _snag_score_display_int(r)
+
+
 def snag_feed_meta() -> dict:
     """Public contract hint for clients (live home feed, 14-day window)."""
     return {
@@ -440,6 +458,7 @@ def build_feed(
     # Score every card for Top Drops (quality + scarcity, no freshness bias)
     for c in cards:
         c["_top_score"] = _top_opportunity_score(c)
+    attach_snag_display_scores(cards)
     quality_ranked = sorted(cards, key=lambda x: -(x.get("_top_score") or 0))
 
     # Top opportunities:

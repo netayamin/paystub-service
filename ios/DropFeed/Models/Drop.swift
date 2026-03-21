@@ -61,6 +61,8 @@ struct Drop: Codable, Identifiable {
     let neighborhood: String?
     let trendPct: Double?
     let avgDropDurationSeconds: Double?
+    /// Server-computed 1–99 from the same signals as backend `build_feed` / `_top_opportunity_score`.
+    let snagScore: Int?
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -80,7 +82,13 @@ struct Drop: Codable, Identifiable {
         feedHot = try c.decodeIfPresent(Bool.self, forKey: .feedHot)
         resyPopularityScore = try c.decodeIfPresent(Double.self, forKey: .resyPopularityScore)
         ratingAverage = try c.decodeIfPresent(Double.self, forKey: .ratingAverage)
-        ratingCount = try c.decodeIfPresent(Int.self, forKey: .ratingCount)
+        var parsedRatingCount: Int?
+        if let i = try? c.decodeIfPresent(Int.self, forKey: .ratingCount) {
+            parsedRatingCount = i
+        } else if let d = try? c.decodeIfPresent(Double.self, forKey: .ratingCount) {
+            parsedRatingCount = Int(d.rounded())
+        }
+        ratingCount = parsedRatingCount
         rarityScore = try c.decodeIfPresent(Double.self, forKey: .rarityScore)
         availabilityRate14d = try c.decodeIfPresent(Double.self, forKey: .availabilityRate14d)
         daysWithDrops = try c.decodeIfPresent(Int.self, forKey: .daysWithDrops)
@@ -89,6 +97,13 @@ struct Drop: Codable, Identifiable {
         neighborhood = try c.decodeIfPresent(String.self, forKey: .neighborhood)
         trendPct = try c.decodeIfPresent(Double.self, forKey: .trendPct)
         avgDropDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .avgDropDurationSeconds)
+        snagScore = Self.decodeFlexibleInt(c, forKey: .snagScore)
+    }
+
+    private static func decodeFlexibleInt(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Int? {
+        if let v = try? c.decodeIfPresent(Int.self, forKey: key) { return v }
+        if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(d.rounded()) }
+        return nil
     }
     
     /// Memberwise init for previews and tests.
@@ -115,7 +130,8 @@ struct Drop: Codable, Identifiable {
         isHotspot: Bool? = nil,
         neighborhood: String? = nil,
         trendPct: Double? = nil,
-        avgDropDurationSeconds: Double? = nil
+        avgDropDurationSeconds: Double? = nil,
+        snagScore: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -140,6 +156,7 @@ struct Drop: Codable, Identifiable {
         self.neighborhood = neighborhood
         self.trendPct = trendPct
         self.avgDropDurationSeconds = avgDropDurationSeconds
+        self.snagScore = snagScore
     }
     
     /// "Trending" when trend_pct > 0, "Cooling" when < 0, nil otherwise
@@ -178,6 +195,7 @@ struct Drop: Codable, Identifiable {
         case neighborhood
         case trendPct = "trend_pct"
         case avgDropDurationSeconds = "avg_drop_duration_seconds"
+        case snagScore = "snag_score"
     }
     
     // MARK: - Scarcity helpers

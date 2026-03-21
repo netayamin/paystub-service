@@ -1142,22 +1142,21 @@ private struct HottestOpeningCard: View {
         return "\(nb) · Live availability"
     }
 
-    /// Display score only when we have real signals (no floor — `max(55, …)` was forcing empty cards to 55).
-    private var hasScoreInputs: Bool {
-        (drop.rarityScore ?? 0) > 0
-            || (drop.resyPopularityScore ?? 0) > 0
-            || ((drop.ratingAverage ?? 0) > 0 && (drop.ratingCount ?? 0) > 0)
-            || drop.feedHot == true
-    }
-
+    /// Prefer `snag_score` from the API (same model as backend `_top_opportunity_score`). Fallback for older payloads.
     private var scoreValue: Int? {
-        guard hasScoreInputs else { return nil }
+        if let s = drop.snagScore {
+            return min(99, max(1, s))
+        }
         let r = drop.rarityScore ?? 0
         let p = (drop.resyPopularityScore ?? 0) * 32
         let cred = min(1.0, Double(drop.ratingCount ?? 0) / 250.0)
-        let rat = ((drop.ratingAverage ?? 0) / 5.0) * cred * 24
-        let hot: Double = drop.feedHot == true ? 15 : 0
+        let ratingPart = ((drop.ratingAverage ?? 0) / 5.0) * 24
+        let rat = ratingPart * (cred > 0 ? cred : 0.45)
+        let hot: Double = (drop.feedHot == true || drop.isHotspot == true) ? 15 : 0
         let raw = r * 0.32 + p + rat + hot
+        if raw < 0.75 && hot == 0 {
+            return nil
+        }
         return min(99, max(1, Int(raw.rounded())))
     }
 
