@@ -9,7 +9,6 @@ struct ContentView: View {
     @StateObject private var alertsVM  = AlertsViewModel()
     @StateObject private var exploreVM = SearchViewModel()
     @State private var selectedTab = 0
-    @State private var showFeedAlerts = false
 
     var body: some View {
         Group {
@@ -20,12 +19,10 @@ struct ContentView: View {
                     savedVM: savedVM,
                     premium: premium,
                     onOpenSearch: { selectedTab = 1 },
-                    onOpenAlerts: { showFeedAlerts = true },
-                    onOpenExplore: { selectedTab = 1 },
-                    alertBadgeCount: alertsVM.unreadCount
+                    onOpenExplore: { selectedTab = 1 }
                 )
             case 1:
-                ExploreView(vm: exploreVM, savedVM: savedVM, alertsVM: alertsVM, premium: premium)
+                ExploreView(vm: exploreVM, savedVM: savedVM, premium: premium)
             default:
                 ProfilePlaceholderView()
             }
@@ -34,11 +31,6 @@ struct ContentView: View {
         .background(tabBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             CustomTabBar(selectedTab: $selectedTab, alertBadgeCount: alertsVM.unreadCount)
-        }
-        .sheet(isPresented: $showFeedAlerts) {
-            NavigationStack {
-                AlertsView(alertsVM: alertsVM, savedVM: savedVM, premium: premium)
-            }
         }
         .task {
             await savedVM.loadAll()

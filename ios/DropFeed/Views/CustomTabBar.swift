@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Bottom tab bar — dark dock, **FEED · EXPLORE · PROFILE**. Alerts open from the Explore lightning FAB.
+/// Bottom tab bar — dark dock, **FEED · EXPLORE · PROFILE**. Unread badge on Explore when alerts need attention.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     var alertBadgeCount: Int = 0

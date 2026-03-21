@@ -4,12 +4,10 @@ import SwiftUI
 struct ExploreView: View {
     @ObservedObject var vm: SearchViewModel
     @ObservedObject var savedVM: SavedViewModel
-    @ObservedObject var alertsVM: AlertsViewModel
     @ObservedObject var premium: PremiumManager
 
     @State private var gridTimeTab: ExploreGridTimeTab = .evening
     @State private var hypeSortReversed = false
-    @State private var showAlertsSheet = false
 
     /// Fixed grid cell geometry so every card matches; spacing is gap between cells.
     private let gridColumnSpacing: CGFloat = 14
@@ -20,8 +18,8 @@ struct ExploreView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                topChrome
                 exploreDateStrip
+                    .padding(.top, 8)
                 partyRowCompact
                 if let err = vm.error {
                     errorBanner(err).padding(.top, 12)
@@ -42,11 +40,6 @@ struct ExploreView: View {
             .padding(.horizontal, 18)
         }
         .background(SnagDesignSystem.exploreCanvas.ignoresSafeArea())
-        .sheet(isPresented: $showAlertsSheet) {
-            NavigationStack {
-                AlertsView(alertsVM: alertsVM, savedVM: savedVM, premium: premium)
-            }
-        }
         .onAppear {
             vm.exploreTabActive = true
             vm.selectedMealPreset = nil
@@ -60,39 +53,7 @@ struct ExploreView: View {
         }
     }
 
-    // MARK: - Header
-
-    private var topChrome: some View {
-        HStack(alignment: .center) {
-            HStack(spacing: 8) {
-                Image(systemName: "dot.radiowaves.right")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.exploreCoralSolid)
-                Text("SNAG")
-                    .font(.system(size: 18, weight: .bold, design: .serif))
-                    .italic()
-                    .foregroundColor(SnagDesignSystem.exploreCoralSolid)
-            }
-            Spacer()
-            Button {
-                showAlertsSheet = true
-            } label: {
-                Image(systemName: "bell")
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-            }
-            .buttonStyle(.plain)
-            .overlay(alignment: .topTrailing) {
-                if alertsVM.unreadCount > 0 {
-                    Circle()
-                        .fill(SnagDesignSystem.exploreCoralSolid)
-                        .frame(width: 7, height: 7)
-                        .offset(x: 2, y: -2)
-                }
-            }
-        }
-        .padding(.top, 4)
-    }
+    // MARK: - Date strip
 
     /// Single-day selection from the next 14 days (`SearchViewModel.dateOptions`).
     private var exploreDateStrip: some View {
@@ -110,7 +71,7 @@ struct ExploreView: View {
                 .padding(.vertical, 2)
             }
         }
-        .padding(.top, 16)
+        .padding(.top, 4)
     }
 
     private func exploreDateChip(_ opt: (dateStr: String, monthAbbrev: String, dayNum: String)) -> some View {
@@ -725,7 +686,6 @@ private enum ExploreGridTimeTab: CaseIterable {
     ExploreView(
         vm: SearchViewModel(),
         savedVM: SavedViewModel(),
-        alertsVM: AlertsViewModel(),
         premium: PremiumManager()
     )
 }

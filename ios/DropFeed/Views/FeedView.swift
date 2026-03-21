@@ -5,9 +5,7 @@ struct FeedView: View {
     @ObservedObject var savedVM: SavedViewModel
     @ObservedObject var premium: PremiumManager
     var onOpenSearch: (() -> Void)? = nil
-    var onOpenAlerts: (() -> Void)? = nil
     var onOpenExplore: (() -> Void)? = nil
-    var alertBadgeCount: Int = 0
 
     private var vm: FeedViewModel { feedVM }
 
@@ -202,9 +200,8 @@ struct FeedView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    mockFeedNavigationBar
                     mockTopDropsCarouselSection
-                        .padding(.top, 20)
+                        .padding(.top, 12)
                     mockLiveNowSection
                         .padding(.top, 28)
                     mockJustMissedSection
@@ -217,44 +214,6 @@ struct FeedView: View {
                     .padding(.bottom, 6)
             }
         }
-        .background(SnagDesignSystem.darkCanvas)
-    }
-
-    private var mockFeedNavigationBar: some View {
-        HStack(alignment: .center, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.salmonAccent)
-                Text("NYC • LIVE")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.darkTextSecondary)
-                    .tracking(0.8)
-            }
-            Spacer(minLength: 8)
-            Text("Snag")
-                .font(.system(size: 22, weight: .semibold, design: .serif))
-                .foregroundColor(SnagDesignSystem.salmonAccent)
-            Spacer(minLength: 8)
-            Button {
-                onOpenAlerts?()
-            } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "bell")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.darkTextSecondary)
-                    if alertBadgeCount > 0 {
-                        Circle()
-                            .fill(SnagDesignSystem.salmonAccent)
-                            .frame(width: 7, height: 7)
-                            .offset(x: 4, y: -4)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
         .background(SnagDesignSystem.darkCanvas)
     }
 
