@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// App palette — coral/salmon primary on clean white/light-gray surfaces.
+/// App palette — primary red on clean white/light-gray surfaces.
 enum AppTheme {
     // Backgrounds
     static let background = Color(red: 0.07, green: 0.07, blue: 0.09)
@@ -12,12 +12,11 @@ enum AppTheme {
     static let textSecondary = Color(white: 0.65)
     static let textTertiary = Color(white: 0.50)
 
-    // ── Primary accent: coral/salmon — matches the DropTable reference design ──
-    /// #E86B5A — warm coral, used for buttons, badges, links, live dots.
-    static let accentRed    = Color(red: 0.91, green: 0.42, blue: 0.35)
+    // ── Primary accent: true red (#DC2626) — buttons, badges, links ──
+    static let accentRed    = Color(red: 220 / 255, green: 38 / 255, blue: 38 / 255)
     static let accent       = accentRed   // alias so existing code keeps working
-    /// Slightly deeper coral for pressed / hover states
-    static let accentOrange = Color(red: 0.93, green: 0.50, blue: 0.38)
+    /// Slightly deeper red for pressed / emphasis
+    static let accentOrange = Color(red: 185 / 255, green: 28 / 255, blue: 28 / 255)
     static let liveDot      = Color(red: 0.25, green: 0.85, blue: 0.48)
     
     // Pills / chips

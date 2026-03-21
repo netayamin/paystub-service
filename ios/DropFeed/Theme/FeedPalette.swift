@@ -46,9 +46,7 @@ struct FeedPalette {
         pillSelected:    AppTheme.accentRed
     )
 
-    /// Light palette — warm white cards on a soft gray background,
-    /// coral accent — matches the DropTable reference design.
-    /// Snag mockup: white canvas, #F5F5F5 cards, #F07167 coral.
+    /// Light palette — white / #F5F5F5 surfaces, primary red accent (#DC2626).
     static let liveFeedLight: FeedPalette = FeedPalette(
         pageBackground:  SnagDesignSystem.pageWhite,
         surface:         SnagDesignSystem.pageWhite,

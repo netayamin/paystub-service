@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Floating tab bar: top-rounded **#F5F5F5** tray, **#4A4A4A** side labels, raised coral **DROPS** FAB (**#F1645F**) with flame.
+/// Floating tab bar: top-rounded **#F5F5F5** tray, **#4A4A4A** side labels, raised red **DROPS** FAB with flame.
 ///
 /// `ContentView` indices: **DROPS** = 0 Feed · **LIVE FEED** = 1 Search · **BOOKINGS** = 2 Saved · **PROFILE** = 3.
 struct CustomTabBar: View {

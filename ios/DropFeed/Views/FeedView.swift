@@ -863,9 +863,18 @@ private struct CrownJewelCard: View {
         c.month = mo
         c.day = d
         guard let date = Calendar.current.date(from: c) else { return "Tonight" }
-        if Calendar.current.isDateInToday(date) { return "Tonight" }
-        if Calendar.current.isDateInTomorrow(date) { return "Tomorrow" }
-        return "Soon"
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return "Tonight" }
+        if cal.isDateInTomorrow(date) { return "Tomorrow" }
+        let fmt = DateFormatter()
+        fmt.locale = Locale.current
+        let thisYear = cal.component(.year, from: Date())
+        if cal.component(.year, from: date) == thisYear {
+            fmt.dateFormat = "EEE, MMM d"
+        } else {
+            fmt.dateFormat = "EEE, MMM d, yyyy"
+        }
+        return fmt.string(from: date)
     }
 
     private var detailLine: String {

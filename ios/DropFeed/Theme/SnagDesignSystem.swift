@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// Snag reference UI — coral accent, white canvas, mint success, soft gray cards.
+/// Snag reference UI — primary red accent, white canvas, mint success, soft gray cards.
 enum SnagDesignSystem {
 
     // MARK: - Colors (mockup)
 
-    /// Primary coral / salmon — buttons, badges, active tab
-    static let coral = Color(red: 240 / 255, green: 113 / 255, blue: 103 / 255) // #F07167
+    /// Primary red — buttons, badges, links (not orange/coral)
+    static let coral = Color(red: 220 / 255, green: 38 / 255, blue: 38 / 255) // #DC2626
 
-    /// Slightly softer variant for fills
-    static let coralSoft = Color(red: 240 / 255, green: 113 / 255, blue: 103 / 255).opacity(0.12)
+    /// Light tint for pill backgrounds
+    static let coralSoft = Color(red: 220 / 255, green: 38 / 255, blue: 38 / 255).opacity(0.12)
 
     static let pageWhite = Color.white
     static let cardGray = Color(red: 245 / 255, green: 245 / 255, blue: 245 / 255) // #F5F5F5
@@ -30,10 +30,10 @@ enum SnagDesignSystem {
     static let tabInactive = Color(red: 140 / 255, green: 140 / 255, blue: 145 / 255)
     static let tabPillFill = coral.opacity(0.14)
 
-    /// Floating tab bar: light gray shell, charcoal labels, featured coral FAB (#F1645F)
+    /// Floating tab bar: light gray shell, charcoal labels, featured red FAB
     static let tabBarSurface = Color(red: 245 / 255, green: 245 / 255, blue: 245 / 255)
     static let tabBarCharcoal = Color(red: 74 / 255, green: 74 / 255, blue: 74 / 255)
-    static let tabBarFeaturedCoral = Color(red: 241 / 255, green: 100 / 255, blue: 95 / 255)
+    static let tabBarFeaturedCoral = Color(red: 220 / 255, green: 38 / 255, blue: 38 / 255)
 
     // MARK: - Typography
 
