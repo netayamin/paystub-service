@@ -11,16 +11,16 @@ struct ProfilePlaceholderView: View {
             Text("SNAG")
                 .font(.system(size: 28, weight: .black))
                 .italic()
-                .foregroundColor(AppTheme.textPrimary)
+                .foregroundColor(SnagDesignSystem.textDark)
             Text("Profile & settings coming soon.")
                 .font(.system(size: 15))
-                .foregroundColor(AppTheme.textSecondary)
+                .foregroundColor(SnagDesignSystem.textMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(white: 0.96))
+        .background(SnagDesignSystem.pageCanvas)
     }
 }
 

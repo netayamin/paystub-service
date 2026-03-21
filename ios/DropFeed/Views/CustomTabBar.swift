@@ -10,7 +10,8 @@ struct CustomTabBar: View {
 
     private let iconWellSize: CGFloat = 44
     private let pillRowHeight: CGFloat = 62
-    private let topCornerRadius: CGFloat = 22
+    /// Rounded top-left & top-right only (dock); visibly softer than the feed canvas.
+    private let topCornerRadius: CGFloat = 28
 
     var body: some View {
         HStack(spacing: 0) {

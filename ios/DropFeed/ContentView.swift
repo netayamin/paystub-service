@@ -29,7 +29,7 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SnagDesignSystem.pageWhite)
+        .background(SnagDesignSystem.pageCanvas)
         // Pins the bar to the bottom and insets scroll views so content isn’t hidden under the tray.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             CustomTabBar(selectedTab: $selectedTab)

@@ -11,6 +11,9 @@ enum SnagDesignSystem {
     /// Light tint for pill backgrounds
     static let coralSoft = Color(red: 220 / 255, green: 38 / 255, blue: 38 / 255).opacity(0.12)
 
+    /// Main screens behind content (off-white canvas).
+    static let pageCanvas = Color(red: 247 / 255, green: 247 / 255, blue: 246 / 255) // ~#F7F7F6
+    /// Pure white — tab bar dock, list stripes, cards that sit on `pageCanvas`.
     static let pageWhite = Color.white
     static let cardGray = Color(red: 245 / 255, green: 245 / 255, blue: 245 / 255) // #F5F5F5
 

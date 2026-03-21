@@ -40,7 +40,7 @@ struct FeedView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
         }
-        .background(SnagDesignSystem.pageWhite)
+        .background(SnagDesignSystem.pageCanvas)
         .refreshable { await vm.refresh() }
         .sheet(isPresented: $showFilterSheet) {
             DateTimeFilterSheet(vm: vm)
@@ -94,7 +94,7 @@ struct FeedView: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 10)
-        .background(SnagDesignSystem.pageWhite)
+        .background(SnagDesignSystem.pageCanvas)
     }
 
     // MARK: - Feed content
@@ -247,7 +247,7 @@ struct FeedView: View {
                     .padding(.bottom, 32)
             }
         }
-        .background(SnagDesignSystem.pageWhite)
+        .background(SnagDesignSystem.pageCanvas)
     }
 
     // MARK: - Snag layout: header + sections
@@ -770,7 +770,7 @@ struct FeedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(SnagDesignSystem.pageWhite)
+        .background(SnagDesignSystem.pageCanvas)
     }
 
     private var hasActiveFilters: Bool {
@@ -794,7 +794,7 @@ struct FeedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(SnagDesignSystem.pageWhite)
+        .background(SnagDesignSystem.pageCanvas)
     }
 }
 

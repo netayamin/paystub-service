@@ -48,7 +48,7 @@ struct FeedPalette {
 
     /// Light palette — white / #F5F5F5 surfaces, primary red accent (#DC2626).
     static let liveFeedLight: FeedPalette = FeedPalette(
-        pageBackground:  SnagDesignSystem.pageWhite,
+        pageBackground:  SnagDesignSystem.pageCanvas,
         surface:         SnagDesignSystem.pageWhite,
         surfaceElevated: SnagDesignSystem.cardGray,
         textPrimary:     SnagDesignSystem.textDark,

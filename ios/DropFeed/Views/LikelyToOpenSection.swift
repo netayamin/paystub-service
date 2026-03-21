@@ -120,7 +120,7 @@ struct LikelyToOpenSection: View {
 
 #Preview {
     ZStack {
-        SnagDesignSystem.pageWhite.ignoresSafeArea()
+        SnagDesignSystem.pageCanvas.ignoresSafeArea()
         LikelyToOpenSection(
             venues: [
                 LikelyToOpenVenue(
