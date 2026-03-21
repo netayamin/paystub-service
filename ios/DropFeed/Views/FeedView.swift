@@ -39,7 +39,7 @@ struct FeedView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
         }
-        .background(SnagDesignSystem.pageCanvas)
+        .background(SnagDesignSystem.darkCanvas)
         .refreshable { await vm.refresh() }
         .sheet(isPresented: $showFilterSheet) {
             DateTimeFilterSheet(vm: vm)
@@ -164,58 +164,24 @@ struct FeedView: View {
             VStack(alignment: .leading, spacing: 0) {
                 epicureanNavBar
 
-                if vm.newDropsCount > 0 {
-                    HStack {
-                        Spacer(minLength: 0)
-                        newDropPill(count: vm.newDropsCount)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                }
+                LiveNowFeedSection(
+                    drops: velocityCarouselDrops,
+                    onViewAll: { showFilterSheet = true }
+                )
+                .padding(.top, 20)
 
                 if let hero = epicureanFeaturedHeroDrop {
                     EpicureanFeaturedHeroCard(drop: hero)
                         .padding(.horizontal, 16)
-                        .padding(.top, 16)
+                        .padding(.top, 28)
                 }
 
-                VelocityFeedSection(
-                    drops: velocityCarouselDrops,
-                    onViewAll: { showFilterSheet = true }
-                )
-                .padding(.top, 28)
-
-                HottestOpeningsSection(drops: hottestVerticalDrops)
-                    .padding(.top, 28)
-
-                if !vm.likelyToOpen.isEmpty {
-                    InventoryPredictionsSection(
-                        venues: vm.likelyToOpen,
-                        premium: premium,
-                        onNotifyMe: { savedVM.toggleWatch($0) }
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 28)
-                }
-
-                filterPillsRow
-                    .padding(.top, 20)
-
-                Button {
-                    showFilterSheet = true
-                } label: {
-                    Text("More filters")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.epicureanRed)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 12)
-                .padding(.bottom, 36)
+                RecentActivitySection(drops: hottestVerticalDrops)
+                    .padding(.top, 32)
+                    .padding(.bottom, 40)
             }
         }
-        .background(SnagDesignSystem.pageCanvas)
+        .background(SnagDesignSystem.darkCanvas)
     }
 
     /// #1 curated top drop, else first live card.
@@ -250,60 +216,49 @@ struct FeedView: View {
     }
 
     private var epicureanNavBar: some View {
-        ZStack {
-            Text("SNAG")
-                .font(.system(size: 21, weight: .semibold, design: .serif))
-                .tracking(3)
-                .foregroundColor(SnagDesignSystem.textDark)
-
-            HStack(alignment: .center) {
-                Button {
-                    showFilterSheet = true
-                } label: {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.textDark)
-                }
-                .buttonStyle(.plain)
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 6) {
-                    TimelineView(.animation(minimumInterval: 0.8)) { _ in
-                        Circle()
-                            .fill(SnagDesignSystem.epicureanRed)
-                            .frame(width: 7, height: 7)
-                            .opacity(0.45)
-                            .overlay(
-                                Circle()
-                                    .fill(SnagDesignSystem.epicureanRed)
-                                    .frame(width: 5, height: 5)
-                            )
-                    }
-                    Text("LIVE SCAN ACTIVE")
-                        .font(.system(size: 8, weight: .heavy))
-                        .foregroundColor(SnagDesignSystem.epicureanRed)
-                        .tracking(0.4)
-                }
-
-                Button {
-                    onOpenAlerts?()
-                } label: {
-                    Image(systemName: "bell.fill")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.textDark)
-                }
-                .buttonStyle(.plain)
+        HStack(alignment: .center, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.salmonAccent)
+                Text("Snag • NYC")
+                    .font(.system(size: 17, weight: .semibold, design: .serif))
+                    .foregroundColor(SnagDesignSystem.salmonAccent)
             }
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 6) {
+                TimelineView(.animation(minimumInterval: 0.9)) { _ in
+                    Circle()
+                        .fill(SnagDesignSystem.salmonAccent)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: SnagDesignSystem.salmonAccent.opacity(0.9), radius: 4)
+                }
+                Text("\(vm.drops.count) LIVE")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
+                    .tracking(0.3)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(SnagDesignSystem.livePillBackground)
+            .clipShape(Capsule())
+
+            Spacer(minLength: 12)
+
+            Button {
+                onOpenSearch?()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(SnagDesignSystem.darkTextSecondary)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(SnagDesignSystem.pageWhite)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.black.opacity(0.06))
-                .frame(height: 1)
-        }
+        .padding(.vertical, 12)
+        .background(SnagDesignSystem.darkCanvas)
     }
 
     // MARK: - Snag layout: header + sections
@@ -710,10 +665,10 @@ struct FeedView: View {
             Spacer()
             Image(systemName: "wifi.slash")
                 .font(.system(size: 44))
-                .foregroundColor(palette.textTertiary)
+                .foregroundColor(SnagDesignSystem.darkTextMuted)
             Text(message)
                 .font(.system(size: 16))
-                .foregroundColor(palette.textSecondary)
+                .foregroundColor(SnagDesignSystem.darkTextSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
             Button("Retry") { Task { await vm.refresh() } }
@@ -721,12 +676,12 @@ struct FeedView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
-                .background(palette.accentRed)
+                .background(SnagDesignSystem.salmonAccent)
                 .cornerRadius(12)
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(SnagDesignSystem.pageCanvas)
+        .background(SnagDesignSystem.darkCanvas)
     }
 
     private var hasActiveFilters: Bool {
@@ -738,19 +693,19 @@ struct FeedView: View {
             Spacer()
             Image(systemName: "fork.knife")
                 .font(.system(size: 44))
-                .foregroundColor(palette.textTertiary)
+                .foregroundColor(SnagDesignSystem.darkTextMuted)
             Text("No drops yet")
                 .font(.system(size: 20, weight: .bold))
-                .foregroundColor(palette.textPrimary)
+                .foregroundColor(SnagDesignSystem.darkTextPrimary)
             Text("We scan continuously. Check back soon.")
                 .font(.system(size: 15))
-                .foregroundColor(palette.textSecondary)
+                .foregroundColor(SnagDesignSystem.darkTextSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(SnagDesignSystem.pageCanvas)
+        .background(SnagDesignSystem.darkCanvas)
     }
 }
 
@@ -786,9 +741,9 @@ private struct EpicureanFeaturedHeroCard: View {
         return URL(string: s)
     }
 
-    private var cityScanLine: String {
-        let nb = (drop.neighborhood ?? drop.location ?? "Manhattan").uppercased()
-        return "LIVE SCANNING \(nb)"
+    private var legendaryBadge: String {
+        let c = (drop.crownBadgeLabel ?? "LEGENDARY").uppercased()
+        return c.contains("DROP") ? c : "\(c) DROP"
     }
 
     private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
@@ -802,31 +757,25 @@ private struct EpicureanFeaturedHeroCard: View {
         return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
     }
 
-    private var availabilityLine: String {
-        let ds = drop.dateStr ?? drop.slots.first?.dateStr
-        let when: String = {
-            guard let ds, !ds.isEmpty else { return "Tonight" }
-            let parts = ds.split(separator: "-")
-            guard parts.count == 3,
-                  let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return "Tonight" }
-            var c = DateComponents()
-            c.year = y
-            c.month = mo
-            c.day = d
-            guard let date = Calendar.current.date(from: c) else { return "Tonight" }
-            let cal = Calendar.current
-            if cal.isDateInToday(date) { return "Tonight" }
-            if cal.isDateInTomorrow(date) { return "Tomorrow" }
-            let fmt = DateFormatter()
-            fmt.dateFormat = "EEE, MMM d"
-            return fmt.string(from: date)
-        }()
+    private var tableDetailLine: String {
         let t = drop.slots.first?.time ?? ""
         let timePart = t.isEmpty ? "" : formatTime(t)
         if timePart.isEmpty {
-            return "AVAILABILITY / \(when) · (\(partySize))"
+            return "Table for \(partySize)"
         }
-        return "AVAILABILITY / \(when), \(timePart) (\(partySize))"
+        return "Table for \(partySize) • \(timePart)"
+    }
+
+    private var neighborhoodCaps: String {
+        let nb = (drop.neighborhood ?? drop.location ?? "Manhattan").uppercased()
+        if nb.contains("MANHATTAN") || nb.contains("BROOKLYN") || nb.contains("QUEENS") {
+            return nb
+        }
+        return "\(nb), MANHATTAN"
+    }
+
+    private var leftCount: Int {
+        max(1, drop.slots.count)
     }
 
     private func book() {
@@ -836,7 +785,7 @@ private struct EpicureanFeaturedHeroCard: View {
     }
 
     private var cardWidth: CGFloat { min(UIScreen.main.bounds.width - 32, 400) }
-    private var cardHeight: CGFloat { cardWidth * 0.95 }
+    private var cardHeight: CGFloat { cardWidth * 1.12 }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -844,14 +793,14 @@ private struct EpicureanFeaturedHeroCard: View {
                 if let url = imageURL {
                     CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
                         LinearGradient(
-                            colors: [Color(white: 0.32), Color(white: 0.18)],
+                            colors: [Color(white: 0.22), Color(white: 0.12)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     }
                 } else {
                     LinearGradient(
-                        colors: [Color(white: 0.32), Color(white: 0.18)],
+                        colors: [Color(white: 0.22), Color(white: 0.12)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -861,7 +810,7 @@ private struct EpicureanFeaturedHeroCard: View {
             .clipped()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.2), .black.opacity(0.88)],
+                colors: [.clear, .black.opacity(0.35), .black.opacity(0.92)],
                 startPoint: .center,
                 endPoint: .bottom
             )
@@ -869,65 +818,73 @@ private struct EpicureanFeaturedHeroCard: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(SnagDesignSystem.epicureanRed)
-                            .frame(width: 6, height: 6)
-                        Text(cityScanLine)
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(.white)
-                            .tracking(0.6)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.black.opacity(0.45))
-                    .clipShape(Capsule())
+                    Text(legendaryBadge)
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundColor(.white)
+                        .tracking(0.8)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(SnagDesignSystem.salmonAccent)
+                        .clipShape(Capsule())
                     Spacer()
                 }
-                .padding(14)
+                .padding(16)
 
                 Spacer(minLength: 0)
 
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(drop.name)
-                            .font(.system(size: 26, weight: .bold, design: .serif))
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(drop.name)
+                        .font(.system(size: 28, weight: .bold, design: .serif))
+                        .foregroundColor(.white)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: "fork.knife")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(SnagDesignSystem.salmonAccent)
+                        Text(tableDetailLine)
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.white)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
-                            .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 2)
-                        Text(availabilityLine)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(2)
                     }
-                    Spacer(minLength: 8)
+
+                    Text(neighborhoodCaps)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.darkTextSecondary)
+                        .tracking(0.8)
+
                     Button(action: book) {
-                        HStack(spacing: 6) {
-                            Text("SNAG SEAT")
-                                .font(.system(size: 12, weight: .heavy))
+                        HStack {
+                            Text("BOOK ON RESY — \(leftCount) LEFT")
+                                .font(.system(size: 15, weight: .bold))
+                            Spacer(minLength: 8)
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 16, weight: .bold))
                         }
                         .foregroundColor(.white)
                         .padding(.horizontal, 18)
-                        .padding(.vertical, 14)
-                        .background(SnagDesignSystem.epicureanRed)
+                        .padding(.vertical, 16)
+                        .background(SnagDesignSystem.salmonAccent)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
+                    .padding(.top, 4)
                 }
                 .padding(16)
             }
             .frame(width: cardWidth, height: cardHeight, alignment: .bottom)
         }
         .frame(width: cardWidth, height: cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: .black.opacity(0.18), radius: 20, x: 0, y: 10)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
 
-private struct VelocityFeedSection: View {
+private struct LiveNowFeedSection: View {
     let drops: [Drop]
     var onViewAll: () -> Void
 
@@ -935,23 +892,23 @@ private struct VelocityFeedSection: View {
         if drops.isEmpty {
             EmptyView()
         } else {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("THE VELOCITY FEED")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("REAL-TIME ACCESS")
                             .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.epicureanRed)
-                            .tracking(0.9)
-                        Text("Velvet drops")
-                            .font(SnagDesignSystem.sectionSerif)
-                            .foregroundColor(SnagDesignSystem.textDark)
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(1.0)
+                        Text("Live Now")
+                            .font(SnagDesignSystem.displaySerif)
+                            .foregroundColor(SnagDesignSystem.darkTextPrimary)
                     }
                     Spacer()
                     Button(action: onViewAll) {
                         Text("VIEW ALL")
                             .font(.system(size: 11, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.textMuted)
-                            .tracking(0.5)
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.6)
                     }
                     .buttonStyle(.plain)
                 }
@@ -959,7 +916,7 @@ private struct VelocityFeedSection: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
-                        ForEach(drops, id: \.id) { VelocityDropCard(drop: $0) }
+                        ForEach(drops, id: \.id) { LiveNowCompactCard(drop: $0) }
                     }
                     .padding(.horizontal, 16)
                 }
@@ -968,129 +925,9 @@ private struct VelocityFeedSection: View {
     }
 }
 
-private struct VelocityDropCard: View {
+private struct LiveNowCompactCard: View {
     let drop: Drop
-
-    private var partySubtitle: String {
-        if let n = drop.partySizesAvailable.sorted().first {
-            return "Table · \(n) guests"
-        }
-        return "Table available"
-    }
-
-    private var urgent: Bool { drop.velocityUrgent == true }
-
-    private var imageURL: URL? {
-        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private func book() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
-        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
-        UIApplication.shared.open(url)
-    }
-
-    private func cardShell() -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .heroMuted) {
-                    (urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber).opacity(0.35)
-                }
-                .frame(height: 112)
-                .clipped()
-
-                Text(urgent ? "URGENT" : "PENDING")
-                    .font(.system(size: 9, weight: .heavy))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber)
-                    .clipShape(Capsule())
-                    .padding(10)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(drop.velocityPrimaryLabel ?? "Live")
-                        .font(.system(size: 20, weight: .black, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
-                    Spacer()
-                }
-                Text(drop.name)
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundColor(SnagDesignSystem.textDark)
-                    .lineLimit(2)
-                Text(partySubtitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(SnagDesignSystem.textMuted)
-
-                Button(action: book) {
-                    Text("CLAIM NOW")
-                        .font(.system(size: 13, weight: .heavy))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(14)
-        }
-        .frame(width: 252)
-        .background(SnagDesignSystem.pageWhite)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(urgent ? 0 : 0.07), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 6)
-    }
-
-    var body: some View {
-        cardShell()
-    }
-}
-
-private struct HottestOpeningsSection: View {
-    let drops: [Drop]
-
-    var body: some View {
-        if drops.isEmpty {
-            EmptyView()
-        } else {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 10) {
-                    Text("Hottest Openings")
-                        .font(SnagDesignSystem.sectionSerif)
-                        .foregroundColor(SnagDesignSystem.textDark)
-                    Text("NEW RELEASES")
-                        .font(.system(size: 8, weight: .heavy))
-                        .foregroundColor(SnagDesignSystem.textMuted)
-                        .tracking(0.6)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(SnagDesignSystem.cardGray)
-                        .clipShape(Capsule())
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-
-                VStack(spacing: 22) {
-                    ForEach(drops, id: \.id) { HottestOpeningCard(drop: $0) }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-}
-
-private struct HottestOpeningCard: View {
-    let drop: Drop
+    private let cardW: CGFloat = 168
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -1098,97 +935,227 @@ private struct HottestOpeningCard: View {
     }
 
     private var subtitleLine: String {
-        let nb = drop.neighborhood ?? drop.location ?? "NYC"
-        return "\(nb) · Live availability"
+        let when = friendlyDate(drop.dateStr ?? drop.slots.first?.dateStr) ?? "Today"
+        let t = drop.slots.first?.time ?? ""
+        if t.isEmpty { return when }
+        return "\(when) • \(formatTime12h(t))"
     }
 
-    private var scoreValue: Int? {
-        guard let s = drop.snagScore else { return nil }
-        return min(99, max(1, s))
+    private func formatTime12h(_ t: String) -> String {
+        let p = t.split(separator: ":")
+        guard let h = p.first.flatMap({ Int($0) }) else { return String(t.prefix(5)) }
+        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+        let h12 = h % 12 == 0 ? 12 : h % 12
+        let ap = h < 12 ? "AM" : "PM"
+        return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
     }
 
-    private var showExclusive: Bool {
-        drop.showExclusiveBadge == true
-    }
-
-    private func book() {
+    private func openResy() {
         let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         UIApplication.shared.open(url)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .topTrailing) {
-                CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .snagMuted) {
-                    SnagDesignSystem.cardGray
-                }
-                .frame(height: 200)
-                .clipped()
+        Button(action: openResy) {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    Group {
+                        if let url = imageURL {
+                            CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                                SnagDesignSystem.darkElevated
+                            }
+                        } else {
+                            SnagDesignSystem.darkElevated
+                        }
+                    }
+                    .frame(width: cardW, height: 108)
+                    .clipped()
 
-                if showExclusive {
-                    Text("EXCLUSIVE")
-                        .font(.system(size: 9, weight: .heavy))
+                    Text("LIVE")
+                        .font(.system(size: 8, weight: .heavy))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(SnagDesignSystem.epicureanRed)
-                        .clipShape(Capsule())
-                        .padding(12)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(SnagDesignSystem.salmonAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .padding(8)
                 }
-            }
 
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(drop.name)
-                        .font(.system(size: 20, weight: .bold, design: .serif))
-                        .foregroundColor(SnagDesignSystem.textDark)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.darkTextPrimary)
                         .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                     Text(subtitleLine)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.textMuted)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .lineLimit(1)
                 }
-                Spacer(minLength: 8)
-                VStack(spacing: 4) {
-                    Text("SCORE")
-                        .font(.system(size: 9, weight: .heavy))
-                        .foregroundColor(SnagDesignSystem.textMuted)
-                    if let s = scoreValue {
-                        Text("\(s)")
-                            .font(.system(size: 22, weight: .black, design: .serif))
-                            .foregroundColor(SnagDesignSystem.textDark)
-                    } else {
-                        Text("—")
-                            .font(.system(size: 22, weight: .bold, design: .serif))
-                            .foregroundColor(SnagDesignSystem.textMuted)
+                .frame(width: cardW, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
+                .background(SnagDesignSystem.darkElevated)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct RecentActivitySection: View {
+    let drops: [Drop]
+
+    var body: some View {
+        if drops.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 18) {
+                recentActivityHeader
+                    .padding(.horizontal, 16)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(drops.enumerated()), id: \.element.id) { idx, drop in
+                        RecentActivityRow(drop: drop)
+                        if idx < drops.count - 1 {
+                            Divider()
+                                .background(Color.white.opacity(0.08))
+                                .padding(.leading, 76)
+                        }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(SnagDesignSystem.cardGray)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .padding(16)
-            .background(SnagDesignSystem.pageWhite)
-
-            Button(action: book) {
-                Text("View on Resy")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(SnagDesignSystem.epicureanRed)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(SnagDesignSystem.pageWhite)
-            }
-            .buttonStyle(.plain)
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Color.black.opacity(0.06))
-                    .frame(height: 1)
+                .padding(.horizontal, 16)
             }
         }
-        .background(SnagDesignSystem.pageWhite)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 16, x: 0, y: 8)
+    }
+
+    private var recentActivityHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("Recent")
+                    .font(SnagDesignSystem.sectionSerif)
+                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
+                Text(" Activity")
+                    .font(SnagDesignSystem.sectionSerif)
+                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
+            }
+            Rectangle()
+                .fill(SnagDesignSystem.salmonAccent)
+                .frame(width: 82, height: 2)
+        }
+    }
+}
+
+private struct RecentActivityRow: View {
+    let drop: Drop
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var isGone: Bool {
+        (drop.velocityPrimaryLabel ?? "") == "Grab it now"
+    }
+
+    private var takenLine: String? {
+        guard isGone else { return nil }
+        if let s = drop.avgDropDurationSeconds, s > 0 {
+            return "TAKEN IN \(Int(s))S"
+        }
+        if let b = drop.liveStreamVelocityBadge, !b.isEmpty {
+            return "TAKEN IN \(b.uppercased())"
+        }
+        return "TAKEN IN —"
+    }
+
+    private var subtitleCaps: String {
+        let cuisine = (drop.location ?? drop.neighborhood ?? "DINING").uppercased()
+        let day = (friendlyDate(drop.dateStr ?? drop.slots.first?.dateStr) ?? "TODAY").uppercased()
+        let t = drop.slots.first?.time ?? ""
+        let timePart: String = {
+            guard !t.isEmpty,
+                  let h = Int(t.split(separator: ":").first ?? "") else { return "" }
+            let parts = t.split(separator: ":")
+            let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
+            let h12 = h % 12 == 0 ? 12 : h % 12
+            let ap = h < 12 ? "AM" : "PM"
+            return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
+        }()
+        if timePart.isEmpty {
+            return "\(cuisine) • \(day)"
+        }
+        return "\(cuisine) • \(day) \(timePart)"
+    }
+
+    private func openResy() {
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    var body: some View {
+        Button(action: openResy) {
+            HStack(alignment: .center, spacing: 12) {
+                Group {
+                    if let url = imageURL {
+                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                            SnagDesignSystem.darkElevated
+                        }
+                    } else {
+                        SnagDesignSystem.darkElevated
+                    }
+                }
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(drop.name)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.darkTextPrimary)
+                        .lineLimit(1)
+                    Text(subtitleCaps)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    if isGone {
+                        Text("GONE")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        if let tl = takenLine {
+                            Text(tl)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                                .tracking(0.3)
+                        }
+                    } else {
+                        Text("ACTIVE")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(.white)
+                            .tracking(0.5)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(SnagDesignSystem.activePillBackground)
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(SnagDesignSystem.salmonAccent.opacity(0.35), lineWidth: 1)
+                            )
+                    }
+                }
+            }
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
     }
 }
 

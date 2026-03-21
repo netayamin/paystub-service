@@ -1,26 +1,21 @@
 import SwiftUI
 
-/// Bottom dock tab bar: **flush** to screen edges, **no shadow**, **only top corners** rounded; white extends into the **home-indicator safe area**.
-///
-/// `ContentView`: **DISCOVERY** = 0 Feed · **ANALYTICS** = 1 Search · **SNIPES** = 2 Saved · **PROFILE** = 3.
-/// Visual order matches reference: DISCOVERY · SNIPES · ANALYTICS · PROFILE.
+/// Bottom tab bar — dark dock, **FEED · ALERTS · PROFILE** (mockup). Search opens from the feed header sheet.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     var alertBadgeCount: Int = 0
 
     private let iconWellSize: CGFloat = 44
     private let pillRowHeight: CGFloat = 62
-    /// Rounded top-left & top-right only (dock); visibly softer than the feed canvas.
     private let topCornerRadius: CGFloat = 28
 
     var body: some View {
         HStack(spacing: 0) {
-            tabButton(tag: 0, icon: "safari.fill", label: "DISCOVERY")
-            tabButton(tag: 2, icon: "scope", label: "SNIPES")
-            tabButton(tag: 1, icon: "chart.line.uptrend.xyaxis", label: "ANALYTICS")
-            tabButton(tag: 3, icon: "person.fill", label: "PROFILE")
+            tabButton(tag: 0, icon: "location.north.circle.fill", label: "FEED")
+            tabButton(tag: 1, icon: "bell.fill", label: "ALERTS", badge: alertBadgeCount)
+            tabButton(tag: 2, icon: "person.fill", label: "PROFILE")
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 8)
         .padding(.top, 10)
         .padding(.bottom, 10)
         .frame(minHeight: pillRowHeight)
@@ -33,16 +28,20 @@ struct CustomTabBar: View {
                 topTrailingRadius: topCornerRadius,
                 style: .continuous
             )
-            .fill(SnagDesignSystem.pageWhite)
+            .fill(SnagDesignSystem.tabBarDarkSurface)
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 0.5)
+            }
         }
-        // Same white under the home indicator / bottom inset (no gap color).
         .background {
-            SnagDesignSystem.pageWhite
+            SnagDesignSystem.tabBarDarkSurface
                 .ignoresSafeArea(edges: .bottom)
         }
     }
 
-    private func tabButton(tag: Int, icon: String, label: String) -> some View {
+    private func tabButton(tag: Int, icon: String, label: String, badge: Int = 0) -> some View {
         let on = selectedTab == tag
         return Button {
             withAnimation(.easeInOut(duration: 0.22)) {
@@ -50,26 +49,38 @@ struct CustomTabBar: View {
             }
         } label: {
             VStack(spacing: 5) {
-                ZStack {
-                    if on {
-                        Circle()
-                            .fill(SnagDesignSystem.tabBarFeaturedCoral)
-                            .frame(width: iconWellSize, height: iconWellSize)
+                ZStack(alignment: .topTrailing) {
+                    ZStack {
+                        if on {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(SnagDesignSystem.tabBarDarkSelectedWell)
+                                .frame(width: iconWellSize + 8, height: iconWellSize + 4)
+                        }
+                        Image(systemName: icon)
+                            .font(.system(size: 20, weight: on ? .semibold : .regular))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundColor(on ? SnagDesignSystem.salmonAccent : SnagDesignSystem.darkTextMuted)
                     }
-                    Image(systemName: icon)
-                        .font(.system(size: 20, weight: on ? .semibold : .regular))
-                        .symbolRenderingMode(.monochrome)
-                        .foregroundColor(on ? .white : SnagDesignSystem.tabBarCharcoal)
+                    .frame(width: iconWellSize + 8, height: iconWellSize + 4)
+
+                    if badge > 0, tag == 1 {
+                        Text("\(min(badge, 99))")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(4)
+                            .background(SnagDesignSystem.salmonAccent)
+                            .clipShape(Circle())
+                            .offset(x: 10, y: -6)
+                    }
                 }
-                .frame(width: iconWellSize, height: iconWellSize)
 
                 Text(label)
                     .font(.system(size: 7, weight: .bold))
-                    .tracking(0.3)
+                    .tracking(0.4)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
-                    .foregroundColor(on ? SnagDesignSystem.tabBarFeaturedCoral : SnagDesignSystem.tabBarCharcoal)
+                    .foregroundColor(on ? SnagDesignSystem.darkTextPrimary : SnagDesignSystem.darkTextMuted)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -79,22 +90,12 @@ struct CustomTabBar: View {
     }
 }
 
-#Preview("Tab bar — Drops") {
+#Preview("Tab bar — dark") {
     ZStack {
-        Color(white: 0.88).ignoresSafeArea()
+        SnagDesignSystem.darkCanvas.ignoresSafeArea()
         VStack {
             Spacer()
             CustomTabBar(selectedTab: .constant(0))
-        }
-    }
-}
-
-#Preview("Tab bar — Live feed") {
-    ZStack {
-        Color(white: 0.88).ignoresSafeArea()
-        VStack {
-            Spacer()
-            CustomTabBar(selectedTab: .constant(1))
         }
     }
 }

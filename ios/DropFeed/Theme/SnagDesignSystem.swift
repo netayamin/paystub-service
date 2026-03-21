@@ -65,4 +65,19 @@ enum SnagDesignSystem {
     static var sectionSerif: Font {
         .system(size: 22, weight: .bold, design: .serif)
     }
+
+    // MARK: - Dark feed (reference mockup)
+
+    /// Near-black canvas (#121212).
+    static let darkCanvas = Color(red: 18 / 255, green: 18 / 255, blue: 18 / 255)
+    static let darkElevated = Color(red: 30 / 255, green: 30 / 255, blue: 32 / 255)
+    static let darkTextPrimary = Color.white
+    static let darkTextSecondary = Color(red: 180 / 255, green: 180 / 255, blue: 186 / 255)
+    static let darkTextMuted = Color(red: 120 / 255, green: 120 / 255, blue: 128 / 255)
+    /// Salmon / coral accent from mock (~#C23B34).
+    static let salmonAccent = Color(red: 194 / 255, green: 59 / 255, blue: 52 / 255)
+    static let livePillBackground = Color(red: 48 / 255, green: 22 / 255, blue: 24 / 255)
+    static let activePillBackground = Color(red: 72 / 255, green: 26 / 255, blue: 30 / 255)
+    static let tabBarDarkSurface = Color(red: 22 / 255, green: 22 / 255, blue: 24 / 255)
+    static let tabBarDarkSelectedWell = Color(red: 40 / 255, green: 18 / 255, blue: 20 / 255)
 }

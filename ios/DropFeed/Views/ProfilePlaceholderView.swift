@@ -7,20 +7,19 @@ struct ProfilePlaceholderView: View {
             Spacer().frame(height: 24)
             Image(systemName: "bolt.fill")
                 .font(.system(size: 40))
-                .foregroundColor(AppTheme.accentRed)
+                .foregroundColor(SnagDesignSystem.salmonAccent)
             Text("SNAG")
-                .font(.system(size: 28, weight: .black))
-                .italic()
-                .foregroundColor(SnagDesignSystem.textDark)
+                .font(.system(size: 28, weight: .black, design: .serif))
+                .foregroundColor(SnagDesignSystem.darkTextPrimary)
             Text("Profile & settings coming soon.")
                 .font(.system(size: 15))
-                .foregroundColor(SnagDesignSystem.textMuted)
+                .foregroundColor(SnagDesignSystem.darkTextMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SnagDesignSystem.pageCanvas)
+        .background(SnagDesignSystem.darkCanvas)
     }
 }
 

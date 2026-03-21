@@ -3,10 +3,12 @@ import SwiftUI
 // MARK: - Root container
 
 struct ContentView: View {
-    @StateObject private var feedVM  = FeedViewModel()
-    @StateObject private var savedVM = SavedViewModel()
-    @StateObject private var premium = PremiumManager()
+    @StateObject private var feedVM   = FeedViewModel()
+    @StateObject private var savedVM  = SavedViewModel()
+    @StateObject private var premium  = PremiumManager()
+    @StateObject private var alertsVM = AlertsViewModel()
     @State private var selectedTab = 0
+    @State private var showSearchSheet = false
 
     var body: some View {
         Group {
@@ -16,28 +18,40 @@ struct ContentView: View {
                     feedVM: feedVM,
                     savedVM: savedVM,
                     premium: premium,
-                    onOpenSearch: { selectedTab = 1 },
-                    onOpenExplore: { selectedTab = 1 },
-                    alertBadgeCount: 0
+                    onOpenSearch: { showSearchSheet = true },
+                    onOpenAlerts: { selectedTab = 1 },
+                    alertBadgeCount: alertsVM.unreadCount
                 )
             case 1:
-                SearchView(savedVM: savedVM)
-            case 2:
-                SavedView(savedVM: savedVM, feedVM: feedVM, premium: premium)
+                AlertsView(alertsVM: alertsVM, savedVM: savedVM, premium: premium)
             default:
                 ProfilePlaceholderView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(SnagDesignSystem.pageCanvas)
-        // Pins the bar to the bottom and insets scroll views so content isn’t hidden under the tray.
+        .background(tabBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            CustomTabBar(selectedTab: $selectedTab)
+            CustomTabBar(selectedTab: $selectedTab, alertBadgeCount: alertsVM.unreadCount)
+        }
+        .sheet(isPresented: $showSearchSheet) {
+            NavigationStack {
+                SearchView(savedVM: savedVM)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showSearchSheet = false }
+                                .fontWeight(.semibold)
+                        }
+                    }
+            }
         }
         .task {
             await savedVM.loadAll()
             await premium.checkEntitlements()
         }
+    }
+
+    private var tabBackground: Color {
+        selectedTab == 0 ? SnagDesignSystem.darkCanvas : SnagDesignSystem.pageCanvas
     }
 }
 
