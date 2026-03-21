@@ -225,6 +225,17 @@ struct FeedView: View {
                 bestRightNowSection
                     .padding(.top, 20)
 
+                if !vm.likelyToOpen.isEmpty {
+                    LikelyToOpenSection(
+                        venues: vm.likelyToOpen,
+                        premium: premium,
+                        onNotifyMe: { savedVM.toggleWatch($0) },
+                        isWatched: { savedVM.isWatched($0) }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 28)
+                }
+
                 liveStreamSection
                     .padding(.top, 28)
                     .padding(.bottom, 32)
