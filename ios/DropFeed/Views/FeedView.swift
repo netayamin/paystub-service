@@ -1247,7 +1247,6 @@ private struct LiveDropsMarqueeTrain: View {
         }
         .frame(height: cardH)
         .clipped()
-        .padding(.leading, 18)
         .task(id: segmentWidth) {
             guard segmentWidth > 1 else { return }
             while !Task.isCancelled {
