@@ -1,5 +1,17 @@
 import SwiftUI
 
+private enum SignalStreamFilter: CaseIterable, Hashable {
+    case all, drops, events
+
+    var label: String {
+        switch self {
+        case .all: return "ALL"
+        case .drops: return "DROPS"
+        case .events: return "EVENTS"
+        }
+    }
+}
+
 struct FeedView: View {
     @ObservedObject var feedVM: FeedViewModel
     @ObservedObject var savedVM: SavedViewModel
@@ -14,6 +26,7 @@ struct FeedView: View {
     private let partySizeOptions = [2, 3, 4, 5, 6]
 
     @State private var showFilterSheet = false
+    @State private var signalStreamFilter: SignalStreamFilter = .all
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
@@ -157,10 +170,6 @@ struct FeedView: View {
 
     // MARK: - Reference layout (TOP DROPS + LIVE NOW mock)
 
-    private var mockCarouselDrops: [Drop] {
-        Array(vm.topDrops.prefix(10))
-    }
-
     /// Prefer backend `hot_right_now`; otherwise the full ranked live board (not trimmed to “below carousel”).
     private var homeLiveDropsPool: [Drop] {
         if let hot = vm.hotRightNow, !hot.isEmpty {
@@ -187,33 +196,30 @@ struct FeedView: View {
         return Array(sorted[r...] + sorted[..<r])
     }
 
-    /// Same title row as Explore `tonightHighlightsSection` (22pt serif + LIVE DATA).
-    private var homeTonightHighlightsHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Tonight's Highlights")
-                .font(.system(size: 22, weight: .bold, design: .serif))
-                .foregroundColor(.white)
-            Spacer()
-            Text("LIVE DATA")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                .tracking(0.8)
+    /// Stream list after ALL / DROPS / EVENTS filter (client-side).
+    private var signalStreamDisplayedDrops: [Drop] {
+        let base = homeLiveDropsOrdered
+        switch signalStreamFilter {
+        case .all:
+            return base
+        case .drops:
+            return base.filter { feedDropIsBookable($0) }
+        case .events:
+            return base.filter {
+                $0.feedHot == true
+                    || $0.brandNewDrop == true
+                    || $0.feedsRareCarousel == true
+                    || ($0.snagScore ?? 0) >= 85
+                    || ($0.trendPct ?? 0) > 25
+            }
         }
-    }
-
-    private var mockCarouselCardWidth: CGFloat {
-        min(UIScreen.main.bounds.width * 0.62, 240)
-    }
-
-    private var mockCarouselCardHeight: CGFloat {
-        min(mockCarouselCardWidth * 0.62, 132)
     }
 
     private var referenceFeedScroll: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    mockTopDropsCarouselSection
+                    marketLeaderHeroSection
                         .padding(.top, 12)
                     mockLiveNowSection
                         .padding(.top, 28)
@@ -222,38 +228,58 @@ struct FeedView: View {
                     Color.clear.frame(height: vm.newDropsCount > 0 ? 96 : 28)
                 }
             }
-            if vm.newDropsCount > 0 {
-                floatingNewDropsPill
-                    .padding(.bottom, 6)
+            VStack(spacing: 8) {
+                if vm.isRefreshing, !vm.drops.isEmpty {
+                    feedSyncingPill
+                }
+                if vm.newDropsCount > 0 {
+                    floatingNewDropsPill
+                }
             }
+            .padding(.bottom, 6)
         }
         .background(SnagDesignSystem.darkCanvas)
     }
 
-    private var mockTopDropsCarouselSection: some View {
+    private var marketLeaderHeroSection: some View {
         Group {
-            if mockCarouselDrops.isEmpty {
-                EmptyView()
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    homeTonightHighlightsHeader
-                        .padding(.horizontal, 16)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 14) {
-                            ForEach(mockCarouselDrops, id: \.id) { drop in
-                                MockTopDropsCarouselCard(
-                                    drop: drop,
-                                    width: mockCarouselCardWidth,
-                                    height: mockCarouselCardHeight
-                                )
-                            }
-                        }
-                        .padding(.horizontal, 16)
+            if let hero = vm.heroCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(marketLeaderLeftCaption(hero))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.85)
+                        Spacer()
+                        Text(marketLeaderRightCaption(hero))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.85)
                     }
+                    .padding(.horizontal, 16)
+
+                    MarketLeaderHeroCard(drop: hero)
+                        .padding(.horizontal, 16)
                 }
             }
         }
+    }
+
+    private var feedSyncingPill: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(Color.white.opacity(0.95))
+                .frame(width: 6, height: 6)
+            Text("SYNCING…")
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundColor(.white)
+                .tracking(0.6)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
+        .background(SnagDesignSystem.salmonAccent)
+        .clipShape(Capsule())
+        .shadow(color: SnagDesignSystem.salmonAccent.opacity(0.45), radius: 12, y: 3)
     }
 
     private var mockLiveNowSection: some View {
@@ -262,43 +288,61 @@ struct FeedView: View {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .center) {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(SnagDesignSystem.salmonAccent)
-                                .frame(width: 6, height: 6)
-                            Text("Live drops")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-                            Text("·")
-                                .font(.system(size: 12))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            Text("\(homeLiveDropsPool.count) open")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        }
-                        Spacer()
-                        HStack(spacing: 8) {
-                            ForEach([2, 4], id: \.self) { size in
-                                Button {
-                                    mockFeedPartySizeTap(size)
-                                } label: {
-                                    Text("\(size)")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(vm.selectedPartySizes.contains(size) ? .white : SnagDesignSystem.darkTextMuted)
-                                        .frame(width: 34, height: 30)
-                                        .background(vm.selectedPartySizes.contains(size) ? Color(white: 0.22) : Color(white: 0.12))
-                                        .clipShape(Capsule())
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Signal stream")
+                            .font(.system(size: 22, weight: .bold, design: .serif))
+                            .foregroundColor(.white)
+
+                        HStack(alignment: .center, spacing: 10) {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(SignalStreamFilter.allCases, id: \.self) { mode in
+                                        Button {
+                                            signalStreamFilter = mode
+                                        } label: {
+                                            Text(mode.label)
+                                                .font(.system(size: 10, weight: .heavy))
+                                                .foregroundColor(signalStreamFilter == mode ? .white : SnagDesignSystem.darkTextMuted)
+                                                .tracking(0.5)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 8)
+                                                .background(signalStreamFilter == mode ? Color(white: 0.26) : Color(white: 0.12))
+                                                .clipShape(Capsule())
+                                                .overlay(
+                                                    Capsule()
+                                                        .stroke(Color.white.opacity(signalStreamFilter == mode ? 0 : 0.12), lineWidth: 1)
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
                                 }
-                                .buttonStyle(.plain)
+                            }
+                            HStack(spacing: 8) {
+                                ForEach([2, 4], id: \.self) { size in
+                                    Button {
+                                        mockFeedPartySizeTap(size)
+                                    } label: {
+                                        Text("\(size)")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(vm.selectedPartySizes.contains(size) ? .white : SnagDesignSystem.darkTextMuted)
+                                            .frame(width: 34, height: 30)
+                                            .background(vm.selectedPartySizes.contains(size) ? Color(white: 0.22) : Color(white: 0.12))
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
                         }
                     }
                     .padding(.horizontal, 16)
 
                     VStack(spacing: 12) {
-                        ForEach(homeLiveDropsOrdered, id: \.id) { drop in
-                            MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
+                        if signalStreamDisplayedDrops.isEmpty {
+                            signalStreamEmptyFilterPlaceholder
+                        } else {
+                            ForEach(signalStreamDisplayedDrops, id: \.id) { drop in
+                                MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -306,9 +350,51 @@ struct FeedView: View {
                     .padding(.bottom, 32)
                     .animation(.easeInOut(duration: 0.4), value: vm.lastRefreshed)
                     .animation(.easeInOut(duration: 0.45), value: vm.liveListShuffleToken)
+                    .animation(.easeInOut(duration: 0.25), value: signalStreamFilter)
                 }
             }
         }
+    }
+
+    private var signalStreamEmptyFilterPlaceholder: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(SnagDesignSystem.darkTextMuted.opacity(0.5))
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("INCOMING SIGNAL")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(SnagDesignSystem.darkTextMuted)
+                    .tracking(0.6)
+                Text("Nothing in this channel right now — try ALL or DROPS.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(SnagDesignSystem.darkTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(SnagDesignSystem.darkTextMuted)
+        }
+        .padding(14)
+        .background(Color(white: 0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private func marketLeaderLeftCaption(_ drop: Drop) -> String {
+        if let s = drop.crownBadgeLabel, !s.isEmpty { return s.uppercased() }
+        return "MARKET LEADER"
+    }
+
+    private func marketLeaderRightCaption(_ drop: Drop) -> String {
+        if let s = drop.topOpportunityDemandLabel, !s.isEmpty { return s.uppercased() }
+        if let sc = drop.snagScore { return "\(sc)% DEMAND" }
+        if let rp = drop.rarityPoints { return "\(rp)% DEMAND" }
+        return "LIVE DEMAND"
     }
 
     private func mockPreferredParty(for drop: Drop) -> Int {
@@ -901,18 +987,6 @@ private func feedDropIsBookable(_ drop: Drop) -> Bool {
     return !u.isEmpty
 }
 
-private func feedGoneLabel(_ drop: Drop) -> String {
-    if let s = drop.avgDropDurationSeconds, s > 0 {
-        if s < 120 { return "GONE IN \(Int(s))S" }
-        let mins = Int(s / 60)
-        return mins < 1 ? "GONE IN \(Int(s))S" : "GONE IN \(mins)M"
-    }
-    if let b = drop.liveStreamVelocityBadge, !b.isEmpty {
-        return "GONE IN \(b.uppercased())"
-    }
-    return "GONE"
-}
-
 private func feedRelativeMissedLabel(_ iso: String?) -> String {
     guard let iso, let d = Drop.parseISO(iso) else { return "JUST NOW" }
     let sec = max(0, Int(-d.timeIntervalSinceNow))
@@ -921,39 +995,43 @@ private func feedRelativeMissedLabel(_ iso: String?) -> String {
     return "\(sec / 3600)H AGO"
 }
 
-private func mockFeedBadges(for drop: Drop) -> [MockFeedBadge] {
-    var out: [MockFeedBadge] = []
-    if drop.slots.count == 1 {
-        out.append(MockFeedBadge(text: "1 LEFT", style: .neutral))
+private func feedTimeToClaimLabel(for drop: Drop) -> String {
+    if let avg = drop.avgDropDurationSeconds, avg > 0 {
+        let s = min(120, max(5, Int(avg.rounded())))
+        return "< \(s)s"
     }
-    if let tag = drop.exploreStatusTag, !tag.isEmpty {
-        let u = tag.uppercased()
-        if u.contains("LEFT"), !u.contains("1 LEFT") {
-            out.append(MockFeedBadge(text: u, style: .neutral))
-        } else if u == "JUST DROPPED" {
-            out.append(MockFeedBadge(text: "NEW", style: .new))
-        } else if u == "RARE" || u == "HOT" {
-            out.append(MockFeedBadge(text: u == "HOT" ? "HOT DROP" : "RARE", style: .hot))
-        }
-    }
-    if (drop.brandNewDrop == true || drop.showNewBadge == true), !out.contains(where: { $0.text == "NEW" }) {
-        out.append(MockFeedBadge(text: "NEW", style: .new))
-    }
-    if (drop.feedHot == true || (drop.snagScore ?? 0) >= 88), !out.contains(where: { $0.text == "HOT DROP" }) {
-        out.append(MockFeedBadge(text: "HOT DROP", style: .hot))
-    }
-    if drop.feedsRareCarousel == true, !out.contains(where: { $0.text == "RARE" }) {
-        out.append(MockFeedBadge(text: "RARE", style: .neutral))
-    }
-    return Array(out.prefix(3))
+    let guess = max(8, 75 - min(70, drop.secondsSinceDetected))
+    return "< \(guess)s"
 }
 
-// MARK: - Mock feed cards (TOP DROPS carousel + LIVE NOW rows)
+/// 0…1 — fills as the drop ages vs typical vanish window.
+private func feedClaimUrgencyProgress(for drop: Drop) -> CGFloat {
+    let window = max(20.0, drop.avgDropDurationSeconds ?? 55.0)
+    let p = Double(drop.secondsSinceDetected) / window
+    return CGFloat(min(1, max(0.06, p)))
+}
 
-private struct MockTopDropsCarouselCard: View {
+private func signalStreamRowTags(for drop: Drop, bookable: Bool) -> [MockFeedBadge] {
+    var list: [MockFeedBadge] = []
+    if drop.feedHot == true || (drop.snagScore ?? 0) >= 85 {
+        list.append(MockFeedBadge(text: "HOT SIGNAL", style: .hot))
+    }
+    if drop.brandNewDrop == true || drop.showNewBadge == true {
+        list.append(MockFeedBadge(text: "NEW SUPPLY", style: .new))
+    }
+    if bookable, list.count < 2 {
+        list.append(MockFeedBadge(text: "ACTIVE SUPPLY", style: .neutral))
+    }
+    if list.isEmpty, bookable {
+        list.append(MockFeedBadge(text: "ACTIVE SUPPLY", style: .neutral))
+    }
+    return Array(list.prefix(2))
+}
+
+// MARK: - Market leader hero + signal stream rows
+
+private struct MarketLeaderHeroCard: View {
     let drop: Drop
-    let width: CGFloat
-    let height: CGFloat
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -966,14 +1044,22 @@ private struct MockTopDropsCarouselCard: View {
         (drop.neighborhood ?? drop.location ?? "NYC").uppercased()
     }
 
-    private func snag() {
+    private var showVelocityBadge: Bool {
+        drop.speedTier == "fast" || drop.velocityUrgent == true
+    }
+
+    private var cardHeight: CGFloat {
+        min(UIScreen.main.bounds.width * 1.12, 400)
+    }
+
+    private func executeClaim() {
         let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         UIApplication.shared.open(url)
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .topLeading) {
             Group {
                 if let url = imageURL {
                     CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
@@ -991,53 +1077,99 @@ private struct MockTopDropsCarouselCard: View {
                     )
                 }
             }
-            .frame(width: width, height: height)
+            .frame(maxWidth: .infinity)
+            .frame(height: cardHeight)
             .clipped()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.4), .black.opacity(0.92)],
-                startPoint: .center,
+                colors: [.black.opacity(0.15), .black.opacity(0.5), .black.opacity(0.92)],
+                startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(width: width, height: height)
+            .frame(maxWidth: .infinity)
+            .frame(height: cardHeight)
+            .allowsHitTesting(false)
 
             VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    if showVelocityBadge {
+                        Text("HIGH VELOCITY")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(.white)
+                            .tracking(0.5)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(SnagDesignSystem.salmonAccent)
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    } else {
+                        Color.clear.frame(width: 1, height: 1)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("TIME TO CLAIM")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.6)
+                        Text(feedTimeToClaimLabel(for: drop))
+                            .font(.system(size: 22, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.top, 16)
+                .padding(.horizontal, 16)
+
                 Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 5) {
+
+                VStack(alignment: .leading, spacing: 10) {
                     Text(neighborhoodCaps)
-                        .font(.system(size: 8, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .tracking(0.5)
+                        .tracking(0.55)
                     Text(drop.name)
-                        .font(.system(size: 16, weight: .bold, design: .serif))
+                        .font(.system(size: 32, weight: .bold, design: .serif))
                         .foregroundColor(.white)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.75)
 
-                    Button(action: snag) {
-                        Text("SNAG IT")
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundColor(.white)
-                            .tracking(0.6)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.white.opacity(0.12))
+                                .frame(height: 3)
+                            Capsule()
+                                .fill(SnagDesignSystem.salmonAccent)
+                                .frame(width: max(8, geo.size.width * feedClaimUrgencyProgress(for: drop)), height: 3)
+                        }
+                    }
+                    .frame(height: 3)
+
+                    Button(action: executeClaim) {
+                        Text("EXECUTE CLAIM")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(Color(white: 0.12))
+                            .tracking(0.7)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 14)
                             .background(bookable ? SnagDesignSystem.salmonAccent : Color(white: 0.35))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .disabled(!bookable)
                 }
-                .padding(10)
+                .padding(16)
+                .padding(.bottom, 4)
             }
-            .frame(width: width, height: height, alignment: .bottom)
+            .frame(maxWidth: .infinity)
+            .frame(height: cardHeight)
         }
-        .frame(width: width, height: height)
-        .opacity(bookable ? 1 : 0.55)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .frame(height: cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+        .opacity(bookable ? 1 : 0.88)
     }
 }
 
@@ -1266,10 +1398,20 @@ private struct MockLiveNowRow: View {
     }
 
     private var bookable: Bool { feedDropIsBookable(drop) }
-    private var badges: [MockFeedBadge] { mockFeedBadges(for: drop) }
+    private var badges: [MockFeedBadge] { signalStreamRowTags(for: drop, bookable: bookable) }
 
-    private var neighborhoodCaps: String {
-        (drop.neighborhood ?? drop.location ?? "").uppercased()
+    private var signalMetaLine: String {
+        let t = feedFormatTime12h(drop.slots.first?.time ?? "")
+        let party = "\(preferredParty)P"
+        let score: String
+        if let s = drop.snagScore {
+            score = "\(s) SCORE"
+        } else if let r = drop.rarityPoints {
+            score = "\(r) HYPE"
+        } else {
+            score = "LIVE"
+        }
+        return "\(t) • \(party) • \(score)"
     }
 
     private func openResy() {
@@ -1281,9 +1423,8 @@ private struct MockLiveNowRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(SnagDesignSystem.salmonAccent)
+                .fill(bookable ? SnagDesignSystem.salmonAccent : SnagDesignSystem.darkTextMuted.opacity(0.45))
                 .frame(width: 3)
-                .opacity(bookable ? 1 : 0)
 
             HStack(alignment: .center, spacing: 12) {
                 Group {
@@ -1298,49 +1439,30 @@ private struct MockLiveNowRow: View {
                 .frame(width: 56, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 4) {
-                    if !neighborhoodCaps.isEmpty {
-                        Text(neighborhoodCaps)
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.4)
-                            .lineLimit(1)
-                    }
+                VStack(alignment: .leading, spacing: 5) {
                     Text(drop.name)
-                        .font(.system(size: 17, weight: .bold, design: .serif))
+                        .font(.system(size: 16, weight: .bold, design: .serif))
                         .foregroundColor(bookable ? SnagDesignSystem.darkTextPrimary : SnagDesignSystem.darkTextMuted)
                         .lineLimit(2)
                         .minimumScaleFactor(0.9)
 
-                    HStack(spacing: 10) {
-                        Label {
-                            Text(feedFormatTime12h(drop.slots.first?.time ?? ""))
-                                .font(.system(size: 12, weight: .medium))
-                        } icon: {
-                            Image(systemName: "clock")
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                        Label {
-                            Text("\(preferredParty)P")
-                                .font(.system(size: 12, weight: .semibold))
-                        } icon: {
-                            Image(systemName: "person.2.fill")
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                    }
-                    .foregroundColor(SnagDesignSystem.darkTextMuted)
+                    Text(signalMetaLine)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .trailing, spacing: 8) {
-                    if !badges.isEmpty {
-                        HStack(spacing: 4) {
-                            ForEach(Array(badges.prefix(2).enumerated()), id: \.offset) { _, badge in
-                                MockBadgePill(badge: badge)
+                    if bookable {
+                        if !badges.isEmpty {
+                            VStack(alignment: .trailing, spacing: 4) {
+                                ForEach(Array(badges.prefix(2).enumerated()), id: \.offset) { _, badge in
+                                    MockBadgePill(badge: badge)
+                                }
                             }
                         }
-                    }
-                    if bookable {
                         Button(action: openResy) {
                             Image(systemName: "bolt.fill")
                                 .font(.system(size: 16, weight: .bold))
@@ -1351,7 +1473,14 @@ private struct MockLiveNowRow: View {
                         }
                         .buttonStyle(.plain)
                     } else {
-                        Text(feedGoneLabel(drop))
+                        if !badges.isEmpty {
+                            VStack(alignment: .trailing, spacing: 4) {
+                                ForEach(Array(badges.prefix(2).enumerated()), id: \.offset) { _, badge in
+                                    MockBadgePill(badge: badge)
+                                }
+                            }
+                        }
+                        Text("CLAIMED: \(min(599, drop.secondsSinceDetected))S")
                             .font(.system(size: 9, weight: .heavy))
                             .foregroundColor(SnagDesignSystem.darkTextMuted)
                             .tracking(0.35)
@@ -1367,8 +1496,8 @@ private struct MockLiveNowRow: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
         )
-        .opacity(bookable ? 1 : 0.52)
-        .saturation(bookable ? 1 : 0.35)
+        .opacity(bookable ? 1 : 0.55)
+        .saturation(bookable ? 1 : 0.4)
     }
 }
 
