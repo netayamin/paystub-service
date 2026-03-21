@@ -157,108 +157,213 @@ struct FeedView: View {
         .background(AppTheme.background)
     }
 
-    // MARK: - Reference layout (BEST RIGHT NOW + LIVE STREAM)
+    // MARK: - Reference layout (TOP DROPS + LIVE NOW mock)
+
+    private var mockCarouselDrops: [Drop] {
+        Array(vm.topDrops.prefix(10))
+    }
+
+    private var mockLiveNowDrops: [Drop] {
+        let carouselIds = Set(mockCarouselDrops.map(\.id))
+        let rest = vm.drops.filter { !carouselIds.contains($0.id) }
+        if !rest.isEmpty {
+            return Array(rest.prefix(20))
+        }
+        // Carousel can cover all current IDs; still show the tail of the ranked list.
+        return Array(vm.drops.dropFirst().prefix(20))
+    }
+
+    private var mockCarouselCardWidth: CGFloat {
+        min(UIScreen.main.bounds.width * 0.72, 300)
+    }
+
+    private var mockCarouselCardHeight: CGFloat {
+        mockCarouselCardWidth * 1.32
+    }
+
+    private var topDropsActiveCount: Int {
+        mockCarouselDrops.filter { feedDropIsBookable($0) }.count
+    }
 
     private var referenceFeedScroll: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                epicureanNavBar
-
-                LiveNowFeedSection(
-                    drops: velocityCarouselDrops,
-                    onViewAll: { showFilterSheet = true }
-                )
-                .padding(.top, 20)
-
-                if let hero = epicureanFeaturedHeroDrop {
-                    EpicureanFeaturedHeroCard(drop: hero)
-                        .padding(.horizontal, 16)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    mockFeedNavigationBar
+                    mockTopDropsCarouselSection
+                        .padding(.top, 20)
+                    mockLiveNowSection
                         .padding(.top, 28)
+                    Color.clear.frame(height: vm.newDropsCount > 0 ? 96 : 28)
                 }
-
-                RecentActivitySection(drops: hottestVerticalDrops)
-                    .padding(.top, 32)
-                    .padding(.bottom, 40)
+            }
+            if vm.newDropsCount > 0 {
+                floatingNewDropsPill
+                    .padding(.bottom, 6)
             }
         }
         .background(SnagDesignSystem.darkCanvas)
     }
 
-    /// #1 curated top drop, else first live card.
-    private var epicureanFeaturedHeroDrop: Drop? {
-        vm.topDrops.first ?? vm.drops.first
-    }
-
-    /// Horizontal “velocity” strip: top picks after the hero, then other live drops (deduped).
-    private var velocityCarouselDrops: [Drop] {
-        let heroId = epicureanFeaturedHeroDrop?.id
-        var seen = Set<String>()
-        var out: [Drop] = []
-        for d in vm.topDrops.dropFirst() + vm.justDropped {
-            if d.id == heroId { continue }
-            if seen.insert(d.id).inserted {
-                out.append(d)
-            }
-            if out.count >= 12 { break }
-        }
-        return out
-    }
-
-    /// Vertical “hottest” list: strong opportunities not already in hero or velocity strip.
-    private var hottestVerticalDrops: [Drop] {
-        let exclude = Set(
-            [epicureanFeaturedHeroDrop?.id].compactMap { $0 } + velocityCarouselDrops.map(\.id)
-        )
-        let primary = snagTopOpportunityDrops.filter { !exclude.contains($0.id) }
-        if primary.count >= 4 { return Array(primary.prefix(12)) }
-        let fill = vm.justDropped.filter { !exclude.contains($0.id) && !primary.map(\.id).contains($0.id) }
-        return Array((primary + fill).prefix(12))
-    }
-
-    private var epicureanNavBar: some View {
+    private var mockFeedNavigationBar: some View {
         HStack(alignment: .center, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.salmonAccent)
-                Text("Snag • NYC")
-                    .font(.system(size: 17, weight: .semibold, design: .serif))
-                    .foregroundColor(SnagDesignSystem.salmonAccent)
-            }
-
-            Spacer(minLength: 12)
-
             HStack(spacing: 6) {
-                TimelineView(.animation(minimumInterval: 0.9)) { _ in
-                    Circle()
-                        .fill(SnagDesignSystem.salmonAccent)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: SnagDesignSystem.salmonAccent.opacity(0.9), radius: 4)
-                }
-                Text("\(vm.drops.count) LIVE")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
-                    .tracking(0.3)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(SnagDesignSystem.livePillBackground)
-            .clipShape(Capsule())
-
-            Spacer(minLength: 12)
-
-            Button {
-                onOpenSearch?()
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .medium))
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.salmonAccent)
+                Text("NYC • LIVE")
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(SnagDesignSystem.darkTextSecondary)
+                    .tracking(0.8)
+            }
+            Spacer(minLength: 8)
+            Text("Snag")
+                .font(.system(size: 22, weight: .semibold, design: .serif))
+                .foregroundColor(SnagDesignSystem.salmonAccent)
+            Spacer(minLength: 8)
+            Button {
+                onOpenAlerts?()
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.darkTextSecondary)
+                    if alertBadgeCount > 0 {
+                        Circle()
+                            .fill(SnagDesignSystem.salmonAccent)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 4, y: -4)
+                    }
+                }
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .background(SnagDesignSystem.darkCanvas)
+    }
+
+    private var mockTopDropsCarouselSection: some View {
+        Group {
+            if mockCarouselDrops.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("🔥 TOP DROPS")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.white)
+                            .tracking(0.6)
+                        Spacer()
+                        Text("\(topDropsActiveCount) ACTIVE")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.8)
+                    }
+                    .padding(.horizontal, 16)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(mockCarouselDrops, id: \.id) { drop in
+                                MockTopDropsCarouselCard(
+                                    drop: drop,
+                                    width: mockCarouselCardWidth,
+                                    height: mockCarouselCardHeight
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+            }
+        }
+    }
+
+    private var mockLiveNowSection: some View {
+        Group {
+            if mockLiveNowDrops.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .center) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(SnagDesignSystem.salmonAccent)
+                                .frame(width: 6, height: 6)
+                            Text("LIVE NOW")
+                                .font(.system(size: 13, weight: .heavy))
+                                .foregroundColor(.white)
+                                .tracking(0.6)
+                        }
+                        Spacer()
+                        HStack(spacing: 8) {
+                            ForEach([2, 4], id: \.self) { size in
+                                Button {
+                                    mockFeedPartySizeTap(size)
+                                } label: {
+                                    Text("\(size)")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(vm.selectedPartySizes.contains(size) ? .white : SnagDesignSystem.darkTextMuted)
+                                        .frame(width: 34, height: 30)
+                                        .background(vm.selectedPartySizes.contains(size) ? Color(white: 0.22) : Color(white: 0.12))
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    VStack(spacing: 12) {
+                        ForEach(mockLiveNowDrops, id: \.id) { drop in
+                            MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 32)
+                }
+            }
+        }
+    }
+
+    private func mockPreferredParty(for drop: Drop) -> Int {
+        let avail = Set(drop.partySizesAvailable)
+        for p in vm.selectedPartySizes.sorted() where avail.contains(p) {
+            return p
+        }
+        return drop.partySizesAvailable.sorted().first ?? 2
+    }
+
+    private func mockFeedPartySizeTap(_ size: Int) {
+        if vm.selectedPartySizes == [size] {
+            vm.selectedPartySizes.removeAll()
+        } else {
+            vm.selectedPartySizes = [size]
+        }
+        vm.applyFiltersAndRefresh()
+    }
+
+    private var floatingNewDropsPill: some View {
+        Button {
+            vm.acknowledgeNewDrops()
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.red.opacity(0.95))
+                    .frame(width: 6, height: 6)
+                Text("\(vm.newDropsCount) NEW DROPS")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .tracking(0.5)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
+            .background(SnagDesignSystem.salmonAccent)
+            .clipShape(Capsule())
+            .shadow(color: SnagDesignSystem.salmonAccent.opacity(0.5), radius: 14, y: 4)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Snag layout: header + sections
@@ -731,61 +836,97 @@ private func friendlyDate(_ dateStr: String?) -> String? {
     return "\(month)/\(day)"
 }
 
-// MARK: - Epicurean reference layout (hero + velocity + hottest + inventory)
+// MARK: - Mock feed helpers (bookability, badges)
 
-private struct EpicureanFeaturedHeroCard: View {
+private enum MockFeedBadgeStyle {
+    case hot, new, neutral
+}
+
+private struct MockFeedBadge: Identifiable {
+    let text: String
+    let style: MockFeedBadgeStyle
+
+    var id: String { "\(text)-\(String(describing: style))" }
+}
+
+private func feedFormatTime12h(_ t: String) -> String {
+    let p = t.split(separator: ":")
+    guard let h = p.first.flatMap({ Int($0) }) else { return t.isEmpty ? "—" : String(t.prefix(5)) }
+    let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+    let h12 = h % 12 == 0 ? 12 : h % 12
+    let ap = h < 12 ? "AM" : "PM"
+    return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
+}
+
+private func feedDropIsBookable(_ drop: Drop) -> Bool {
+    if let avail = drop.exploreSnagAvailable { return avail }
+    let url = drop.slots.first?.resyUrl ?? drop.resyUrl
+    guard let u = url, !u.isEmpty else { return false }
+    return true
+}
+
+private func feedGoneLabel(_ drop: Drop) -> String {
+    if let s = drop.avgDropDurationSeconds, s > 0 {
+        if s < 120 { return "GONE IN \(Int(s))S" }
+        let mins = Int(s / 60)
+        return mins < 1 ? "GONE IN \(Int(s))S" : "GONE IN \(mins)M"
+    }
+    if let b = drop.liveStreamVelocityBadge, !b.isEmpty {
+        return "GONE IN \(b.uppercased())"
+    }
+    return "GONE"
+}
+
+private func mockFeedBadges(for drop: Drop) -> [MockFeedBadge] {
+    var out: [MockFeedBadge] = []
+    if drop.slots.count == 1 {
+        out.append(MockFeedBadge(text: "1 LEFT", style: .neutral))
+    }
+    if let tag = drop.exploreStatusTag, !tag.isEmpty {
+        let u = tag.uppercased()
+        if u.contains("LEFT"), !u.contains("1 LEFT") {
+            out.append(MockFeedBadge(text: u, style: .neutral))
+        } else if u == "JUST DROPPED" {
+            out.append(MockFeedBadge(text: "NEW", style: .new))
+        } else if u == "RARE" || u == "HOT" {
+            out.append(MockFeedBadge(text: u == "HOT" ? "HOT DROP" : "RARE", style: .hot))
+        }
+    }
+    if (drop.brandNewDrop == true || drop.showNewBadge == true), !out.contains(where: { $0.text == "NEW" }) {
+        out.append(MockFeedBadge(text: "NEW", style: .new))
+    }
+    if (drop.feedHot == true || (drop.snagScore ?? 0) >= 88), !out.contains(where: { $0.text == "HOT DROP" }) {
+        out.append(MockFeedBadge(text: "HOT DROP", style: .hot))
+    }
+    if drop.feedsRareCarousel == true, !out.contains(where: { $0.text == "RARE" }) {
+        out.append(MockFeedBadge(text: "RARE", style: .neutral))
+    }
+    return Array(out.prefix(3))
+}
+
+// MARK: - Mock feed cards (TOP DROPS carousel + LIVE NOW rows)
+
+private struct MockTopDropsCarouselCard: View {
     let drop: Drop
+    let width: CGFloat
+    let height: CGFloat
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
         return URL(string: s)
     }
 
-    private var legendaryBadge: String {
-        let c = (drop.crownBadgeLabel ?? "LEGENDARY").uppercased()
-        return c.contains("DROP") ? c : "\(c) DROP"
-    }
-
-    private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
-
-    private func formatTime(_ t: String) -> String {
-        let p = t.split(separator: ":")
-        guard let h = p.first.flatMap({ Int($0) }) else { return t.isEmpty ? "" : String(t.prefix(5)) }
-        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
-        let h12 = h % 12 == 0 ? 12 : h % 12
-        let ap = h < 12 ? "AM" : "PM"
-        return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
-    }
-
-    private var tableDetailLine: String {
-        let t = drop.slots.first?.time ?? ""
-        let timePart = t.isEmpty ? "" : formatTime(t)
-        if timePart.isEmpty {
-            return "Table for \(partySize)"
-        }
-        return "Table for \(partySize) • \(timePart)"
-    }
+    private var bookable: Bool { feedDropIsBookable(drop) }
 
     private var neighborhoodCaps: String {
-        let nb = (drop.neighborhood ?? drop.location ?? "Manhattan").uppercased()
-        if nb.contains("MANHATTAN") || nb.contains("BROOKLYN") || nb.contains("QUEENS") {
-            return nb
-        }
-        return "\(nb), MANHATTAN"
+        (drop.neighborhood ?? drop.location ?? "NYC").uppercased()
     }
 
-    private var leftCount: Int {
-        max(1, drop.slots.count)
-    }
-
-    private func book() {
+    private func snag() {
         let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         UIApplication.shared.open(url)
     }
-
-    private var cardWidth: CGFloat { min(UIScreen.main.bounds.width - 32, 400) }
-    private var cardHeight: CGFloat { cardWidth * 1.12 }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -806,148 +947,93 @@ private struct EpicureanFeaturedHeroCard: View {
                     )
                 }
             }
-            .frame(width: cardWidth, height: cardHeight)
+            .frame(width: width, height: height)
             .clipped()
 
             LinearGradient(
-                colors: [.clear, .black.opacity(0.35), .black.opacity(0.92)],
+                colors: [.clear, .black.opacity(0.4), .black.opacity(0.92)],
                 startPoint: .center,
                 endPoint: .bottom
             )
-            .frame(width: cardWidth, height: cardHeight)
+            .frame(width: width, height: height)
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(legendaryBadge)
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundColor(.white)
-                        .tracking(0.8)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(SnagDesignSystem.salmonAccent)
-                        .clipShape(Capsule())
-                    Spacer()
-                }
-                .padding(16)
-
                 Spacer(minLength: 0)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(drop.name)
-                        .font(.system(size: 28, weight: .bold, design: .serif))
-                        .foregroundColor(.white)
-                        .lineLimit(3)
-                        .minimumScaleFactor(0.82)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(alignment: .center, spacing: 10) {
-                        Image(systemName: "fork.knife")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(SnagDesignSystem.salmonAccent)
-                        Text(tableDetailLine)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.white)
-                    }
-
+                VStack(alignment: .leading, spacing: 8) {
                     Text(neighborhoodCaps)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.darkTextSecondary)
-                        .tracking(0.8)
-
-                    Button(action: book) {
-                        HStack {
-                            Text("BOOK ON RESY — \(leftCount) LEFT")
-                                .font(.system(size: 15, weight: .bold))
-                            Spacer(minLength: 8)
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 16, weight: .bold))
-                        }
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .tracking(0.6)
+                    Text(drop.name)
+                        .font(.system(size: 24, weight: .bold, design: .serif))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 16)
-                        .background(SnagDesignSystem.salmonAccent)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+
+                    Button(action: snag) {
+                        Text("SNAG IT")
+                            .font(.system(size: 14, weight: .heavy))
+                            .foregroundColor(.white)
+                            .tracking(0.8)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(bookable ? SnagDesignSystem.salmonAccent : Color(white: 0.35))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 4)
+                    .disabled(!bookable)
                 }
                 .padding(16)
             }
-            .frame(width: cardWidth, height: cardHeight, alignment: .bottom)
+            .frame(width: width, height: height, alignment: .bottom)
         }
-        .frame(width: cardWidth, height: cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .frame(width: width, height: height)
+        .opacity(bookable ? 1 : 0.55)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
 }
 
-private struct LiveNowFeedSection: View {
-    let drops: [Drop]
-    var onViewAll: () -> Void
+private struct MockBadgePill: View {
+    let badge: MockFeedBadge
+
+    private var border: Color {
+        switch badge.style {
+        case .hot: return SnagDesignSystem.salmonAccent
+        case .new: return Color.red.opacity(0.85)
+        case .neutral: return Color.white.opacity(0.28)
+        }
+    }
 
     var body: some View {
-        if drops.isEmpty {
-            EmptyView()
-        } else {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("REAL-TIME ACCESS")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(1.0)
-                        Text("Live Now")
-                            .font(SnagDesignSystem.displaySerif)
-                            .foregroundColor(SnagDesignSystem.darkTextPrimary)
-                    }
-                    Spacer()
-                    Button(action: onViewAll) {
-                        Text("VIEW ALL")
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.6)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-                        ForEach(drops, id: \.id) { LiveNowCompactCard(drop: $0) }
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
-        }
+        Text(badge.text)
+            .font(.system(size: 9, weight: .heavy))
+            .foregroundColor(SnagDesignSystem.darkTextSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(white: 0.14))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(border, lineWidth: 1))
     }
 }
 
-private struct LiveNowCompactCard: View {
+private struct MockLiveNowRow: View {
     let drop: Drop
-    private let cardW: CGFloat = 168
+    let preferredParty: Int
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
         return URL(string: s)
     }
 
-    private var subtitleLine: String {
-        let when = friendlyDate(drop.dateStr ?? drop.slots.first?.dateStr) ?? "Today"
-        let t = drop.slots.first?.time ?? ""
-        if t.isEmpty { return when }
-        return "\(when) • \(formatTime12h(t))"
-    }
+    private var bookable: Bool { feedDropIsBookable(drop) }
+    private var badges: [MockFeedBadge] { mockFeedBadges(for: drop) }
 
-    private func formatTime12h(_ t: String) -> String {
-        let p = t.split(separator: ":")
-        guard let h = p.first.flatMap({ Int($0) }) else { return String(t.prefix(5)) }
-        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
-        let h12 = h % 12 == 0 ? 12 : h % 12
-        let ap = h < 12 ? "AM" : "PM"
-        return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
+    private var neighborhoodCaps: String {
+        (drop.neighborhood ?? drop.location ?? "").uppercased()
     }
 
     private func openResy() {
@@ -957,150 +1043,12 @@ private struct LiveNowCompactCard: View {
     }
 
     var body: some View {
-        Button(action: openResy) {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topLeading) {
-                    Group {
-                        if let url = imageURL {
-                            CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
-                                SnagDesignSystem.darkElevated
-                            }
-                        } else {
-                            SnagDesignSystem.darkElevated
-                        }
-                    }
-                    .frame(width: cardW, height: 108)
-                    .clipped()
-
-                    Text("LIVE")
-                        .font(.system(size: 8, weight: .heavy))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(SnagDesignSystem.salmonAccent)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                        .padding(8)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(drop.name)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(SnagDesignSystem.darkTextPrimary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Text(subtitleLine)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .lineLimit(1)
-                }
-                .frame(width: cardW, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 10)
-                .background(SnagDesignSystem.darkElevated)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct RecentActivitySection: View {
-    let drops: [Drop]
-
-    var body: some View {
-        if drops.isEmpty {
-            EmptyView()
-        } else {
-            VStack(alignment: .leading, spacing: 18) {
-                recentActivityHeader
-                    .padding(.horizontal, 16)
-
-                VStack(spacing: 0) {
-                    ForEach(Array(drops.enumerated()), id: \.element.id) { idx, drop in
-                        RecentActivityRow(drop: drop)
-                        if idx < drops.count - 1 {
-                            Divider()
-                                .background(Color.white.opacity(0.08))
-                                .padding(.leading, 76)
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-
-    private var recentActivityHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("Recent")
-                    .font(SnagDesignSystem.sectionSerif)
-                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
-                Text(" Activity")
-                    .font(SnagDesignSystem.sectionSerif)
-                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
-            }
-            Rectangle()
+        HStack(alignment: .center, spacing: 0) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(SnagDesignSystem.salmonAccent)
-                .frame(width: 82, height: 2)
-        }
-    }
-}
+                .frame(width: 3)
+                .opacity(bookable ? 1 : 0)
 
-private struct RecentActivityRow: View {
-    let drop: Drop
-
-    private var imageURL: URL? {
-        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private var isGone: Bool {
-        (drop.velocityPrimaryLabel ?? "") == "Grab it now"
-    }
-
-    private var takenLine: String? {
-        guard isGone else { return nil }
-        if let s = drop.avgDropDurationSeconds, s > 0 {
-            return "TAKEN IN \(Int(s))S"
-        }
-        if let b = drop.liveStreamVelocityBadge, !b.isEmpty {
-            return "TAKEN IN \(b.uppercased())"
-        }
-        return "TAKEN IN —"
-    }
-
-    private var subtitleCaps: String {
-        let cuisine = (drop.location ?? drop.neighborhood ?? "DINING").uppercased()
-        let day = (friendlyDate(drop.dateStr ?? drop.slots.first?.dateStr) ?? "TODAY").uppercased()
-        let t = drop.slots.first?.time ?? ""
-        let timePart: String = {
-            guard !t.isEmpty,
-                  let h = Int(t.split(separator: ":").first ?? "") else { return "" }
-            let parts = t.split(separator: ":")
-            let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
-            let h12 = h % 12 == 0 ? 12 : h % 12
-            let ap = h < 12 ? "AM" : "PM"
-            return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
-        }()
-        if timePart.isEmpty {
-            return "\(cuisine) • \(day)"
-        }
-        return "\(cuisine) • \(day) \(timePart)"
-    }
-
-    private func openResy() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
-        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
-        UIApplication.shared.open(url)
-    }
-
-    var body: some View {
-        Button(action: openResy) {
             HStack(alignment: .center, spacing: 12) {
                 Group {
                     if let url = imageURL {
@@ -1111,51 +1059,80 @@ private struct RecentActivityRow: View {
                         SnagDesignSystem.darkElevated
                     }
                 }
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
+                    if !neighborhoodCaps.isEmpty {
+                        Text(neighborhoodCaps)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.4)
+                            .lineLimit(1)
+                    }
                     Text(drop.name)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(SnagDesignSystem.darkTextPrimary)
-                        .lineLimit(1)
-                    Text(subtitleCaps)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .font(.system(size: 17, weight: .bold, design: .serif))
+                        .foregroundColor(bookable ? SnagDesignSystem.darkTextPrimary : SnagDesignSystem.darkTextMuted)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+
+                    HStack(spacing: 10) {
+                        Label {
+                            Text(feedFormatTime12h(drop.slots.first?.time ?? ""))
+                                .font(.system(size: 12, weight: .medium))
+                        } icon: {
+                            Image(systemName: "clock")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        Label {
+                            Text("\(preferredParty)P")
+                                .font(.system(size: 12, weight: .semibold))
+                        } icon: {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                    }
+                    .foregroundColor(SnagDesignSystem.darkTextMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    if isGone {
-                        Text("GONE")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        if let tl = takenLine {
-                            Text(tl)
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                                .tracking(0.3)
+                VStack(alignment: .trailing, spacing: 8) {
+                    if !badges.isEmpty {
+                        HStack(spacing: 4) {
+                            ForEach(Array(badges.prefix(2).enumerated()), id: \.offset) { _, badge in
+                                MockBadgePill(badge: badge)
+                            }
                         }
+                    }
+                    if bookable {
+                        Button(action: openResy) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(SnagDesignSystem.salmonAccent)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
                     } else {
-                        Text("ACTIVE")
+                        Text(feedGoneLabel(drop))
                             .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(.white)
-                            .tracking(0.5)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(SnagDesignSystem.activePillBackground)
-                            .clipShape(Capsule())
-                            .overlay(
-                                Capsule()
-                                    .stroke(SnagDesignSystem.salmonAccent.opacity(0.35), lineWidth: 1)
-                            )
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.35)
+                            .multilineTextAlignment(.trailing)
                     }
                 }
             }
-            .padding(.vertical, 14)
+            .padding(12)
         }
-        .buttonStyle(.plain)
+        .background(Color(white: 0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+        .opacity(bookable ? 1 : 0.52)
+        .saturation(bookable ? 1 : 0.35)
     }
 }
 
