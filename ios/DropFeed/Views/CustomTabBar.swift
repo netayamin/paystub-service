@@ -1,48 +1,50 @@
 import SwiftUI
 
-/// Floating tab bar: top-rounded **#F5F5F5** tray, **#4A4A4A** side labels, raised red **DROPS** FAB with flame.
+/// Bottom tab bar: gray tray (top-rounded) flush to the bottom safe area, center **DROPS** FAB overlaps upward.
+/// Uses a fixed-height `ZStack` — no extra top padding on the whole bar (avoids the “floating strip” gap).
 ///
-/// `ContentView` indices: **DROPS** = 0 Feed · **LIVE FEED** = 1 Search · **BOOKINGS** = 2 Saved · **PROFILE** = 3.
+/// `ContentView`: **DROPS** = 0 Feed · **LIVE FEED** = 1 Search · **BOOKINGS** = 2 Saved · **PROFILE** = 3.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     var alertBadgeCount: Int = 0
-    var bottomSafeInset: CGFloat = 0
 
-    private let fabSize: CGFloat = 68
-    private let fabOverlap: CGFloat = 30
-
-    private var barBottomPadding: CGFloat {
-        10 + (bottomSafeInset > 0 ? bottomSafeInset : 20)
-    }
+    private let fabSize: CGFloat = 64
+    /// Total height reserved for the bar + half the FAB sticking up (content scrolls above via `safeAreaInset`).
+    private let stackHeight: CGFloat = 84
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            sideTab(tag: 1, icon: "gauge.with.dots.needle.67percent", label: "LIVE FEED")
-            Spacer(minLength: 0)
-            Color.clear.frame(width: fabSize - 8)
-            Spacer(minLength: 0)
-            sideTab(tag: 2, icon: "ticket.fill", label: "BOOKINGS")
-            sideTab(tag: 3, icon: "person.fill", label: "PROFILE")
-        }
-        .padding(.horizontal, 6)
-        .padding(.top, 20)
-        .padding(.bottom, barBottomPadding)
-        .background(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 28,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 28,
-                style: .continuous
+        ZStack(alignment: .bottom) {
+            // Tray sits on the bottom of this ZStack; background is only behind the tray, not a full-screen float.
+            HStack(alignment: .bottom, spacing: 0) {
+                sideTab(tag: 1, icon: "gauge.with.dots.needle.67percent", label: "LIVE FEED")
+                Spacer(minLength: 0)
+                Color.clear.frame(width: fabSize)
+                    .allowsHitTesting(false)
+                Spacer(minLength: 0)
+                sideTab(tag: 2, icon: "ticket.fill", label: "BOOKINGS")
+                sideTab(tag: 3, icon: "person.fill", label: "PROFILE")
+            }
+            .padding(.horizontal, 6)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
+            .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 26,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 26,
+                    style: .continuous
+                )
+                .fill(SnagDesignSystem.tabBarSurface)
+                .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: -4)
             )
-            .fill(SnagDesignSystem.tabBarSurface)
-            .shadow(color: Color.black.opacity(0.10), radius: 18, x: 0, y: -6)
-        )
-        .overlay(alignment: .top) {
+
+            // FAB above tray; centered; doesn’t steal taps from side tabs (narrow circle).
             dropsCenterButton
-                .offset(y: fabOverlap)
+                .offset(y: -(fabSize * 0.36))
         }
-        .padding(.top, fabOverlap)
+        .frame(height: stackHeight)
+        .frame(maxWidth: .infinity)
     }
 
     private var dropsCenterButton: some View {
@@ -56,22 +58,22 @@ struct CustomTabBar: View {
                 Circle()
                     .fill(on ? SnagDesignSystem.tabBarFeaturedCoral : Color.white)
                     .frame(width: fabSize, height: fabSize)
-                    .shadow(color: Color.black.opacity(on ? 0.24 : 0.14), radius: on ? 14 : 9, x: 0, y: 7)
+                    .shadow(color: Color.black.opacity(on ? 0.22 : 0.12), radius: on ? 12 : 8, x: 0, y: 5)
                     .overlay(
                         Circle()
-                            .stroke(SnagDesignSystem.tabBarFeaturedCoral.opacity(on ? 0 : 0.5), lineWidth: on ? 0 : 2)
+                            .stroke(SnagDesignSystem.tabBarFeaturedCoral.opacity(on ? 0 : 0.45), lineWidth: on ? 0 : 2)
                     )
 
-                VStack(spacing: 4) {
+                VStack(spacing: 3) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 21, weight: .bold))
                         .foregroundColor(on ? .white : SnagDesignSystem.tabBarFeaturedCoral)
                     Text("DROPS")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.system(size: 8, weight: .black))
                         .foregroundColor(on ? .white : SnagDesignSystem.tabBarFeaturedCoral)
-                        .tracking(0.6)
+                        .tracking(0.5)
                 }
-                .offset(y: 2)
+                .offset(y: 1)
             }
         }
         .buttonStyle(.plain)
@@ -85,20 +87,21 @@ struct CustomTabBar: View {
                 selectedTab = tag
             }
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: on ? .semibold : .regular))
+                    .font(.system(size: 19, weight: on ? .semibold : .regular))
                     .symbolRenderingMode(.monochrome)
                 Text(label)
-                    .font(.system(size: 8, weight: .bold))
-                    .tracking(0.35)
+                    .font(.system(size: 7, weight: .bold))
+                    .tracking(0.3)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    .minimumScaleFactor(0.8)
             }
             .foregroundColor(on ? SnagDesignSystem.tabBarFeaturedCoral : SnagDesignSystem.tabBarCharcoal)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
     }

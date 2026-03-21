@@ -9,31 +9,31 @@ struct ContentView: View {
     @State private var selectedTab = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            Group {
-                switch selectedTab {
-                case 0:
-                    FeedView(
-                        feedVM: feedVM,
-                        savedVM: savedVM,
-                        premium: premium,
-                        onOpenSearch: { selectedTab = 1 },
-                        onOpenExplore: { selectedTab = 1 },
-                        alertBadgeCount: 0
-                    )
-                case 1:
-                    SearchView(savedVM: savedVM)
-                case 2:
-                    SavedView(savedVM: savedVM, feedVM: feedVM, premium: premium)
-                default:
-                    ProfilePlaceholderView()
-                }
+        Group {
+            switch selectedTab {
+            case 0:
+                FeedView(
+                    feedVM: feedVM,
+                    savedVM: savedVM,
+                    premium: premium,
+                    onOpenSearch: { selectedTab = 1 },
+                    onOpenExplore: { selectedTab = 1 },
+                    alertBadgeCount: 0
+                )
+            case 1:
+                SearchView(savedVM: savedVM)
+            case 2:
+                SavedView(savedVM: savedVM, feedVM: feedVM, premium: premium)
+            default:
+                ProfilePlaceholderView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(SnagDesignSystem.pageWhite)
+        // Pins the bar to the bottom and insets scroll views so content isn’t hidden under the tray/FAB.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             CustomTabBar(selectedTab: $selectedTab)
         }
-        .background(SnagDesignSystem.pageWhite)
         .task {
             await savedVM.loadAll()
             await premium.checkEntitlements()
