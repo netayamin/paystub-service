@@ -17,13 +17,6 @@ struct ExploreView: View {
     private let gridImageHeight: CGFloat = 162
     private let gridTextBlockHeight: CGFloat = 92
 
-    private var gridColumns: [GridItem] {
-        [
-            GridItem(.flexible(), spacing: gridColumnSpacing),
-            GridItem(.flexible(), spacing: gridColumnSpacing),
-        ]
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -456,11 +449,31 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
         } else if !items.isEmpty {
-            LazyVGrid(columns: gridColumns, spacing: gridRowSpacing) {
-                ForEach(items) { drop in
-                    exploreGridCell(drop)
+            // Explicit 2-column rows avoid LazyVGrid + AsyncImage measuring bugs that overlap cells.
+            VStack(alignment: .leading, spacing: gridRowSpacing) {
+                ForEach(Array(pairedGridDrops(items).enumerated()), id: \.offset) { _, pair in
+                    HStack(alignment: .top, spacing: gridColumnSpacing) {
+                        ForEach(pair) { drop in
+                            exploreGridCell(drop)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
+                        if pair.count == 1 {
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    /// Pairs drops for a 2-column layout (last row may be a single item).
+    private func pairedGridDrops(_ items: [Drop]) -> [[Drop]] {
+        stride(from: 0, to: items.count, by: 2).map { i in
+            if i + 1 < items.count {
+                return [items[i], items[i + 1]]
+            }
+            return [items[i]]
         }
     }
 
@@ -481,10 +494,15 @@ struct ExploreView: View {
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .topTrailing) {
-                    gridThumb(drop)
-                        .frame(height: gridImageHeight)
+                    // Fixed bounds first so resizable images cannot expand the layout pass.
+                    Color.clear
                         .frame(maxWidth: .infinity)
-                        .clipped()
+                        .frame(height: gridImageHeight)
+                        .overlay {
+                            gridThumb(drop)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .clipped()
+                        }
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                     if let badge = gridImageBadge(drop) {
@@ -511,9 +529,11 @@ struct ExploreView: View {
                             .overlay(Capsule().stroke(Color(white: 0.35), lineWidth: 1))
                             .padding(.bottom, 8)
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .frame(maxWidth: .infinity)
                 .frame(height: gridImageHeight)
+                .clipped()
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(drop.name)
@@ -548,6 +568,7 @@ struct ExploreView: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(height: gridImageHeight + 8 + gridTextBlockHeight, alignment: .topLeading)
+            .clipped()
         }
         .buttonStyle(.plain)
     }
