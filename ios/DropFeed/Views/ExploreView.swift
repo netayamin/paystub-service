@@ -21,7 +21,7 @@ struct ExploreView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 topChrome
-                datePills
+                exploreDateStrip
                 partyRowCompact
                 if let err = vm.error {
                     errorBanner(err).padding(.top, 12)
@@ -51,7 +51,7 @@ struct ExploreView: View {
             vm.exploreTabActive = true
             vm.selectedMealPreset = nil
             vm.isSearchActive = true
-            vm.applyExploreDatesFromPreset()
+            normalizeExploreSelectedDateIfNeeded()
             vm.startPolling()
         }
         .onDisappear {
@@ -94,27 +94,61 @@ struct ExploreView: View {
         .padding(.top, 4)
     }
 
-    private var datePills: some View {
-        HStack(spacing: 8) {
-            ForEach(ExploreDatePreset.allCases) { preset in
-                let on = vm.exploreDatePreset == preset
-                Button {
-                    vm.exploreDatePreset = preset
-                    vm.applyExploreDatesFromPreset()
-                    Task { await vm.loadResults() }
-                } label: {
-                    Text(preset.label)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(on ? .white : SnagDesignSystem.exploreSecondaryLabel)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(on ? SnagDesignSystem.exploreCoralSolid : Color(white: 0.16))
-                        .clipShape(Capsule())
+    /// Single-day selection from the next 14 days (`SearchViewModel.dateOptions`).
+    private var exploreDateStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("DATE")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                .tracking(0.9)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(vm.dateOptions, id: \.dateStr) { opt in
+                        exploreDateChip(opt)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 2)
             }
         }
         .padding(.top, 16)
+    }
+
+    private func exploreDateChip(_ opt: (dateStr: String, monthAbbrev: String, dayNum: String)) -> some View {
+        let selected = vm.selectedDates == Set([opt.dateStr])
+        return Button {
+            vm.selectedDates = [opt.dateStr]
+            Task { await vm.loadResults() }
+        } label: {
+            VStack(spacing: 3) {
+                Text(opt.monthAbbrev)
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(0.35)
+                Text(opt.dayNum)
+                    .font(.system(size: 20, weight: .bold))
+            }
+            .foregroundColor(selected ? .white : SnagDesignSystem.exploreSecondaryLabel)
+            .frame(width: 52, height: 60)
+            .background(selected ? SnagDesignSystem.exploreCoralSolid : Color(white: 0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(selected ? Color.clear : Color(white: 0.28), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Keep one day selected and inside the strip’s range (e.g. after midnight or legacy multi-day state).
+    private func normalizeExploreSelectedDateIfNeeded() {
+        let valid = Set(vm.dateOptions.map(\.dateStr))
+        let hit = vm.selectedDates.filter { valid.contains($0) }
+        if hit.isEmpty, let first = vm.dateOptions.first?.dateStr {
+            vm.selectedDates = [first]
+        } else if vm.selectedDates.count > 1, let one = hit.sorted().first {
+            vm.selectedDates = [one]
+        } else if hit.count == 1, vm.selectedDates != Set(hit) {
+            vm.selectedDates = Set(hit)
+        }
     }
 
     private var partyRowCompact: some View {

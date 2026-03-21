@@ -27,18 +27,6 @@ enum MealPreset: String, CaseIterable, Identifiable {
 
 // MARK: - Explore tab presets
 
-enum ExploreDatePreset: String, CaseIterable, Identifiable {
-    case today, tomorrow, weekend
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .today: return "Today"
-        case .tomorrow: return "Tomorrow"
-        case .weekend: return "Weekend"
-        }
-    }
-}
-
 enum ExplorePartySegment: Int, CaseIterable, Identifiable {
     case two = 2
     case four = 4
@@ -66,7 +54,6 @@ final class SearchViewModel: ObservableObject {
 
     /// When true, `loadResults` skips meal-preset time filtering and uses Explore party / date rules.
     @Published var exploreTabActive: Bool = false
-    @Published var exploreDatePreset: ExploreDatePreset = .today
     @Published var explorePartySegment: ExplorePartySegment = .two
 
     // MARK: - Navigation
@@ -156,41 +143,6 @@ final class SearchViewModel: ObservableObject {
             }
         }
         return partyAPIFilter
-    }
-
-    /// Applies `exploreDatePreset` to `selectedDates` (today / tomorrow / upcoming Sat–Sun).
-    func applyExploreDatesFromPreset() {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        func fmt(_ d: Date) -> String {
-            let y = cal.component(.year, from: d)
-            let m = cal.component(.month, from: d)
-            let day = cal.component(.day, from: d)
-            return String(format: "%04d-%02d-%02d", y, m, day)
-        }
-        switch exploreDatePreset {
-        case .today:
-            selectedDates = [fmt(today)]
-        case .tomorrow:
-            if let t = cal.date(byAdding: .day, value: 1, to: today) { selectedDates = [fmt(t)] }
-        case .weekend:
-            let wd = cal.component(.weekday, from: today)
-            if wd == 7 {
-                if let sun = cal.date(byAdding: .day, value: 1, to: today) {
-                    selectedDates = Set([fmt(today), fmt(sun)])
-                }
-            } else if wd == 1 {
-                if let sat = cal.date(byAdding: .day, value: -1, to: today) {
-                    selectedDates = Set([fmt(sat), fmt(today)])
-                }
-            } else if let sat = cal.date(byAdding: .day, value: 7 - wd, to: today),
-                      let sun = cal.date(byAdding: .day, value: 1, to: sat) {
-                selectedDates = Set([fmt(sat), fmt(sun)])
-            }
-        }
-        if selectedDates.isEmpty {
-            selectedDates = [fmt(today)]
-        }
     }
 
     // MARK: - Polling (same 20 s cadence as Feed tab)
