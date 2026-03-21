@@ -295,12 +295,8 @@ struct FeedView: View {
             if liveGlanceCarouselDrops.isEmpty {
                 EmptyView()
             } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    feedSectionHeader(eyebrow: "Real-time feed", title: "Live updates")
-                        .padding(.horizontal, 18)
-                    LiveDropsMarqueeTrain(drops: liveGlanceCarouselDrops)
-                        .frame(maxWidth: .infinity)
-                }
+                LiveDropsMarqueeTrain(drops: liveGlanceCarouselDrops)
+                    .frame(maxWidth: .infinity)
             }
         }
     }
