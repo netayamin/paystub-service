@@ -74,6 +74,10 @@ def get_snapshot() -> dict | None:
         return _snapshot
 
 
+_last_rolling_refresh_at: datetime | None = None
+_ROLLING_REFRESH_INTERVAL_SECONDS = 300  # recompute rolling metrics every 5 minutes
+
+
 def rebuild_snapshot(db: Session) -> None:
     """Recompute the full discovery snapshot from DB.  Called after each tick."""
     from app.services.discovery.buckets import (
@@ -92,6 +96,27 @@ def rebuild_snapshot(db: Session) -> None:
 
     try:
         today = window_start_date()
+
+        # Periodically refresh open-drop counts and rolling metrics so the feed
+        # isn't stuck on stale data from the daily 7:05 AM job.
+        global _last_rolling_refresh_at
+        now_utc = datetime.now(timezone.utc)
+        should_refresh = (
+            _last_rolling_refresh_at is None
+            or (now_utc - _last_rolling_refresh_at).total_seconds() >= _ROLLING_REFRESH_INTERVAL_SECONDS
+        )
+        if should_refresh:
+            try:
+                from app.services.aggregation import (
+                    aggregate_open_drops_into_metrics,
+                    compute_venue_rolling_metrics,
+                )
+                aggregate_open_drops_into_metrics(db, today)
+                compute_venue_rolling_metrics(db, today)
+                _last_rolling_refresh_at = now_utc
+                logger.info("Periodic rolling metrics refresh completed")
+            except Exception as e:
+                logger.warning("Periodic rolling metrics refresh failed: %s", e)
 
         just_opened = get_just_opened_from_buckets(
             db,

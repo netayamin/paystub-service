@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-_PREDICTED_TIMES = ("Evening", "Dinner", "Midnight", "10:00 AM")
+_FALLBACK_PREDICTED_TIMES = ("Evening", "Dinner", "Late Night", "Afternoon")
 
 
 def score_likely_open_rank(
@@ -175,6 +175,21 @@ def reason_text(item: dict[str, Any]) -> str:
     )
 
 
+def _hour_to_label(hour: int | None) -> str:
+    """Map an hour (0-23) to a human-readable time-of-day label."""
+    if hour is None:
+        return "Evening"
+    if 5 <= hour < 12:
+        return "Morning"
+    if 12 <= hour < 15:
+        return "Afternoon"
+    if 15 <= hour < 18:
+        return "Late Afternoon"
+    if 18 <= hour < 21:
+        return "Evening"
+    return "Late Night"
+
+
 def enrich_likely_open_item(item: dict[str, Any], index: int) -> None:
     """Mutates item: name, probability (forecast score), confidence, reason, predicted_drop_time."""
     if not (item.get("name") or "").strip():
@@ -182,6 +197,11 @@ def enrich_likely_open_item(item: dict[str, Any], index: int) -> None:
     item["probability"] = likely_open_index_1_99(item)
     item["confidence"] = confidence_label(item)
     item["reason"] = reason_text(item)
-    item["predicted_drop_time"] = _PREDICTED_TIMES[index % len(_PREDICTED_TIMES)]
+    modal_hour = item.get("modal_drop_hour")
+    if modal_hour is not None:
+        item["predicted_drop_time"] = _hour_to_label(modal_hour)
+    else:
+        item["predicted_drop_time"] = _FALLBACK_PREDICTED_TIMES[index % len(_FALLBACK_PREDICTED_TIMES)]
     # Internal ranking only — don’t expose to clients
     item.pop("hours_since_last_drop", None)
+    item.pop("modal_drop_hour", None)

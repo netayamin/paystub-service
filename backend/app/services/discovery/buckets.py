@@ -972,14 +972,15 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
 
     import json as _json
 
-    # Best-effort enrichment from recent drop events: neighborhood + image_url
+    # Best-effort enrichment from recent drop events: neighborhood, image_url, modal drop hour
     venue_ids = [r.venue_id for r in rows if r.venue_id]
     neighborhood_by_vid: dict[str, str] = {}
     image_url_by_vid: dict[str, str] = {}
+    modal_hour_by_vid: dict[str, int] = {}
     if venue_ids:
         try:
             recent_events = (
-                db.query(DropEvent.venue_id, DropEvent.neighborhood, DropEvent.payload_json)
+                db.query(DropEvent.venue_id, DropEvent.neighborhood, DropEvent.payload_json, DropEvent.opened_at)
                 .filter(
                     DropEvent.venue_id.in_(venue_ids),
                 )
@@ -987,7 +988,9 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
                 .limit(len(venue_ids) * 8)
                 .all()
             )
-            for vid, nbhd, payload_str in recent_events:
+            # Collect hours per venue for modal computation
+            hours_by_vid: dict[str, list[int]] = {}
+            for vid, nbhd, payload_str, opened_at in recent_events:
                 if not vid:
                     continue
                 if nbhd and vid not in neighborhood_by_vid:
@@ -1004,6 +1007,13 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
                             image_url_by_vid[vid] = img
                     except (ValueError, AttributeError, TypeError):
                         pass
+                if opened_at is not None:
+                    hours_by_vid.setdefault(vid, []).append(opened_at.hour)
+            # Modal hour = most common hour of observed drops
+            for vid, hours in hours_by_vid.items():
+                from collections import Counter
+                counts = Counter(hours)
+                modal_hour_by_vid[vid] = counts.most_common(1)[0][0]
         except Exception:
             pass
 
@@ -1022,8 +1032,9 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
             "total_last_7d": r.total_last_7d,
             "total_prev_7d": r.total_prev_7d,
             "total_new_drops": r.total_new_drops,
-            # Internal until enrich_likely_open_item strips it
+            # Internal until enrich_likely_open_item strips them
             "hours_since_last_drop": _hours_for_row(r),
+            "modal_drop_hour": modal_hour_by_vid.get(r.venue_id or ""),
         }
         for r in rows
     ]
