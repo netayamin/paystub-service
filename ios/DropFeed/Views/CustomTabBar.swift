@@ -1,21 +1,20 @@
 import SwiftUI
 
-/// Card-style tab bar: white background, rounded top corners, upward shadow.
-/// Two tabs only: LIVE (feed) and SEARCH.
+/// Bottom nav matching reference: FEED · EXPLORE · SAVED · PROFILE — white card, rounded top, upward shadow.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
-    /// Legacy params kept so existing call sites compile without changes.
     var alertBadgeCount: Int = 0
     var bottomSafeInset: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 0) {
-            tabItem(tag: 0, icon: "antenna.radiowaves.left.and.right", label: "LIVE")
-            tabItem(tag: 1, icon: "magnifyingglass", label: "SEARCH")
+            tabItem(tag: 0, icon: "dot.radiowaves.left.and.right", label: "FEED")
+            tabItem(tag: 1, icon: "safari", label: "EXPLORE")
+            tabItem(tag: 2, icon: "bookmark", label: "SAVED")
+            tabItem(tag: 3, icon: "person", label: "PROFILE")
         }
         .frame(height: 64)
         .frame(maxWidth: .infinity)
-        // White background that also fills the safe-area region below (home indicator).
         .background(
             Color.white
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -29,12 +28,12 @@ struct CustomTabBar: View {
         return Button {
             withAnimation(.easeInOut(duration: 0.18)) { selectedTab = tag }
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 22, weight: sel ? .semibold : .regular))
+                    .font(.system(size: 20, weight: sel ? .semibold : .regular))
                 Text(label)
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.0)
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(0.6)
             }
             .foregroundColor(sel ? AppTheme.accentRed : Color(white: 0.55))
             .frame(maxWidth: .infinity, maxHeight: .infinity)

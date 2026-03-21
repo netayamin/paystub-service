@@ -9,14 +9,22 @@ struct ContentView: View {
     @State private var selectedTab = 0
 
     var body: some View {
-        // VStack: content fills remaining space, tab bar sits at the safe-area bottom.
         VStack(spacing: 0) {
             Group {
                 switch selectedTab {
                 case 0:
-                    FeedView(feedVM: feedVM, savedVM: savedVM, premium: premium)
-                default:
+                    FeedView(
+                        feedVM: feedVM,
+                        savedVM: savedVM,
+                        premium: premium,
+                        onOpenExplore: { selectedTab = 1 }
+                    )
+                case 1:
                     SearchView(savedVM: savedVM)
+                case 2:
+                    SavedView(savedVM: savedVM, feedVM: feedVM, premium: premium)
+                default:
+                    ProfilePlaceholderView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -10,6 +10,7 @@ struct DateTimeFilterSheet: View {
         ("lunch", "Lunch"),
         ("3pm", "Afternoon"),
         ("7pm", "Early dinner"),
+        ("evening79", "7–9 PM"),
         ("dinner", "Late dinner"),
     ]
     

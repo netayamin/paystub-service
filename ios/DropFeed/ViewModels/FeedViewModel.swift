@@ -151,9 +151,36 @@ final class FeedViewModel: ObservableObject {
         case "lunch": return ("11:00", "15:00")
         case "3pm": return ("15:00", "18:00")
         case "7pm": return ("18:00", "20:00")
+        case "evening79": return ("19:00", "21:00") // 7–9 PM
         case "dinner": return ("20:00", "24:00")
         default: return (nil, nil)
         }
+    }
+
+    /// Right-side label for Live Stream header — real signals only (no fake viewer counts).
+    var liveStreamActivityLabel: String {
+        let scanned = totalVenuesScanned
+        let open = drops.count
+        if scanned > 0 && open > 0 {
+            return "\(scanned) venues · \(open) open"
+        }
+        if scanned > 0 { return "\(scanned) venues scanned" }
+        if open > 0 { return "\(open) browsing" }
+        return "Live"
+    }
+
+    /// Today's date string YYYY-MM-DD for "Tonight" filter chip.
+    var todayDateStr: String {
+        let cal = Calendar.current
+        let t = Date()
+        let y = cal.component(.year, from: t)
+        let m = cal.component(.month, from: t)
+        let d = cal.component(.day, from: t)
+        return String(format: "%04d-%02d-%02d", y, m, d)
+    }
+
+    func applyFiltersAndRefresh() {
+        Task { await refresh() }
     }
 
     var lastScanText: String {
