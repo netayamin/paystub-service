@@ -90,11 +90,29 @@ final class SearchViewModel: ObservableObject {
     var earliestHour: Int { selectedMealPreset?.earliestHour ?? 11 }
     var latestHour:   Int { selectedMealPreset?.latestHour   ?? 23 }
 
-    /// Results filtered by venueQuery (client-side, instant)
-    var filteredResults: [Drop] {
-        guard !venueQuery.isEmpty else { return results }
-        let q = venueQuery.lowercased()
-        return results.filter { $0.name.lowercased().contains(q) }
+    /// Results filtered by venueQuery then ranked by demand — hottest first.
+    /// Hotness = curated hotspot bonus + rarity (how rarely it appears) +
+    ///           Resy popularity signal + credibility-weighted rating.
+    /// Mirrors the backend _top_opportunity_score so the same elite venues
+    /// surface whether the user is in the Feed or Search tab.
+    var rankedResults: [Drop] {
+        let base: [Drop]
+        if venueQuery.isEmpty {
+            base = results
+        } else {
+            let q = venueQuery.lowercased()
+            base = results.filter { $0.name.lowercased().contains(q) }
+        }
+        return base.sorted { qualityScore($0) > qualityScore($1) }
+    }
+
+    private func qualityScore(_ d: Drop) -> Double {
+        let hot    = d.feedHot == true ? 3.0 : 0.0
+        let rarity = (d.rarityScore ?? 0) * 2.0
+        let pop    = (d.resyPopularityScore ?? 0) * 1.5
+        let count  = Double(d.ratingCount ?? 0)
+        let rating = (d.ratingAverage ?? 0) / 5.0 * min(1.0, count / 200.0)
+        return hot + rarity + pop + rating
     }
 
     private var partyAPIFilter: [Int] {

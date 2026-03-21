@@ -79,6 +79,13 @@ final class FeedViewModel: ObservableObject {
         drops.filter { ($0.trendPct ?? 0) > 20 }.sorted { ($0.trendPct ?? 0) > ($1.trendPct ?? 0) }
     }
 
+    /// Number of curated elite (hotspot) venues currently open.
+    var eliteDropsCount: Int { drops.filter { $0.feedHot == true }.count }
+    /// Number of truly rare venues (rarity > 70) currently open.
+    var rareDropsCount:  Int { drops.filter { ($0.rarityScore ?? 0) > 70 }.count }
+    /// Number of venues whose availability is trending up vs last 14 days.
+    var trendingCount:   Int { drops.filter { ($0.trendPct ?? 0) > 10 }.count }
+
     /// Venues from likelyToOpen that have a drop likelihood for today specifically
     var likelyTodayVenues: [LikelyToOpenVenue] {
         likelyToOpen.filter { ($0.rarityScore ?? 0) > 0.5 }.prefix(5).map { $0 }

@@ -436,7 +436,7 @@ struct SearchView: View {
 
     @ViewBuilder
     private var liveResultsSection: some View {
-        let drops = vm.filteredResults
+        let drops = vm.rankedResults   // sorted: hottest (elite + rarity + demand) first
         if vm.isLoading && drops.isEmpty {
             HStack(spacing: 10) {
                 ProgressView()
@@ -462,7 +462,7 @@ struct SearchView: View {
             .padding(.vertical, 48)
         } else if !drops.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                // Count + last-updated
+                // Status bar: count + sort context + last-updated
                 HStack(spacing: 8) {
                     Circle()
                         .fill(Color(red: 0.25, green: 0.85, blue: 0.48))
@@ -471,11 +471,36 @@ struct SearchView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(palette.textSecondary)
                     Spacer()
-                    if let ts = vm.lastUpdated {
-                        Text(relativeTime(ts))
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.right.circle.fill")
                             .font(.system(size: 11))
                             .foregroundColor(palette.textTertiary)
+                        Text("Ranked by demand")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(palette.textTertiary)
                     }
+                }
+
+                // Elite venues callout (when present)
+                let eliteCount = drops.filter { $0.feedHot == true }.count
+                if eliteCount > 0 {
+                    HStack(spacing: 8) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(palette.accentRed)
+                        Text("\(eliteCount) elite venue\(eliteCount == 1 ? "" : "s") — NYC's hardest reservations")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(palette.textPrimary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(palette.accentRed.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(palette.accentRed.opacity(0.18), lineWidth: 1)
+                    )
                 }
 
                 ForEach(drops) { drop in
@@ -485,6 +510,14 @@ struct SearchView: View {
                     ) {
                         savedVM.toggleWatch(drop.name)
                     }
+                }
+
+                if let ts = vm.lastUpdated {
+                    Text("Updated \(relativeTime(ts))")
+                        .font(.system(size: 11))
+                        .foregroundColor(palette.textTertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
                 }
             }
         }
@@ -584,6 +617,23 @@ private struct SearchResultCard: View {
         return URL(string: s)
     }
 
+    private var rarityInt: Int {
+        guard let r = drop.rarityScore else { return 0 }
+        return min(100, max(0, r <= 1 ? Int(r * 100) : Int(r.rounded())))
+    }
+
+    private var isElite: Bool { drop.feedHot == true }
+
+    private var isTrending: Bool { (drop.trendPct ?? 0) > 10 }
+
+    private var scarcityContext: String? {
+        if let days = drop.daysWithDrops {
+            return "Available \(days)/14 days"
+        }
+        if let label = drop.scarcityLabel { return label }
+        return nil
+    }
+
     private var dateLabel: String {
         let ds = drop.dateStr ?? drop.slots.first?.dateStr ?? ""
         let parts = ds.split(separator: "-")
@@ -598,13 +648,6 @@ private struct SearchResultCard: View {
         return "\(m)/\(d)"
     }
 
-    private var slotsLabel: String {
-        let count = drop.slots.count
-        if count == 0 { return "Available" }
-        if count == 1, let t = drop.slots.first?.time { return formatTime(t) }
-        return "\(count) time slots"
-    }
-
     private func formatTime(_ t: String) -> String {
         let p = t.split(separator: ":")
         guard let h = p.first.flatMap({ Int($0) }) else { return t }
@@ -615,88 +658,159 @@ private struct SearchResultCard: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
-            // Thumbnail
-            Group {
-                if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let img) = phase { img.resizable().scaledToFill() }
-                        else { Color(white: 0.92) }
+        VStack(alignment: .leading, spacing: 0) {
+            // ── Top row: thumbnail + info + reserve ──────────────────
+            HStack(spacing: 14) {
+                // Thumbnail
+                ZStack(alignment: .topLeading) {
+                    Group {
+                        if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
+                            AsyncImage(url: url) { phase in
+                                if case .success(let img) = phase { img.resizable().scaledToFill() }
+                                else { Color(white: 0.92) }
+                            }
+                        } else {
+                            Color(white: 0.92)
+                        }
                     }
-                } else {
-                    Color(white: 0.92)
-                }
-            }
-            .frame(width: 66, height: 66)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            // Info
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Text(drop.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(palette.textPrimary)
-                        .lineLimit(1)
-                    if drop.feedHot == true {
+                    // Elite flame badge on thumbnail
+                    if isElite {
                         Image(systemName: "flame.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(palette.accentRed)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(5)
+                            .background(palette.accentRed)
+                            .clipShape(Circle())
+                            .offset(x: -4, y: -4)
                     }
                 }
 
-                HStack(spacing: 5) {
-                    if !dateLabel.isEmpty {
-                        Label(dateLabel, systemImage: "calendar")
+                // Info
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(drop.name)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(palette.textPrimary)
+                            .lineLimit(1)
+                        if isTrending {
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(red: 0.18, green: 0.76, blue: 0.42))
+                        }
+                    }
+
+                    // Neighborhood · date
+                    let sub = [drop.neighborhood ?? drop.location, dateLabel.isEmpty ? nil : dateLabel]
+                        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                    if !sub.isEmpty {
+                        Text(sub)
                             .font(.system(size: 12))
                             .foregroundColor(palette.textSecondary)
-                        Text("·")
-                            .foregroundColor(palette.textTertiary)
-                            .font(.system(size: 12))
+                            .lineLimit(1)
                     }
-                    Text(slotsLabel)
-                        .font(.system(size: 12))
-                        .foregroundColor(palette.textSecondary)
-                }
-                .lineLimit(1)
 
-                if let nb = drop.neighborhood ?? drop.location, !nb.isEmpty {
-                    Text(nb)
-                        .font(.system(size: 11))
-                        .foregroundColor(palette.textTertiary)
+                    // Scarcity context from metrics
+                    if let ctx = scarcityContext {
+                        Text(ctx)
+                            .font(.system(size: 11))
+                            .foregroundColor(rarityInt >= 70 ? palette.accentRed : palette.textTertiary)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                // Reserve + bookmark
+                VStack(spacing: 8) {
+                    Button {
+                        if let u = resyUrl { UIApplication.shared.open(u) }
+                    } label: {
+                        Text("Reserve")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(palette.accentRed)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(resyUrl == nil)
+                    .opacity(resyUrl == nil ? 0.5 : 1)
+
+                    Button { onToggleWatch() } label: {
+                        Image(systemName: isWatched ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 15))
+                            .foregroundColor(isWatched ? palette.accentRed : palette.textTertiary)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(14)
 
-            Spacer(minLength: 4)
+            // ── Bottom row: time slot pills + rarity badge ────────────
+            let slots = drop.slots.prefix(6)
+            if !slots.isEmpty || rarityInt > 0 {
+                HStack(spacing: 8) {
+                    // Time slot pills — tap each to open Resy
+                    if !slots.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(Array(slots.enumerated()), id: \.offset) { _, slot in
+                                    let label = formatTime(slot.time ?? "")
+                                    if !label.isEmpty {
+                                        Button {
+                                            let urlStr = slot.resyUrl ?? drop.resyUrl ?? ""
+                                            if let u = URL(string: urlStr) { UIApplication.shared.open(u) }
+                                        } label: {
+                                            Text(label)
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundColor(palette.accentRed)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 5)
+                                                .background(palette.accentRed.opacity(0.08))
+                                                .clipShape(Capsule())
+                                                .overlay(Capsule().stroke(palette.accentRed.opacity(0.2), lineWidth: 1))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Spacer(minLength: 0)
+                    }
 
-            // Actions
-            VStack(spacing: 8) {
-                Button {
-                    if let u = resyUrl { UIApplication.shared.open(u) }
-                } label: {
-                    Text("Reserve")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(palette.accentRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    // Rarity badge — shown when we have real metrics
+                    if rarityInt > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("\(rarityInt)/100")
+                                .font(.system(size: 10, weight: .black))
+                        }
+                        .foregroundColor(rarityInt >= 80 ? palette.accentRed : palette.textTertiary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            (rarityInt >= 80 ? palette.accentRed : palette.textTertiary).opacity(0.08)
+                        )
+                        .clipShape(Capsule())
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(resyUrl == nil)
-                .opacity(resyUrl == nil ? 0.5 : 1)
-
-                Button { onToggleWatch() } label: {
-                    Image(systemName: isWatched ? "bookmark.fill" : "bookmark")
-                        .font(.system(size: 15))
-                        .foregroundColor(isWatched ? palette.accentRed : palette.textTertiary)
-                }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
             }
         }
-        .padding(14)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
+        .shadow(color: isElite ? palette.accentRed.opacity(0.10) : .black.opacity(0.05),
+                radius: isElite ? 10 : 6, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isElite ? palette.accentRed.opacity(0.25) : Color.clear, lineWidth: 1.5)
+        )
     }
 }
 

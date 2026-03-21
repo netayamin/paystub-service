@@ -286,30 +286,29 @@ struct FeedView: View {
                 .background(Color.black)
                 .padding(.horizontal, -16)
 
+                // ── Snag Pulse — metrics snapshot strip ──────────────
+                if !vm.drops.isEmpty {
+                    snagPulseStrip
+                }
+
                 // ── Real-Time Ticker — light section ─────────────────────
                 VStack(alignment: .leading, spacing: 12) {
                     // Header
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Real-Time Ticker")
+                            Text("Live Drops")
                                 .font(.system(size: 26, weight: .black))
                                 .foregroundColor(palette.textPrimary)
-                            HStack(spacing: 5) {
-                                Circle()
-                                    .fill(Color(red: 0.22, green: 0.75, blue: 0.40))
-                                    .frame(width: 7, height: 7)
-                                Text("SYSTEM ONLINE")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .tracking(0.7)
-                                    .foregroundColor(Color(red: 0.18, green: 0.62, blue: 0.34))
-                            }
+                            Text("All open tables ranked by rarity")
+                                .font(.system(size: 12))
+                                .foregroundColor(palette.textTertiary)
                         }
                         Spacer()
                         HStack(spacing: 5) {
                             Circle()
                                 .fill(palette.accentRed)
                                 .frame(width: 7, height: 7)
-                            Text("STREAMING LIVE")
+                            Text("LIVE")
                                 .font(.system(size: 11, weight: .bold))
                                 .tracking(0.5)
                                 .foregroundColor(palette.accentRed)
@@ -343,7 +342,7 @@ struct FeedView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 11, weight: .semibold))
-                        Text("UPDATING IN REAL-TIME...")
+                        Text("ROTATES EVERY ~10 SECONDS")
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.6)
                     }
@@ -547,6 +546,54 @@ struct FeedView: View {
         if s < 5  { return "updated just now" }
         if s < 60 { return "updated \(s)s ago" }
         return "updated \(s / 60)m ago"
+    }
+
+    // ── Snag Pulse strip ──────────────────────────────────────────────────
+    // One-line metrics snapshot between Top Drops and Live Drops.
+    // Explains *why* the numbers are interesting using our real metrics.
+
+    private var snagPulseStrip: some View {
+        let total   = vm.drops.count
+        let elite   = vm.eliteDropsCount
+        let rare    = vm.rareDropsCount
+        let trend   = vm.trendingCount
+
+        return HStack(spacing: 0) {
+            pulseCell(value: "\(total)", label: "open\nnow",  icon: "checkmark.circle.fill", color: Color(red: 0.22, green: 0.75, blue: 0.40))
+            pulseDivider
+            pulseCell(value: "\(elite)", label: "elite\nvenues", icon: "flame.fill",          color: palette.accentRed)
+            pulseDivider
+            pulseCell(value: "\(rare)",  label: "rare\ndrops",   icon: "bolt.fill",            color: Color(red: 0.95, green: 0.65, blue: 0.10))
+            pulseDivider
+            pulseCell(value: "\(trend)", label: "trending\nup",  icon: "arrow.up.right",       color: Color(red: 0.22, green: 0.75, blue: 0.40))
+        }
+        .padding(.vertical, 14)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
+    }
+
+    private func pulseCell(value: String, label: String, icon: String, color: Color) -> some View {
+        VStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(color)
+            Text(value)
+                .font(.system(size: 22, weight: .black))
+                .foregroundColor(palette.textPrimary)
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(palette.textTertiary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var pulseDivider: some View {
+        Divider()
+            .frame(height: 44)
+            .background(palette.border)
     }
 
     private var emptyView: some View {
@@ -783,6 +830,21 @@ private struct RealTimeTickerCard: View {
     private var rarityScore: Int { max(0, min(100, Int((drop.rarityScore ?? 0).rounded()))) }
     private var showRarity: Bool { rarityScore > 0 }
 
+    private func categoryBadge(_ label: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(label)
+                .font(.system(size: 9, weight: .black))
+                .tracking(0.3)
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(color.opacity(0.10))
+        .clipShape(Capsule())
+    }
+
     var body: some View {
         HStack(spacing: 12) {
 
@@ -818,15 +880,29 @@ private struct RealTimeTickerCard: View {
                         .fixedSize()
                 }
 
-                // Neighborhood • Cuisine
-                Text(drop.feedHot == true ? "High-demand • NYC" : "NYC • Fine dining")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(palette.textSecondary)
-                    .lineLimit(1)
+                // Category badge row — explains WHY this venue is notable
+                HStack(spacing: 6) {
+                    if drop.feedHot == true {
+                        categoryBadge("ELITE", icon: "flame.fill", color: palette.accentRed)
+                    } else if rarityScore >= 70 {
+                        categoryBadge("RARE", icon: "bolt.fill", color: Color(red: 0.95, green: 0.55, blue: 0.10))
+                    } else if (drop.trendPct ?? 0) > 15 {
+                        categoryBadge("TRENDING", icon: "arrow.up.right", color: Color(red: 0.22, green: 0.75, blue: 0.40))
+                    } else {
+                        categoryBadge("OPEN NOW", icon: "checkmark.circle.fill", color: palette.textTertiary)
+                    }
 
-                // Chips row
-                HStack(spacing: 12) {
-                    // Date + time chip
+                    // Neighborhood
+                    if let nb = drop.neighborhood ?? drop.location, !nb.isEmpty {
+                        Text(nb)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(palette.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                // Chips row: date/time · party size · days-seen context
+                HStack(spacing: 10) {
                     HStack(spacing: 4) {
                         Image(systemName: "clock.fill")
                             .font(.system(size: 11))
@@ -835,7 +911,6 @@ private struct RealTimeTickerCard: View {
                     }
                     .foregroundColor(palette.textSecondary)
 
-                    // Party chip
                     HStack(spacing: 4) {
                         Image(systemName: "person.2.fill")
                             .font(.system(size: 11))
@@ -844,20 +919,19 @@ private struct RealTimeTickerCard: View {
                     }
                     .foregroundColor(palette.textSecondary)
 
-                    // Rarity chip (lightning + score)
-                    if showRarity {
+                    // Metrics context: days seen or rarity score
+                    if let days = drop.daysWithDrops {
+                        Text("\(days)/14 days")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(days <= 3 ? palette.accentRed : palette.textTertiary)
+                    } else if showRarity {
                         HStack(spacing: 3) {
                             Image(systemName: "bolt.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            VStack(alignment: .leading, spacing: -1) {
-                                Text("\(rarityScore)/100")
-                                    .font(.system(size: 11, weight: .black))
-                                Text("RARITY")
-                                    .font(.system(size: 9, weight: .black))
-                                    .tracking(0.3)
-                            }
+                                .font(.system(size: 10, weight: .bold))
+                            Text("\(rarityScore)/100")
+                                .font(.system(size: 11, weight: .black))
                         }
-                        .foregroundColor(palette.accentRed)
+                        .foregroundColor(rarityScore >= 70 ? palette.accentRed : palette.textTertiary)
                     }
                 }
             }
