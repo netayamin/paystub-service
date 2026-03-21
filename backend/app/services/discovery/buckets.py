@@ -872,11 +872,41 @@ LIKELY_TO_OPEN_LIMIT = 25
 LIKELY_TO_OPEN_CANDIDATE_POOL = 400
 
 
+def _hours_since_utc(last_open: datetime | None, now: datetime) -> float | None:
+    if last_open is None:
+        return None
+    ts = last_open
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return max(0.0, (now - ts).total_seconds() / 3600.0)
+
+
+def _max_opened_at_by_venue(db: Session, venue_ids: list[str]) -> dict[str, datetime]:
+    """Latest drop_event.opened_at per venue (all time in DB — recency is capped in scoring)."""
+    from app.models.drop_event import DropEvent
+
+    if not venue_ids:
+        return {}
+    out: dict[str, datetime] = {}
+    chunk = 400
+    for i in range(0, len(venue_ids), chunk):
+        part = venue_ids[i : i + chunk]
+        q = (
+            db.query(DropEvent.venue_id, func.max(DropEvent.opened_at))
+            .filter(DropEvent.venue_id.in_(part))
+            .group_by(DropEvent.venue_id)
+        )
+        for vid, ts in q.all():
+            if vid is not None and ts is not None:
+                out[str(vid)] = ts
+    return out
+
+
 def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_OPEN_LIMIT) -> list[dict]:
     """
-    Venues that have NO open slots right now but score highly on a composite of rolling metrics
-    (calendar habit, release churn, momentum, recent activity). Not a literal P(open) — see
-    likely_open_scoring.enrich_likely_open_item for client-facing index and copy.
+    Venues with no open slots *now* that rank highest for **forecast** new openings soon.
+    Uses rolling metrics + **last drop time** (recency): recently released but empty now → top picks.
+    Client copy/score: `likely_open_scoring.enrich_likely_open_item`.
     Returns 'name' (not just 'venue_name') so iOS clients can decode without remapping.
     """
     from app.models.drop_event import DropEvent
@@ -903,14 +933,27 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     rows = base_q.all()
     if not rows:
         return []
-    # Cap candidate count, then rank by composite score (not availability_rate alone).
+
+    now_utc = datetime.now(timezone.utc)
+    vids = list({str(r.venue_id) for r in rows if r.venue_id})
+    last_open_by_vid = _max_opened_at_by_venue(db, vids)
+
+    def _hours_for_row(r: VenueRollingMetrics) -> float | None:
+        if not r.venue_id:
+            return None
+        return _hours_since_utc(last_open_by_vid.get(str(r.venue_id)), now_utc)
+
+    # Cap candidate count using the same forecast score (recency-aware).
     if len(rows) > LIKELY_TO_OPEN_CANDIDATE_POOL:
         rows = sorted(
             rows,
-            key=lambda r: (
-                r.availability_rate_14d or 0.0,
-                r.total_last_7d or 0,
-                r.drop_frequency_per_day or 0.0,
+            key=lambda r: score_likely_open_rank(
+                r.availability_rate_14d,
+                r.days_with_drops,
+                r.drop_frequency_per_day,
+                r.trend_pct,
+                r.total_last_7d,
+                _hours_for_row(r),
             ),
             reverse=True,
         )[:LIKELY_TO_OPEN_CANDIDATE_POOL]
@@ -922,6 +965,7 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
             r.drop_frequency_per_day,
             r.trend_pct,
             r.total_last_7d,
+            _hours_for_row(r),
         ),
         reverse=True,
     )[:limit]
@@ -978,6 +1022,8 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
             "total_last_7d": r.total_last_7d,
             "total_prev_7d": r.total_prev_7d,
             "total_new_drops": r.total_new_drops,
+            # Internal until enrich_likely_open_item strips it
+            "hours_since_last_drop": _hours_for_row(r),
         }
         for r in rows
     ]

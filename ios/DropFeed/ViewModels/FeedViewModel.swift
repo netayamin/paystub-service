@@ -92,8 +92,7 @@ final class FeedViewModel: ObservableObject {
     }
 
     /// likelyToOpen sorted by probability descending — drives the Drop Forecast section.
-    /// Sorted by backend `probability` (composite pattern-strength index 1–99, not literal P(open));
-    /// falls back to availability_rate_14d when needed.
+    /// Sorted by backend open-forecast score (1–99); falls back to availability_rate_14d when needed.
     var forecastVenues: [LikelyToOpenVenue] {
         likelyToOpen
             .filter { $0.probability != nil || $0.availabilityRate14d != nil }

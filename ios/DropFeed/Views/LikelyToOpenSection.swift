@@ -27,7 +27,7 @@ struct LikelyToOpenSection: View {
                             Text("Likely to Open")
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundColor(AppTheme.textPrimary)
-                            Text("From 14-day table-release patterns — not cancellations")
+                            Text("Forecast: venues most likely to show new tables soon")
                                 .font(.system(size: 12))
                                 .foregroundColor(AppTheme.textTertiary)
                         }
@@ -90,14 +90,14 @@ struct LikelyToOpenSection: View {
     }
     
     private func likelyToOpenCard(_ venue: LikelyToOpenVenue) -> some View {
-        // Backend `probability` is a composite pattern-strength index (1–99), not P(open).
+        // Backend forecast score (1–99): relative likelihood of a new opening vs other picks.
         let score = min(99, max(1, venue.probability ?? Int(round((venue.availabilityRate14d ?? 0) * 100))))
         let watched = isWatched?(venue.name) ?? false
         let subtitle: String = {
             if let r = venue.reason, !r.isEmpty { return r }
             if let t = venue.predictedDropTime { return "Typical window: \(t)" }
             if let d = venue.daysWithDrops { return "Activity on \(d) of last 14 days" }
-            return "Nothing open now — watch for releases"
+            return "Nothing open now — next drop forecasted on watch"
         }()
         
         return VStack(alignment: .leading, spacing: 10) {
@@ -110,7 +110,7 @@ struct LikelyToOpenSection: View {
                 .foregroundColor(AppTheme.textTertiary)
                 .lineLimit(2)
             HStack(spacing: 6) {
-                Text("\(score)% pattern match")
+                Text("\(score)% open forecast")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(AppTheme.textTertiary)
                 if let c = venue.confidence, !c.isEmpty {
