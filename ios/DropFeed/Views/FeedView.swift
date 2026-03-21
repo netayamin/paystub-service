@@ -51,52 +51,6 @@ struct FeedView: View {
         }
     }
 
-    // MARK: - Top nav bar
-
-    private var topNavBar: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(Color.orange.opacity(0.20))
-                .frame(width: 34, height: 34)
-                .overlay(
-                    Text("S")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color.orange.opacity(0.9))
-                )
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text("Snag")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(palette.textPrimary)
-                    Circle()
-                        .fill(palette.accentRed)
-                        .frame(width: 6, height: 6)
-                }
-                Text("LIVE FEED")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(palette.textTertiary)
-                    .tracking(0.6)
-            }
-
-            Spacer(minLength: 0)
-
-            Button { onOpenAlerts?() } label: {
-                Image(systemName: "bell.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.black.opacity(0.7))
-                    .frame(width: 34, height: 34)
-                    .background(Color.black.opacity(0.06))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-        .background(SnagDesignSystem.pageCanvas)
-    }
-
     // MARK: - Feed content
 
     private var feedContent: some View {
@@ -209,11 +163,6 @@ struct FeedView: View {
     private var referenceFeedScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                snagFeedHeader
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
-
                 if vm.newDropsCount > 0 {
                     HStack {
                         Spacer(minLength: 0)
@@ -225,7 +174,7 @@ struct FeedView: View {
                 }
 
                 crownJewelsSection
-                    .padding(.top, 20)
+                    .padding(.top, vm.newDropsCount > 0 ? 20 : 8)
 
                 topOpportunitiesSnagSection
                     .padding(.top, 28)
@@ -264,51 +213,6 @@ struct FeedView: View {
             return Array(filtered.prefix(14))
         }
         return Array(vm.justDropped.filter { !crownIds.contains($0.id) }.prefix(14))
-    }
-
-    private var snagFeedHeader: some View {
-        HStack(alignment: .center, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "fork.knife")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.coral)
-                Text("Snag")
-                    .font(.system(size: 30, weight: .bold, design: .serif))
-                    .italic()
-                    .foregroundColor(SnagDesignSystem.coral)
-            }
-            Spacer(minLength: 12)
-            Button {
-                if let open = onOpenSearch {
-                    open()
-                } else {
-                    showFilterSheet = true
-                }
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(SnagDesignSystem.textDark.opacity(0.5))
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            Button {
-                onOpenAlerts?()
-            } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "bell")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.textDark.opacity(0.5))
-                        .frame(width: 44, height: 44)
-                    if alertBadgeCount > 0 {
-                        Circle()
-                            .fill(SnagDesignSystem.coral)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 2, y: 6)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-        }
     }
 
     private var crownJewelsSection: some View {
@@ -389,8 +293,6 @@ struct FeedView: View {
                         }
                     }
                 }
-                .padding(.vertical, 4)
-                .background(SnagDesignSystem.pageWhite)
             }
         }
     }
@@ -431,8 +333,6 @@ struct FeedView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity)
-        .background(SnagDesignSystem.bannerPeach)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var filterPillsRow: some View {
@@ -507,7 +407,7 @@ struct FeedView: View {
             .foregroundColor(selected ? palette.accentRed : palette.textSecondary)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(selected ? palette.accentRed.opacity(0.12) : Color.white)
+            .background(selected ? palette.accentRed.opacity(0.12) : Color.clear)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
@@ -607,8 +507,6 @@ struct FeedView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surface)
-        .cornerRadius(14)
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(palette.border, lineWidth: 1)
@@ -694,11 +592,9 @@ struct FeedView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppTheme.liveDot.opacity(0.3), lineWidth: 0.5)
+                .stroke(AppTheme.liveDot.opacity(0.25), lineWidth: 0.5)
         )
     }
 
@@ -722,11 +618,9 @@ struct FeedView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(AppTheme.accentOrange.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(AppTheme.accentOrange.opacity(0.4), lineWidth: 0.5)
+                    .stroke(AppTheme.accentOrange.opacity(0.35), lineWidth: 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -1121,7 +1015,6 @@ private struct TopOpportunitySnagRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(SnagDesignSystem.pageWhite)
     }
 }
 
@@ -1244,9 +1137,6 @@ private struct LiveStreamRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
     }
 }
 
