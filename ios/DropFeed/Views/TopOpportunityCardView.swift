@@ -41,7 +41,10 @@ struct TopOpportunityCardView: View {
     
     private var demandLabel: String {
         if drop.feedHot == true { return "HIGH DEMAND" }
-        return "TRENDING"
+        return FeedMetricLabels.demandLevel(
+            rarityScore: drop.rarityScore,
+            availabilityRate: drop.availabilityRate14d
+        ).uppercased()
     }
     
     var body: some View {
@@ -208,9 +211,21 @@ struct TopOpportunityCardView: View {
     }
     
     private var subtitleSuffix: String {
-        if (drop.ratingCount ?? 0) > 500 { return "Usually fully booked" }
-        if drop.feedHot == true { return "Usually fully booked" }
-        return "New opening"
+        var parts: [String] = []
+        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) {
+            parts.append("Tables ~\(v)")
+        }
+        if let d = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) {
+            parts.append(d)
+        }
+        if let t = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
+            parts.append(t)
+        }
+        if !parts.isEmpty {
+            return parts.joined(separator: " · ")
+        }
+        if (drop.ratingCount ?? 0) > 500 || drop.feedHot == true { return "Usually fully booked" }
+        return FeedMetricLabels.rarityTier(score: drop.rarityScore)
     }
     
     /// Parses slot time (e.g. "19:30" or "7:30") and returns "7:30 PM". Fallback "Reserve" if missing/invalid.

@@ -7,17 +7,29 @@ struct HeroCardView: View {
     
     private var slots: [DropSlot] { Array(drop.slots.prefix(5)) }
     private var rarityScoreInt: Int {
-        guard let r = drop.rarityScore else { return 0 }
-        let value = r <= 1 ? Int(r * 100) : Int(r.rounded())
-        return min(100, max(0, value))
+        FeedMetricLabels.rarityPoints(score: drop.rarityScore) ?? 0
+    }
+    private var scanMetricsLine: String? {
+        var parts: [String] = []
+        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) {
+            parts.append("Tables gone in ~\(v)")
+        }
+        if let d = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) {
+            parts.append("open \(d)")
+        }
+        if let t = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
+            parts.append(t)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
     private var heroDescription: String {
         let party = drop.partySizesAvailable.sorted().first.map { "\($0)" } ?? "2"
         let time = slots.first.flatMap { formatTime($0.time ?? "") } ?? "tonight"
-        if (drop.ratingCount ?? 0) > 500 || drop.rarityScore ?? 0 > 0.7 {
-            return "Rare table for \(party) available \(time). Usually books 30 days in advance."
+        let highRarity = (FeedMetricLabels.rarityPoints(score: drop.rarityScore) ?? 0) >= 70
+        if (drop.ratingCount ?? 0) > 500 || highRarity {
+            return "Rare table for \(party) around \(time). Our scans show this spot rarely drops—grab it fast."
         }
-        return "Table for \(party) available \(time)."
+        return "Table for \(party) around \(time)."
     }
     
     var body: some View {
@@ -101,11 +113,24 @@ struct HeroCardView: View {
                             .lineLimit(1)
                     }
                     Spacer()
-                    Text("Rarity Score \(rarityScoreInt)/100")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.95))
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(FeedMetricLabels.rarityHeadline(score: drop.rarityScore))
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white.opacity(0.95))
+                            .multilineTextAlignment(.trailing)
+                        if rarityScoreInt > 0 {
+                            Text("scan score \(rarityScoreInt)/100")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                    }
                 }
-                
+                if let scan = scanMetricsLine {
+                    Text(scan)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.8))
+                }
+
                 Text(heroDescription)
                     .font(.system(size: 13))
                     .foregroundColor(.white.opacity(0.85))

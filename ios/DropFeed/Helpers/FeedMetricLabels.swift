@@ -1,20 +1,35 @@
 import Foundation
 
-/// Maps DB metrics to user-facing labels (no raw numbers in UI).
+/// Maps DB metrics to user-facing labels for the live-scan feed.
 enum FeedMetricLabels {
 
     // MARK: - Rarity (backend: rarity_score 0–100, higher = rarer)
-    /// 90–100 = Ultra Rare, 70–89 = Rare. Accepts 0–1 or 0–100.
-    static func rarityTier(score: Double?) -> String {
-        let raw = score ?? 0
+    /// Normalised 0–100 for display. Accepts legacy 0–1.
+    static func rarityPoints(score: Double?) -> Int? {
+        guard let raw = score, raw > 0 else { return nil }
         let s = raw <= 1 ? raw * 100 : raw
         let v = Int(s.rounded())
-        switch v {
+        return min(100, max(1, v))
+    }
+
+    /// 90–100 = Ultra Rare, 70–89 = Rare. Accepts 0–1 or 0–100.
+    static func rarityTier(score: Double?) -> String {
+        guard let pts = rarityPoints(score: score) else { return "Limited" }
+        switch pts {
         case 90...100: return "Ultra Rare"
         case 70..<90: return "Rare"
         case 50..<70: return "Uncommon"
         default: return "Limited"
         }
+    }
+
+    /// One line for cards: tier + score, e.g. "Rare · 78".
+    static func rarityHeadline(score: Double?) -> String {
+        let tier = rarityTier(score: score)
+        if let p = rarityPoints(score: score) {
+            return "\(tier) · \(p)"
+        }
+        return tier
     }
 
     // MARK: - Scarcity (availability_rate_14d 0–1). Short labels for badges.
@@ -52,6 +67,44 @@ enum FeedMetricLabels {
         if mins < 60 { return "Gone in \(mins) min" }
         let hours = mins / 60
         return "Gone in \(hours)h"
+    }
+
+    /// Compact for dense rows: "<1m", "12m", "2h".
+    static func vanishShort(avgDurationSeconds: Double?) -> String? {
+        guard let sec = avgDurationSeconds, sec > 0 else { return nil }
+        if sec < 60 { return "<1m" }
+        let mins = Int(sec / 60)
+        if mins < 60 { return "\(mins)m" }
+        let h = max(1, mins / 60)
+        return "\(h)h"
+    }
+
+    // MARK: - Active days (days_with_drops / 14)
+    static func activeDaysLine(daysWithDrops: Int?) -> String? {
+        guard let d = daysWithDrops, d > 0 else { return nil }
+        return "Tables showed \(d)× in 14d"
+    }
+
+    static func activeDaysShort(daysWithDrops: Int?) -> String? {
+        guard let d = daysWithDrops, d > 0 else { return nil }
+        return "\(d)/14d"
+    }
+
+    // MARK: - Trend (trend_pct: ratio e.g. 0.2 = +20% vs prior week)
+    /// Percentage points for display (+/-).
+    static func trendPercentPoints(_ raw: Double?) -> Double? {
+        guard let p = raw else { return nil }
+        if abs(p) < 1e-9 { return nil }
+        // Backend sends ratio in (-1, 1) typically
+        if p >= -1, p <= 1 { return p * 100 }
+        return p
+    }
+
+    /// "+18%" / "-12%" when meaningful (≥5 pp change).
+    static func trendShortLabel(trendPct: Double?) -> String? {
+        guard let pts = trendPercentPoints(trendPct), abs(pts) >= 5 else { return nil }
+        let r = Int(pts.rounded())
+        return r > 0 ? "+\(r)% wk" : "\(r)% wk"
     }
 
     // MARK: - Freshness (opened_at / detectedAt)
