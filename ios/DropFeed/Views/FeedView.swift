@@ -900,17 +900,12 @@ private struct CrownJewelCard: View {
         ZStack(alignment: .bottom) {
             Group {
                 if let url = imageURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFill()
-                        default:
-                            LinearGradient(
-                                colors: [Color(white: 0.35), Color(white: 0.2)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        }
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
+                        LinearGradient(
+                            colors: [Color(white: 0.35), Color(white: 0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     }
                 } else {
                     LinearGradient(
@@ -1057,13 +1052,8 @@ private struct TopOpportunitySnagRow: View {
             }
             .frame(width: 58, alignment: .leading)
 
-            AsyncImage(url: imageURL) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFill()
-                default:
-                    SnagDesignSystem.cardGray
-                }
+            CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .snagMuted) {
+                SnagDesignSystem.cardGray
             }
             .frame(width: 48, height: 48)
             .clipShape(Circle())
@@ -1185,15 +1175,11 @@ private struct LiveStreamRow: View {
                 .foregroundColor(palette.textPrimary)
                 .frame(width: 52, alignment: .leading)
 
-            AsyncImage(url: imageURL) { phase in
-                switch phase {
-                case .success(let img): img.resizable().scaledToFill()
-                default:
-                    LinearGradient(
-                        colors: [Color(white: 0.86), Color(white: 0.78)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                }
+            CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .lightOnLight) {
+                LinearGradient(
+                    colors: [Color(white: 0.86), Color(white: 0.78)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
             }
             .frame(width: 48, height: 48)
             .clipShape(Circle())
@@ -1312,17 +1298,12 @@ private struct BarebonesDropRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            AsyncImage(url: resyUrl) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFill()
-                default:
-                    LinearGradient(
-                        colors: [AppTheme.surfaceElevated, AppTheme.surface],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
+            CardAsyncImage(url: resyUrl, contentMode: .fill, skeletonTone: .darkCard) {
+                LinearGradient(
+                    colors: [AppTheme.surfaceElevated, AppTheme.surface],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             }
             .frame(width: 56, height: 56)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1426,9 +1407,8 @@ private struct RareDropCard: View {
             // Image
             Group {
                 if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let img) = phase { img.resizable().scaledToFill() }
-                        else { AppTheme.surface }
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                        AppTheme.surface
                     }
                 } else {
                     LinearGradient(colors: [Color(red: 0.18, green: 0.12, blue: 0.22),
@@ -1525,9 +1505,8 @@ private struct TrendingDropCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
                 if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let img) = phase { img.resizable().scaledToFill() }
-                        else { AppTheme.surface }
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                        AppTheme.surface
                     }
                 } else {
                     LinearGradient(colors: [Color(red: 0.12, green: 0.18, blue: 0.22),
@@ -1647,9 +1626,8 @@ struct LatestDropRowView: View {
                 // Thumbnail
                 Group {
                     if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { phase in
-                            if case .success(let img) = phase { img.resizable().scaledToFill() }
-                            else { AppTheme.surface }
+                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                            AppTheme.surface
                         }
                     } else {
                         AppTheme.surface
@@ -1743,9 +1721,8 @@ struct HotRightNowCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Group {
                     if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                        AsyncImage(url: url) { phase in
-                            if case .success(let img) = phase { img.resizable().scaledToFill() }
-                            else { AppTheme.surface }
+                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                            AppTheme.surface
                         }
                     } else { AppTheme.surface }
                 }

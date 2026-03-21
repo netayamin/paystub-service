@@ -169,8 +169,14 @@ struct TopOpportunityCardView: View {
                         img.resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    default:
+                    case .empty:
+                        CardImageSkeleton(tone: .warmPlaceholder)
+                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    case .failure:
                         gradientFallback
+                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    @unknown default:
+                        CardImageSkeleton(tone: .warmPlaceholder)
                             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                     }
                 }

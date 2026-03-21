@@ -31,8 +31,15 @@ struct HeroCardView: View {
                             img.resizable().scaledToFill()
                                 .frame(width: geo.size.width, height: geo.size.height)
                                 .clipped()
-                        default:
+                        case .empty:
+                            CardImageSkeleton(tone: .heroMuted)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                        case .failure:
                             gradientFallback
+                                .frame(width: geo.size.width, height: geo.size.height)
+                        @unknown default:
+                            CardImageSkeleton(tone: .heroMuted)
+                                .frame(width: geo.size.width, height: geo.size.height)
                         }
                     }
                 } else {

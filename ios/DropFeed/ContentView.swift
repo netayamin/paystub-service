@@ -625,11 +625,12 @@ private struct LikelyOpenRow: View {
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let url = imageURL {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img): img.resizable().scaledToFill()
-                            default: Color(white: 0.88)
-                            }
+                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                            LinearGradient(
+                                colors: [Color(white: 0.82), Color(white: 0.72)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         }
                     } else {
                         LinearGradient(
@@ -803,9 +804,8 @@ private struct SearchResultCard: View {
                 ZStack(alignment: .topLeading) {
                     Group {
                         if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                            AsyncImage(url: url) { phase in
-                                if case .success(let img) = phase { img.resizable().scaledToFill() }
-                                else { Color(white: 0.92) }
+                            CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                                Color(white: 0.92)
                             }
                         } else {
                             Color(white: 0.92)

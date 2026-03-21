@@ -21,6 +21,7 @@
 		A100002C /* ScaleButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002D /* ScaleButtonStyle.swift */; };
 		A100002E /* StaggeredAppearModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100002F /* StaggeredAppearModifier.swift */; };
 		A1000037 /* ShimmerModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000038 /* ShimmerModifier.swift */; };
+		A1000107 /* CardAsyncImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000106 /* CardAsyncImage.swift */; };
 		A1000039 /* FeedSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003A /* FeedSkeletonView.swift */; };
 		A1000042 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000041 /* AppTheme.swift */; };
 		A1000102 /* FeedPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101 /* FeedPalette.swift */; };
@@ -60,6 +61,7 @@
 		A100002F /* StaggeredAppearModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaggeredAppearModifier.swift; sourceTree = "<group>"; };
 		A1000036 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1000038 /* ShimmerModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShimmerModifier.swift; sourceTree = "<group>"; };
+		A1000106 /* CardAsyncImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardAsyncImage.swift; sourceTree = "<group>"; };
 		A100003A /* FeedSkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedSkeletonView.swift; sourceTree = "<group>"; };
 		A1000041 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		A1000101 /* FeedPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedPalette.swift; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 				A100002D /* ScaleButtonStyle.swift */,
 				A100002F /* StaggeredAppearModifier.swift */,
 				A1000038 /* ShimmerModifier.swift */,
+				A1000106 /* CardAsyncImage.swift */,
 				A100003A /* FeedSkeletonView.swift */,
 				A2000005 /* DateStripView.swift */,
 				A1000045 /* DateTimeFilterSheet.swift */,
@@ -264,6 +267,7 @@
 				A100002C /* ScaleButtonStyle.swift in Sources */,
 				A100002E /* StaggeredAppearModifier.swift in Sources */,
 				A1000037 /* ShimmerModifier.swift in Sources */,
+				A1000107 /* CardAsyncImage.swift in Sources */,
 				A1000039 /* FeedSkeletonView.swift in Sources */,
 				A1000006 /* FeedView.swift in Sources */,
 				A1000007 /* FeedViewModel.swift in Sources */,

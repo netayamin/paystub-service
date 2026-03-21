@@ -53,13 +53,8 @@ struct DropCardView: View {
             // Image
             ZStack {
                 if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFill()
-                        default:
-                            imageFallback
-                        }
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                        imageFallback
                     }
                 } else {
                     imageFallback
