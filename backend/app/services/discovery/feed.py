@@ -28,12 +28,6 @@ def is_hot_restaurant(name: str | None, market: str = "nyc") -> bool:
     return is_hotspot(name, market)
 
 
-def _is_top_priority(name: str | None, market: str = "nyc") -> bool:
-    n = _normalize_name(name)
-    if not n:
-        return False
-    return any(p in n or n in p for p in top_priority_names(market))
-
 
 def _venue_key(v: dict) -> str:
     return str(v.get("venue_id") or v.get("name") or "").strip() or "Venue"
@@ -179,10 +173,46 @@ def _consolidate_cards(
     return result
 
 
+def _normalize_rarity(raw) -> float:
+    """
+    rarity_score is stored on a 0-100 scale (100 / (1 + drops_per_day)).
+    Normalize to 0-1 for scoring so all additive/multiplicative weights
+    stay in the same magnitude as the hotspot bonus (2.0) and quality (~0-1).
+    """
+    if not isinstance(raw, (int, float)) or raw <= 0:
+        return 0.0
+    return min(1.0, float(raw) / 100.0)
+
+
+def _speed_bonus(avg_duration_seconds) -> float:
+    """
+    Reward venues whose drops disappear fast — a proxy for real-time demand.
+    Drops gone in <5 min → full bonus 0.5; gone in >60 min → no bonus.
+    Returns 0.0 if data is unavailable.
+    """
+    if not isinstance(avg_duration_seconds, (int, float)) or avg_duration_seconds <= 0:
+        return 0.0
+    minutes = float(avg_duration_seconds) / 60.0
+    if minutes <= 5:
+        return 0.5
+    if minutes <= 15:
+        return 0.35
+    if minutes <= 30:
+        return 0.2
+    if minutes <= 60:
+        return 0.05
+    return 0.0
+
+
 def _priority_score(card: dict, is_hot: bool) -> float:
-    """General ranked-board score: freshness + scarcity + popularity."""
-    rarity = card.get("rarity_score")
-    if isinstance(rarity, (int, float)) and rarity > 0:
+    """
+    General ranked-board score: freshness × scarcity × availability × popularity.
+
+    rarity_score is stored 0-100; normalised to 0-1 before use so the
+    hotspot bonus (2.5) and popularity multiplier remain meaningful.
+    """
+    rarity = _normalize_rarity(card.get("rarity_score"))
+    if rarity > 0:
         scarcity = 1.0 + rarity * 3.0  # range 1.0 – 4.0
     else:
         scarcity = 2.5 if is_hot else 1.0
@@ -218,28 +248,29 @@ def _priority_score(card: dict, is_hot: bool) -> float:
 def _ticker_score(card: dict, is_hot: bool) -> float:
     """
     Score for the Real-Time Ticker ranked board.
-    Balances quality (hotspot + rarity + popularity + rating) with a modest
-    freshness bonus so genuinely new availability surfaces without letting
-    unknown restaurants dominate.
+    Balances quality (hotspot + rarity + popularity + rating + speed) with
+    a modest freshness bonus so genuinely new availability surfaces without
+    letting unknown restaurants dominate.
 
     Weights (additive):
-      hotspot   2.0   — on our curated NYC hard-to-get list
-      rarity   ×1.5   — rarity_score 0-1 (rarely available = high demand)
+      hotspot    2.0   — on our curated hard-to-get list
+      rarity    ×1.5   — rarity_score normalised 0-1
       popularity×1.2   — Resy demand signal
       quality   ×0.8   — rating × credibility (review count)
+      speed      0-0.5 — how fast the drop disappears (demand proxy)
       freshness  0-0.5 — small boost for < 15 min; decays to 0 after 1 h
     """
     if not card.get("slots"):
         return 0.0
 
-    hot      = 2.0 if is_hot else 0.0
-    rarity   = card.get("rarity_score")
-    scarcity = float(rarity) * 1.5 if isinstance(rarity, (int, float)) and rarity > 0 else 0.0
-    pop      = card.get("resy_popularity_score")
+    hot        = 2.0 if is_hot else 0.0
+    scarcity   = _normalize_rarity(card.get("rarity_score")) * 1.5
+    pop        = card.get("resy_popularity_score")
     popularity = float(pop) * 1.2 if isinstance(pop, (int, float)) and pop > 0 else 0.0
-    rating   = card.get("rating_average") or 0
-    count    = card.get("rating_count") or 0
-    quality  = (float(rating) / 5.0) * min(1.0, count / 300) * 0.8
+    rating     = card.get("rating_average") or 0
+    count      = card.get("rating_count") or 0
+    quality    = (float(rating) / 5.0) * min(1.0, count / 300) * 0.8
+    speed      = _speed_bonus(card.get("avg_drop_duration_seconds"))
 
     detected = card.get("detected_at") or card.get("created_at")
     if detected:
@@ -254,7 +285,7 @@ def _ticker_score(card: dict, is_hot: bool) -> float:
         mins = 999
     freshness = 0.5 if mins <= 15 else (0.3 if mins <= 60 else 0.0)
 
-    return hot + scarcity + popularity + quality + freshness
+    return hot + scarcity + popularity + quality + speed + freshness
 
 
 def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
@@ -262,6 +293,7 @@ def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
     Returns True if a venue deserves to appear in the Real-Time Ticker.
     Hotspot restaurants always qualify. Others must pass at least one
     quality signal so unknown low-demand restaurants are filtered out.
+    rarity_score thresholds use the 0-100 stored scale (not normalised).
     """
     if not card.get("slots"):
         return False
@@ -272,8 +304,9 @@ def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
     if isinstance(pop, (int, float)) and pop >= 0.25:
         return True
 
+    # rarity_score stored 0-100; threshold 20/100 = 0.20 normalised
     rarity = card.get("rarity_score")
-    if isinstance(rarity, (int, float)) and rarity >= 0.20:
+    if isinstance(rarity, (int, float)) and rarity >= 20:
         return True
 
     rating = card.get("rating_average") or 0
@@ -286,39 +319,33 @@ def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
 
 def _top_opportunity_score(card: dict) -> float:
     """
-    Score for Top Drops section: quality + scarcity, NOT freshness.
+    Score for Top Drops (Crown Jewels) section: quality + scarcity, NOT freshness.
 
     We deliberately ignore when a slot was detected so that a random
     low-quality restaurant freshly detected 2 minutes ago never outranks
     an iconic hard-to-get restaurant detected 20 minutes ago.
 
     Factors (additive, all 0-based):
-      • hotspot bonus  — is it on our curated NYC hard-to-get list?  (0 or 2.0)
-      • rarity         — rarity_score 0-1: how rarely it appears on Resy (×2)
-      • popularity     — Resy's own popularity/demand score            (×1.5)
-      • quality        — rating_average weighted by review credibility  (×1.0)
+      • hotspot bonus  — curated hard-to-get list                (0 or 2.0)
+      • rarity         — rarity_score normalised 0-1             (×2.0, max 2.0)
+      • speed          — drop disappears fast = real demand       (0–0.5)
+      • popularity     — Resy's own demand signal                 (×1.5, max ~1.5)
+      • quality        — rating × review credibility              (max ~0.9)
     """
     if not card.get("slots"):
         return 0.0
 
-    # Known hard-to-get restaurant bonus
-    hot_bonus = 2.0 if card.get("feedHot") else 0.0
-
-    # Scarcity from rolling metrics (opens rarely = high rarity_score)
-    rarity = card.get("rarity_score")
-    scarcity = float(rarity) * 2.0 if isinstance(rarity, (int, float)) and rarity > 0 else 0.0
-
-    # Resy's own popularity/demand signal
-    pop = card.get("resy_popularity_score")
+    hot_bonus  = 2.0 if card.get("feedHot") else 0.0
+    scarcity   = _normalize_rarity(card.get("rarity_score")) * 2.0
+    speed      = _speed_bonus(card.get("avg_drop_duration_seconds"))
+    pop        = card.get("resy_popularity_score")
     popularity = float(pop) * 1.5 if isinstance(pop, (int, float)) and pop > 0 else 0.0
-
-    # Rating quality — credibility grows with review count (saturates ~300 reviews)
-    rating = card.get("rating_average") or 0
-    count = card.get("rating_count") or 0
+    rating     = card.get("rating_average") or 0
+    count      = card.get("rating_count") or 0
     credibility = min(1.0, count / 300)
-    quality = (float(rating) / 5.0) * credibility
+    quality    = (float(rating) / 5.0) * credibility
 
-    return hot_bonus + scarcity + popularity + quality
+    return hot_bonus + scarcity + speed + popularity + quality
 
 
 def build_feed(
@@ -375,7 +402,18 @@ def build_feed(
 
     for c in cards:
         mkt = c.get("market") or "nyc"
-        is_hot = is_hot_restaurant(c.get("name"), mkt)
+        # Hybrid feedHot: curated editorial list OR strong data signals.
+        # This means unlisted restaurants with proven Resy demand also surface.
+        curated = is_hot_restaurant(c.get("name"), mkt)
+        pop = c.get("resy_popularity_score")
+        rarity = c.get("rarity_score")
+        rating = c.get("rating_average") or 0
+        count = c.get("rating_count") or 0
+        data_hot = (
+            (isinstance(pop, (int, float)) and pop >= 0.65)
+            or (isinstance(rarity, (int, float)) and rarity >= 70 and float(rating) >= 4.3 and count >= 100)
+        )
+        is_hot = curated or data_hot
         c["feedHot"] = is_hot
         c["_priority"] = _priority_score(c, is_hot)
 

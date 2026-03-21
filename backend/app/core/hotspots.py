@@ -103,7 +103,15 @@ def _is_hotspot_for_set(venue_name: str | None, normalized_set: set[str]) -> boo
     if n in normalized_set:
         return True
     for h in normalized_set:
-        if h in n or n in h:
+        # "carbone" in "carbone nyc" → True (hotspot name is a word-boundary prefix of venue)
+        # Guard: only allow substring match when the hotspot name is long enough (≥5 chars)
+        # to avoid short names like "leo" matching "galileo", "napoleon's", etc.
+        if len(h) >= 5 and h in n:
+            return True
+        # Also allow venue name to match as a prefix of the hotspot name, but only
+        # when the hotspot name has a space suffix (e.g. "misi " in "misi - new york").
+        # We check word-boundary containment to avoid "bar" matching "barton g".
+        if len(n) >= 5 and n in h:
             return True
     return False
 

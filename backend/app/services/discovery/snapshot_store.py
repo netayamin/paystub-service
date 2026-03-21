@@ -117,10 +117,24 @@ def rebuild_snapshot(db: Session) -> None:
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
 
-        # Load rolling metrics FIRST so build_feed can rank by rarity
-        rolling_rows = (
+        # Load rolling metrics FIRST so build_feed can rank by rarity.
+        # Restrict to the latest as_of_date so we never mix stale rows from
+        # an older computation window with current ones.
+        from sqlalchemy import func as _sqlfunc
+        latest_as_of = (
+            db.query(_sqlfunc.max(VenueRollingMetrics.as_of_date))
+            .scalar()
+        )
+        rolling_query = (
             db.query(VenueRollingMetrics)
             .filter(VenueRollingMetrics.venue_name.isnot(None))
+        )
+        if latest_as_of is not None:
+            rolling_query = rolling_query.filter(
+                VenueRollingMetrics.as_of_date == latest_as_of
+            )
+        rolling_rows = (
+            rolling_query
             .order_by(VenueRollingMetrics.computed_at.desc())
             .limit(DISCOVERY_ROLLING_METRICS_LIMIT)
             .all()
