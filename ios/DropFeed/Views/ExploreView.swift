@@ -12,8 +12,9 @@ struct ExploreView: View {
     /// Fixed grid cell geometry so every card matches; spacing is gap between cells.
     private let gridColumnSpacing: CGFloat = 14
     private let gridRowSpacing: CGFloat = 20
-    private let gridImageHeight: CGFloat = 162
-    private let gridTextBlockHeight: CGFloat = 92
+    /// Single card height: image + title/meta overlaid (no text outside the rounded rect).
+    private let gridCardHeight: CGFloat = 248
+    private let heroCardHeight: CGFloat = 232
 
     var body: some View {
         ScrollView {
@@ -158,55 +159,70 @@ struct ExploreView: View {
         return Button {
             if let url { UIApplication.shared.open(url) }
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topLeading) {
-                    heroImage(drop)
-                        .frame(height: 200)
-                        .clipped()
+            ZStack(alignment: .bottomLeading) {
+                heroImage(drop)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: heroCardHeight)
+                    .clipped()
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            if heroShowBestTonight(drop) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "flame.fill")
-                                        .font(.system(size: 11))
-                                    Text("BEST TONIGHT")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .tracking(0.4)
-                                }
-                                .foregroundColor(Color(red: 0.15, green: 0.12, blue: 0.11))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(SnagDesignSystem.exploreCoralSolid)
-                                .clipShape(Capsule())
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.35), .black.opacity(0.88)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: heroCardHeight)
+                .allowsHitTesting(false)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        if heroShowBestTonight(drop) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "flame.fill")
+                                    .font(.system(size: 11))
+                                Text("BEST TONIGHT")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .tracking(0.4)
                             }
-                            Text(habitPillText(for: drop))
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color(white: 0.22), in: Capsule())
+                            .foregroundColor(Color(red: 0.15, green: 0.12, blue: 0.11))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(SnagDesignSystem.exploreCoralSolid)
+                            .clipShape(Capsule())
                         }
+                        Text(habitPillText(for: drop))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(white: 0.22), in: Capsule())
                     }
-                    .padding(12)
+                    Spacer(minLength: 0)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(drop.name)
                         .font(.system(size: 22, weight: .bold, design: .serif))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 1)
                     HStack(spacing: 6) {
                         Image(systemName: "clock")
                             .font(.system(size: 12))
                         Text(heroMetaLine(for: drop))
                             .font(.system(size: 13))
                     }
-                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                    .foregroundColor(Color.white.opacity(0.82))
                 }
-                .padding(.top, 12)
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: heroCardHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -452,83 +468,78 @@ struct ExploreView: View {
         return Button {
             if let url { UIApplication.shared.open(url) }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack(alignment: .topTrailing) {
-                    // Fixed bounds first so resizable images cannot expand the layout pass.
-                    Color.clear
-                        .frame(maxWidth: .infinity)
-                        .frame(height: gridImageHeight)
-                        .overlay {
-                            gridThumb(drop)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .clipped()
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    if let badge = gridImageBadge(drop) {
-                        Text(badge)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color(white: 0.12))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color(white: 0.32), lineWidth: 1))
-                            .padding(8)
+            ZStack(alignment: .bottomLeading) {
+                Color.clear
+                    .frame(maxWidth: .infinity)
+                    .frame(height: gridCardHeight)
+                    .overlay {
+                        gridThumb(drop)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
                     }
 
-                    VStack {
-                        Spacer()
-                        Text(gridTimeOverlay(drop))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color(white: 0.18))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color(white: 0.35), lineWidth: 1))
-                            .padding(.bottom, 8)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.28), .black.opacity(0.9)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
                 .frame(maxWidth: .infinity)
-                .frame(height: gridImageHeight)
-                .clipped()
+                .frame(height: gridCardHeight)
+                .allowsHitTesting(false)
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(gridTimeOverlay(drop))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.95))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                     Text(drop.name)
                         .font(.system(size: 15, weight: .bold, design: .serif))
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
-
+                        .minimumScaleFactor(0.88)
                     Text((drop.neighborhood ?? drop.location ?? "").uppercased())
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.68))
                         .tracking(0.4)
                         .lineLimit(1)
-                        .frame(maxWidth: .infinity, minHeight: 14, alignment: .leading)
-
                     HStack(alignment: .top, spacing: 4) {
                         Image(systemName: insightIcon(for: drop))
                             .font(.system(size: 10))
-                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                            .foregroundColor(Color.white.opacity(0.72))
                             .padding(.top, 2)
                         Text(insightLine(for: drop))
                             .font(.system(size: 10))
-                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                            .foregroundColor(Color.white.opacity(0.72))
                             .fixedSize(horizontal: false, vertical: true)
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .topLeading)
                 }
-                .frame(maxWidth: .infinity, minHeight: gridTextBlockHeight, alignment: .topLeading)
+                .padding(10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: gridImageHeight + 8 + gridTextBlockHeight, alignment: .topLeading)
-            .clipped()
+            .frame(maxWidth: .infinity)
+            .frame(height: gridCardHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+            .overlay(alignment: .topTrailing) {
+                if let badge = gridImageBadge(drop) {
+                    Text(badge)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(white: 0.12))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color(white: 0.32), lineWidth: 1))
+                        .padding(8)
+                }
+            }
         }
         .buttonStyle(.plain)
     }
