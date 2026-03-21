@@ -1142,12 +1142,23 @@ private struct HottestOpeningCard: View {
         return "\(nb) · Live availability"
     }
 
-    private var score: Int {
+    /// Display score only when we have real signals (no floor — `max(55, …)` was forcing empty cards to 55).
+    private var hasScoreInputs: Bool {
+        (drop.rarityScore ?? 0) > 0
+            || (drop.resyPopularityScore ?? 0) > 0
+            || ((drop.ratingAverage ?? 0) > 0 && (drop.ratingCount ?? 0) > 0)
+            || drop.feedHot == true
+    }
+
+    private var scoreValue: Int? {
+        guard hasScoreInputs else { return nil }
         let r = drop.rarityScore ?? 0
-        let p = (drop.resyPopularityScore ?? 0) * 38
-        let rat = ((drop.ratingAverage ?? 0) / 5.0) * 22
-        let hot: Double = drop.feedHot == true ? 14 : 0
-        return min(99, max(55, Int(r * 0.28 + p + rat + hot)))
+        let p = (drop.resyPopularityScore ?? 0) * 32
+        let cred = min(1.0, Double(drop.ratingCount ?? 0) / 250.0)
+        let rat = ((drop.ratingAverage ?? 0) / 5.0) * cred * 24
+        let hot: Double = drop.feedHot == true ? 15 : 0
+        let raw = r * 0.32 + p + rat + hot
+        return min(99, max(1, Int(raw.rounded())))
     }
 
     private var showExclusive: Bool {
@@ -1196,9 +1207,15 @@ private struct HottestOpeningCard: View {
                     Text("SCORE")
                         .font(.system(size: 9, weight: .heavy))
                         .foregroundColor(SnagDesignSystem.textMuted)
-                    Text("\(score)")
-                        .font(.system(size: 22, weight: .black, design: .serif))
-                        .foregroundColor(SnagDesignSystem.textDark)
+                    if let s = scoreValue {
+                        Text("\(s)")
+                            .font(.system(size: 22, weight: .black, design: .serif))
+                            .foregroundColor(SnagDesignSystem.textDark)
+                    } else {
+                        Text("—")
+                            .font(.system(size: 22, weight: .bold, design: .serif))
+                            .foregroundColor(SnagDesignSystem.textMuted)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
