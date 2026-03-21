@@ -89,7 +89,12 @@ def rebuild_snapshot(db: Session) -> None:
         window_start_date,
         get_last_scan_info_buckets,
     )
-    from app.services.discovery.feed import attach_likely_open_labels, build_feed
+    from app.services.discovery.feed import (
+    attach_likely_open_labels,
+    build_feed,
+    sanitize_feed_cards_for_client,
+    snag_feed_meta,
+)
     from app.services.discovery.likely_open_scoring import enrich_likely_open_item
     from app.models.venue_rolling_metrics import VenueRollingMetrics
     from app.models.venue_metrics import VenueMetrics
@@ -275,6 +280,11 @@ def rebuild_snapshot(db: Session) -> None:
         _attach_metrics(top_opportunities)
         _attach_metrics(hot_right_now)
 
+        sanitize_feed_cards_for_client(ranked_board)
+        sanitize_feed_cards_for_client(ticker_board)
+        sanitize_feed_cards_for_client(top_opportunities)
+        sanitize_feed_cards_for_client(hot_right_now)
+
         info = get_last_scan_info_buckets(db, today)
         bucket_health = get_bucket_health(db, today)
 
@@ -301,6 +311,8 @@ def rebuild_snapshot(db: Session) -> None:
             keys = _unique_venue_keys(jo_by_date.get(ds, [])) | _unique_venue_keys(so_by_date.get(ds, []))
             calendar_by_date[ds] = len(keys)
 
+        feed_meta = snag_feed_meta()
+
         snap = {
             "just_opened": just_opened,
             "still_open": still_open,
@@ -312,6 +324,7 @@ def rebuild_snapshot(db: Session) -> None:
             "likely_open_today": [],
             "likely_open_tomorrow": [],
             "likely_open_soon": [],
+            "feed_meta": feed_meta,
             "bucket_health": bucket_health,
             "calendar_counts": {"by_date": calendar_by_date, "dates": date_strs},
             "rolling_by_name": rolling_by_name,
@@ -341,6 +354,7 @@ def rebuild_snapshot(db: Session) -> None:
         # ranked_board = quality-filtered ticker_board so iOS gets only
         # attention-grabbing restaurants, not random noise.
         mobile_payload = {
+            "feed_meta":         feed_meta,
             "ranked_board":      ticker_board[:_MOBILE_RANKED_BOARD_LIMIT],
             "top_opportunities": top_opportunities,
             "hot_right_now":     hot_right_now,
@@ -423,16 +437,24 @@ def filter_snapshot_for_request(
             return items
         return [x for x in items if (x.get("market") or "nyc") in mkt_set]
 
+    rb = _filter_cards(snap["ranked_board"])
+    top = _filter_cards(snap["top_opportunities"])
+    hrn = _filter_cards(snap["hot_right_now"])
+    sanitize_feed_cards_for_client(rb)
+    sanitize_feed_cards_for_client(top)
+    sanitize_feed_cards_for_client(hrn)
+
     return {
         "just_opened": _filter_days(snap["just_opened"]),
         "still_open": _filter_days(snap["still_open"]),
-        "ranked_board": _filter_cards(snap["ranked_board"]),
-        "top_opportunities": _filter_cards(snap["top_opportunities"]),
-        "hot_right_now": _filter_cards(snap["hot_right_now"]),
+        "ranked_board": rb,
+        "top_opportunities": top,
+        "hot_right_now": hrn,
         "likely_to_open": _filter_likely_to_open(snap.get("likely_to_open", [])),
         "likely_open_today": [],
         "likely_open_tomorrow": [],
         "likely_open_soon": [],
+        "feed_meta": snap.get("feed_meta"),
         "last_scan_at": snap.get("last_scan_at"),
         "total_venues_scanned": snap.get("total_venues_scanned", 0),
     }

@@ -17,6 +17,29 @@ MIN_SECOND_ROW_CARDS = 8  # at least 2 rows
 BRAND_NEW_SECONDS = 300
 JUST_DROPPED_SECONDS = 600
 
+# Strip before JSON responses — not part of the public contract.
+_FEED_INTERNAL_KEYS = ("_priority", "_top_score", "_ticker_score")
+
+
+def sanitize_feed_cards_for_client(cards: list[dict]) -> None:
+    """Remove internal ranking fields from card dicts (mutates in place)."""
+    for c in cards:
+        for k in _FEED_INTERNAL_KEYS:
+            c.pop(k, None)
+
+
+def snag_feed_meta() -> dict:
+    """Public contract hint for clients (live home feed, 14-day window)."""
+    return {
+        "version": "snag_live_feed_v1",
+        "horizon_days": 14,
+        "live_drops_key": "ranked_board",
+        "mobile_note": (
+            "When mobile=1, ranked_board is capped quality-ranked live drops "
+            "(ticker_board slice from build_feed)."
+        ),
+    }
+
 
 def _normalize_name(name: str | None) -> str:
     if not name or not isinstance(name, str):

@@ -42,29 +42,9 @@ final class FeedViewModel: ObservableObject {
         return Array(drops.prefix(4))
     }
 
-    /// Pool for the Real-Time Ticker: all currently-available drops sorted by quality
-    /// (hotspot → rarity → popularity → rating), with freshness as a tiebreaker.
-    /// Hotspot restaurants always float to the top regardless of when they were detected.
-    var justDropped: [Drop] {
-        drops.sorted { a, b in
-            let sa = tickerQualityScore(a)
-            let sb = tickerQualityScore(b)
-            if abs(sa - sb) > 0.001 { return sa > sb }
-            return a.secondsSinceDetected < b.secondsSinceDetected
-        }
-    }
-
-    /// Composite quality score used to rank drops in the ticker pool.
-    /// Mirrors the backend _top_opportunity_score logic so that the same
-    /// prestigious/hard-to-get restaurants surface in both sections.
-    private func tickerQualityScore(_ d: Drop) -> Double {
-        let hot     = d.feedHot == true        ? 3.0  : 0.0
-        let rarity  = (d.rarityScore           ?? 0) * 2.0
-        let pop     = (d.resyPopularityScore   ?? 0) * 1.5
-        let count   = Double(d.ratingCount     ?? 0)
-        let rating  = (d.ratingAverage         ?? 0) / 5.0 * min(1.0, count / 200.0)
-        return hot + rarity + pop + rating
-    }
+    /// Pool for rotating ticker rows: same order as `drops`.
+    /// With `mobile=1`, the API serves backend-ranked live drops (ticker_board slice) as `ranked_board` — keep that order.
+    var justDropped: [Drop] { drops }
 
     var feedCards: [Drop] {
         guard drops.count > 1 else { return [] }

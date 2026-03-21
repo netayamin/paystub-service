@@ -67,7 +67,12 @@ from app.services.discovery.buckets import (
     window_start_date,
 )
 from app.services.providers import get_provider, list_providers
-from app.services.discovery.feed import attach_likely_open_labels, build_feed
+from app.services.discovery.feed import (
+    attach_likely_open_labels,
+    build_feed,
+    sanitize_feed_cards_for_client,
+    snag_feed_meta,
+)
 from app.services.discovery.likely_open_scoring import enrich_likely_open_item
 from app.services.discovery.snapshot_store import (
     get_snapshot,
@@ -1014,8 +1019,11 @@ async def list_just_opened(
     mobile: str | None = None,
 ):
     """Just opened + still open. Serves from pre-computed snapshot (zero DB queries).
-    Pass ?mobile=1 for a compact payload (ranked_board capped at 60, no day arrays) —
-    ~10x smaller and much faster for iOS clients.
+
+    **Live home feed:** `ranked_board` is the primary ordered list of bookable cards.
+    With `mobile=1`, it is a capped, quality-filtered slice (see `feed_meta`).
+
+    Pass `mobile=1` for a compact payload (~10x smaller, faster on iOS).
     """
     try:
         is_debug = debug and str(debug).strip() in ("1", "true", "yes")
@@ -1174,12 +1182,17 @@ async def list_just_opened(
         _attach_metrics(top_opportunities)
         _attach_metrics(hot_right_now)
 
+        sanitize_feed_cards_for_client(ranked_board)
+        sanitize_feed_cards_for_client(top_opportunities)
+        sanitize_feed_cards_for_client(hot_right_now)
+
         payload = {
             "just_opened": just_opened,
             "still_open": still_open,
             "ranked_board": ranked_board,
             "top_opportunities": top_opportunities,
             "hot_right_now": hot_right_now,
+            "feed_meta": snag_feed_meta(),
             "likely_to_open": likely_to_open,
             "likely_open_today": [],
             "likely_open_tomorrow": [],

@@ -16,7 +16,6 @@ struct FeedView: View {
     private let partySizeOptions = [2, 3, 4, 5, 6]
 
     @State private var showFilterSheet = false
-    @State private var sortOpportunitiesReversed = false
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
@@ -163,6 +162,13 @@ struct FeedView: View {
     private var referenceFeedScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                liveDropsHeader
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
+                filterPillsRow
+                    .padding(.top, 12)
+
                 if vm.newDropsCount > 0 {
                     HStack {
                         Spacer(minLength: 0)
@@ -174,10 +180,10 @@ struct FeedView: View {
                 }
 
                 crownJewelsSection
-                    .padding(.top, vm.newDropsCount > 0 ? 20 : 8)
+                    .padding(.top, vm.newDropsCount > 0 ? 16 : 12)
 
                 topOpportunitiesSnagSection
-                    .padding(.top, 28)
+                    .padding(.top, 24)
 
                 if !vm.likelyToOpen.isEmpty {
                     LikelyToOpenSection(
@@ -187,16 +193,52 @@ struct FeedView: View {
                         isWatched: { savedVM.isWatched($0) }
                     )
                     .padding(.horizontal, 16)
-                    .padding(.top, 28)
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
                 }
 
-                customPredictionsBanner
-                    .padding(.horizontal, 16)
-                    .padding(.top, 28)
-                    .padding(.bottom, 32)
+                // Secondary: full date/party filters — not promoted on the main scroll (feed-first).
+                Button {
+                    showFilterSheet = true
+                } label: {
+                    Text("More filters")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.linkBlue)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
             }
         }
         .background(SnagDesignSystem.pageCanvas)
+    }
+
+    /// Feed-first hero: answers “what’s best right now?” without extra setup.
+    private var liveDropsHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("LIVE DROPS")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.coral)
+                    .tracking(1.0)
+                Text("Best tables right now")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textDark)
+                Text("Next 14 days · updates every scan")
+                    .font(.system(size: 12))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Updated")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+                Text(vm.lastScanText)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.textSection)
+            }
+        }
     }
 
     // MARK: - Snag layout: header + sections
@@ -219,7 +261,7 @@ struct FeedView: View {
         let top = snagCrownDrops
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("CROWN JEWELS")
+                Text("TOP DROPS")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(SnagDesignSystem.textSection)
                     .tracking(1.0)
@@ -228,7 +270,7 @@ struct FeedView: View {
                     Text("●")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(SnagDesignSystem.coral)
-                    Text("LIVE DROPS")
+                    Text("BOOK NOW")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(SnagDesignSystem.coral)
                         .tracking(0.6)
@@ -255,27 +297,14 @@ struct FeedView: View {
     }
 
     private var topOpportunitiesSnagSection: some View {
-        let base = snagTopOpportunityDrops
-        let rows = sortOpportunitiesReversed ? Array(base.reversed()) : base
+        let rows = snagTopOpportunityDrops
         return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("TOP OPPORTUNITIES")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(SnagDesignSystem.textSection)
-                        .tracking(1.0)
-                    Spacer()
-                    Button {
-                        sortOpportunitiesReversed.toggle()
-                    } label: {
-                        Text("REVERSE ORDER")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(SnagDesignSystem.linkBlue)
-                            .tracking(0.4)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Text("Ranked from live Resy scans: rarity, how long tables stay open, and how often this spot drops.")
+                Text("MORE OPEN NOW")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textSection)
+                    .tracking(1.0)
+                Text("Same live feed, ranked by desirability — grab these before they’re gone.")
                     .font(.system(size: 11))
                     .foregroundColor(SnagDesignSystem.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -301,44 +330,6 @@ struct FeedView: View {
                 }
             }
         }
-    }
-
-    private var customPredictionsBanner: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 56, height: 56)
-                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 26, weight: .medium))
-                    .foregroundColor(SnagDesignSystem.coral)
-            }
-            Text("Enable Custom Predictions")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(SnagDesignSystem.textDark)
-                .multilineTextAlignment(.center)
-            Text("We can alert you 10 minutes before a likely drop based on your dining history.")
-                .font(.system(size: 13))
-                .foregroundColor(SnagDesignSystem.textMuted)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Button {
-                showFilterSheet = true
-            } label: {
-                Text("SET PREFERENCES")
-                    .font(.system(size: 12, weight: .bold))
-                    .tracking(0.9)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 14)
-                    .background(SnagDesignSystem.blackCTA)
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity)
     }
 
     private var filterPillsRow: some View {
