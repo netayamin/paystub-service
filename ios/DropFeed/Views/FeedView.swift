@@ -206,6 +206,7 @@ struct FeedView: View {
         return "Tonight's restaurants"
     }
 
+    /// Mix of still-bookable rows and claimed (`explore_snag_available == false`) so “Tonight” feels like real inventory churn.
     private var mealWindowDrops: [Drop] {
         let today = vm.todayDateStr
         func mentionsToday(_ d: Drop) -> Bool {
@@ -214,8 +215,37 @@ struct FeedView: View {
         }
         var pool = vm.drops.filter(mentionsToday)
         if pool.isEmpty { pool = vm.drops }
-        let sorted = pool.sorted { ($0.snagScore ?? 0) > ($1.snagScore ?? 0) }
-        return Array(sorted.prefix(8))
+
+        func byScore(_ a: Drop, _ b: Drop) -> Bool {
+            (a.snagScore ?? 0) > (b.snagScore ?? 0)
+        }
+        let claimed = pool.filter { $0.exploreSnagAvailable == false }.sorted(by: byScore)
+        let open = pool.filter { $0.exploreSnagAvailable != false }.sorted(by: byScore)
+
+        var out: [Drop] = []
+        var seen = Set<String>()
+        var oi = 0
+        var ci = 0
+        let limit = 8
+        while out.count < limit {
+            if oi < open.count {
+                let d = open[oi]; oi += 1
+                if !seen.contains(d.id) { out.append(d); seen.insert(d.id) }
+            }
+            guard out.count < limit else { break }
+            if ci < claimed.count {
+                let d = claimed[ci]; ci += 1
+                if !seen.contains(d.id) { out.append(d); seen.insert(d.id) }
+            }
+            if oi >= open.count && ci >= claimed.count { break }
+        }
+        if out.count < limit {
+            for d in open.dropFirst(oi) + claimed.dropFirst(ci) {
+                guard out.count < limit else { break }
+                if !seen.contains(d.id) { out.append(d); seen.insert(d.id) }
+            }
+        }
+        return out
     }
 
     private var referenceFeedScroll: some View {
@@ -323,7 +353,7 @@ struct FeedView: View {
                                         .font(.system(size: 12, weight: .bold))
                                         .foregroundColor(vm.selectedPartySizes.contains(size) ? .white : SnagDesignSystem.darkTextMuted)
                                         .frame(width: 34, height: 30)
-                                        .background(vm.selectedPartySizes.contains(size) ? Color(white: 0.22) : Color(white: 0.12))
+                                        .background(vm.selectedPartySizes.contains(size) ? SnagDesignSystem.coral : Color(white: 0.12))
                                         .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
@@ -360,7 +390,7 @@ struct FeedView: View {
                 Spacer()
                 Image(systemName: "arrow.right.circle.fill")
                     .font(.system(size: 28))
-                    .foregroundColor(SnagDesignSystem.salmonAccent)
+                    .foregroundColor(SnagDesignSystem.coral)
             }
             .padding(16)
             .background(Color(white: 0.14))
@@ -981,6 +1011,66 @@ private func feedDropIsBookable(_ drop: Drop) -> Bool {
     return !u.isEmpty
 }
 
+/// Meal list + cards: respect Explore “taken” while still showing those rows in the mix.
+private func feedMealRowIsAvailable(_ drop: Drop) -> Bool {
+    feedDropIsBookable(drop) && drop.exploreSnagAvailable != false
+}
+
+/// Fast-vanish drops: show a live second countdown using server ``avg_drop_duration_seconds`` and age.
+/// - Parameter requireExploreOpen: meal rows pass `true` so claimed inventory does not show a bogus timer; hero cards pass `false` while a Resy URL still works.
+private func feedShouldShowVanishCountdown(_ drop: Drop, requireExploreOpen: Bool = true) -> Bool {
+    if requireExploreOpen {
+        guard feedMealRowIsAvailable(drop) else { return false }
+    } else {
+        guard feedDropIsBookable(drop) else { return false }
+    }
+    if drop.velocityUrgent == true { return true }
+    if drop.speedTier == "fast" { return true }
+    if let avg = drop.avgDropDurationSeconds, avg > 0, avg <= 240 { return true }
+    return false
+}
+
+private func feedVanishWindowSeconds(for drop: Drop) -> Double {
+    max(20, min(600, drop.avgDropDurationSeconds ?? 60))
+}
+
+private func feedVanishSecondsRemaining(for drop: Drop) -> Int {
+    let w = feedVanishWindowSeconds(for: drop)
+    return max(0, Int(w.rounded()) - drop.secondsSinceDetected)
+}
+
+private func feedTimeToClaimDisplay(for drop: Drop, requireExploreOpen: Bool = true) -> String {
+    if feedShouldShowVanishCountdown(drop, requireExploreOpen: requireExploreOpen) {
+        let r = feedVanishSecondsRemaining(for: drop)
+        return r <= 0 ? "NOW" : "\(r)s"
+    }
+    return feedTimeToClaimLabel(for: drop)
+}
+
+/// Subtitle line for meal cards — prefer server display metrics, then composed fallback.
+private func feedMealMetricsLine(for drop: Drop, preferredParty: Int) -> String {
+    if let m = drop.latestDropSubtitleMetrics?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
+        return m
+    }
+    if let m = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
+        return m
+    }
+    if let m = drop.metricsSecondaryCompact?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
+        return m
+    }
+    let t = feedFormatTime12h(drop.slots.first?.time ?? "")
+    let party = "\(preferredParty)P"
+    let score: String
+    if let s = drop.snagScore {
+        score = "\(s) SCORE"
+    } else if let r = drop.rarityPoints {
+        score = "\(r) HYPE"
+    } else {
+        score = "LIVE"
+    }
+    return "\(t) · \(party) · \(score)"
+}
+
 private func feedRelativeMissedLabel(_ iso: String?) -> String {
     guard let iso, let d = Drop.parseISO(iso) else { return "JUST NOW" }
     let sec = max(0, Int(-d.timeIntervalSinceNow))
@@ -1000,7 +1090,7 @@ private func feedTimeToClaimLabel(for drop: Drop) -> String {
 
 /// 0…1 — fills as the drop ages vs typical vanish window.
 private func feedClaimUrgencyProgress(for drop: Drop) -> CGFloat {
-    let window = max(20.0, drop.avgDropDurationSeconds ?? 55.0)
+    let window = feedVanishWindowSeconds(for: drop)
     let p = Double(drop.secondsSinceDetected) / window
     return CGFloat(min(1, max(0.06, p)))
 }
@@ -1219,7 +1309,12 @@ private struct MarketLeaderHeroCard: View {
             .clipped()
 
             LinearGradient(
-                colors: [.black.opacity(0.15), .black.opacity(0.5), .black.opacity(0.92)],
+                stops: [
+                    .init(color: .black.opacity(0.0), location: 0.0),
+                    .init(color: .black.opacity(0.25), location: 0.38),
+                    .init(color: .black.opacity(0.72), location: 0.68),
+                    .init(color: .black.opacity(0.94), location: 1.0)
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -1227,79 +1322,82 @@ private struct MarketLeaderHeroCard: View {
             .frame(height: cardHeight)
             .allowsHitTesting(false)
 
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    if showVelocityBadge {
-                        Text("HIGH VELOCITY")
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(.white)
-                            .tracking(0.5)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(SnagDesignSystem.salmonAccent)
-                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    } else {
-                        Color.clear.frame(width: 1, height: 1)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("TIME TO CLAIM")
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.6)
-                        Text(feedTimeToClaimLabel(for: drop))
-                            .font(.system(size: 17, weight: .heavy, design: .rounded))
-                            .foregroundColor(.white)
-                    }
-                }
-                .padding(.top, 10)
-                .padding(.horizontal, 12)
-
-                Spacer(minLength: 0)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(neighborhoodCaps)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .tracking(0.55)
-                    Text(drop.name)
-                        .font(.system(size: 22, weight: .bold, design: .serif))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-                        .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 1)
-
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.white.opacity(0.12))
-                                .frame(height: 2)
-                            Capsule()
-                                .fill(SnagDesignSystem.salmonAccent)
-                                .frame(width: max(6, geo.size.width * feedClaimUrgencyProgress(for: drop)), height: 2)
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top) {
+                        if showVelocityBadge {
+                            Text("HIGH VELOCITY")
+                                .font(.system(size: 9, weight: .heavy))
+                                .foregroundColor(.white)
+                                .tracking(0.5)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(SnagDesignSystem.coral)
+                                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        } else {
+                            Color.clear.frame(width: 1, height: 1)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(feedShouldShowVanishCountdown(drop, requireExploreOpen: false) ? "VANISHES IN" : "TIME TO CLAIM")
+                                .font(.system(size: 9, weight: .heavy))
+                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                                .tracking(0.6)
+                            Text(feedTimeToClaimDisplay(for: drop, requireExploreOpen: false))
+                                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                                .foregroundColor(.white)
+                                .monospacedDigit()
                         }
                     }
-                    .frame(height: 2)
+                    .padding(.top, 10)
+                    .padding(.horizontal, 12)
 
-                    Button(action: executeClaim) {
-                        Text("EXECUTE CLAIM")
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundColor(Color(white: 0.12))
-                            .tracking(0.65)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(bookable ? SnagDesignSystem.salmonAccent : Color(white: 0.35))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Spacer(minLength: 0)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(neighborhoodCaps)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.55)
+                        Text(drop.name)
+                            .font(.system(size: 22, weight: .bold, design: .serif))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                            .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 2)
+
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.14))
+                                    .frame(height: 2)
+                                Capsule()
+                                    .fill(SnagDesignSystem.coral)
+                                    .frame(width: max(6, geo.size.width * feedClaimUrgencyProgress(for: drop)), height: 2)
+                            }
+                        }
+                        .frame(height: 2)
+
+                        Button(action: executeClaim) {
+                            Text("EXECUTE CLAIM")
+                                .font(.system(size: 11, weight: .heavy))
+                                .foregroundColor(bookable ? Color.white : Color(white: 0.55))
+                                .tracking(0.65)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(bookable ? SnagDesignSystem.coral : Color(white: 0.28))
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!bookable)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!bookable)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .padding(.top, 4)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
-                .padding(.top, 4)
+                .frame(maxWidth: .infinity)
+                .frame(height: cardHeight)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: cardHeight)
         }
         .frame(maxWidth: .infinity)
         .frame(height: cardHeight)
@@ -1536,22 +1634,11 @@ private struct MockLiveNowRow: View {
         return URL(string: s)
     }
 
-    private var bookable: Bool { feedDropIsBookable(drop) }
-    private var badges: [MockFeedBadge] { signalStreamRowTags(for: drop, bookable: bookable) }
+    /// Open slots vs server “taken” flag for the meal mix.
+    private var available: Bool { feedMealRowIsAvailable(drop) }
+    private var badges: [MockFeedBadge] { signalStreamRowTags(for: drop, bookable: available) }
 
-    private var signalMetaLine: String {
-        let t = feedFormatTime12h(drop.slots.first?.time ?? "")
-        let party = "\(preferredParty)P"
-        let score: String
-        if let s = drop.snagScore {
-            score = "\(s) SCORE"
-        } else if let r = drop.rarityPoints {
-            score = "\(r) HYPE"
-        } else {
-            score = "LIVE"
-        }
-        return "\(t) • \(party) • \(score)"
-    }
+    private let rowHeight: CGFloat = 122
 
     private func openResy() {
         let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
@@ -1560,83 +1647,121 @@ private struct MockLiveNowRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(bookable ? SnagDesignSystem.salmonAccent : SnagDesignSystem.darkTextMuted.opacity(0.45))
-                .frame(width: 3)
-
-            HStack(alignment: .center, spacing: 12) {
-                Group {
-                    if let url = imageURL {
-                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
-                            SnagDesignSystem.darkElevated
-                        }
-                    } else {
-                        SnagDesignSystem.darkElevated
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let url = imageURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                        Color(white: 0.16)
                     }
+                } else {
+                    Color(white: 0.16)
                 }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: rowHeight)
+            .clipped()
 
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.0), location: 0.0),
+                    .init(color: .black.opacity(0.45), location: 0.52),
+                    .init(color: .black.opacity(0.91), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: rowHeight)
+            .allowsHitTesting(false)
+
+            HStack(alignment: .bottom, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(drop.name)
-                        .font(.system(size: 16, weight: .bold, design: .serif))
-                        .foregroundColor(bookable ? SnagDesignSystem.darkTextPrimary : SnagDesignSystem.darkTextMuted)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.9)
+                    HStack(spacing: 6) {
+                        if !available {
+                            Text("CLAIMED")
+                                .font(.system(size: 8, weight: .heavy))
+                                .foregroundColor(.white)
+                                .tracking(0.4)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Capsule())
+                        }
+                        if available, let v = drop.velocityPrimaryLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                            Text(v.uppercased())
+                                .font(.system(size: 8, weight: .heavy))
+                                .foregroundColor(SnagDesignSystem.velocityAmber)
+                                .lineLimit(1)
+                        }
+                    }
 
-                    Text(signalMetaLine)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                    Text(drop.name)
+                        .font(.system(size: 17, weight: .bold, design: .serif))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.88)
+                        .shadow(color: .black.opacity(0.55), radius: 6, x: 0, y: 2)
+
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(feedMealMetricsLine(for: drop, preferredParty: preferredParty))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(Color.white.opacity(0.78))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.85)
+                            if available && feedShouldShowVanishCountdown(drop) {
+                                Text("Vanishes in \(feedVanishSecondsRemaining(for: drop))s")
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .foregroundColor(SnagDesignSystem.coral)
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .trailing, spacing: 8) {
-                    if bookable {
-                        if !badges.isEmpty {
-                            VStack(alignment: .trailing, spacing: 4) {
-                                ForEach(Array(badges.prefix(2).enumerated()), id: \.offset) { _, badge in
-                                    MockBadgePill(badge: badge)
-                                }
+                VStack(alignment: .trailing, spacing: 6) {
+                    if !badges.isEmpty {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            ForEach(Array(badges.prefix(2).enumerated()), id: \.offset) { _, badge in
+                                MockBadgePill(badge: badge)
                             }
                         }
+                    }
+                    if available {
                         Button(action: openResy) {
                             Image(systemName: "bolt.fill")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(SnagDesignSystem.salmonAccent)
+                                .frame(width: 46, height: 44)
+                                .background(SnagDesignSystem.coral)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
-                    } else {
-                        if !badges.isEmpty {
-                            VStack(alignment: .trailing, spacing: 4) {
-                                ForEach(Array(badges.prefix(2).enumerated()), id: \.offset) { _, badge in
-                                    MockBadgePill(badge: badge)
-                                }
-                            }
-                        }
-                        Text("CLAIMED: \(min(599, drop.secondsSinceDetected))S")
+                    } else if let fresh = drop.serverFreshnessLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !fresh.isEmpty {
+                        Text(fresh.uppercased())
                             .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.35)
+                            .foregroundColor(Color.white.opacity(0.6))
+                            .multilineTextAlignment(.trailing)
+                    } else {
+                        let s = drop.secondsSinceDetected
+                        Text(s < 90 ? "JUST NOW" : "\(max(1, s / 60))M AGO")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(Color.white.opacity(0.55))
                             .multilineTextAlignment(.trailing)
                     }
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .background(Color(white: 0.14))
+        .frame(height: rowHeight)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .opacity(bookable ? 1 : 0.55)
-        .saturation(bookable ? 1 : 0.4)
+        .opacity(available ? 1 : 0.88)
     }
 }
 
