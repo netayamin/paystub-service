@@ -11,10 +11,18 @@ struct ExploreView: View {
     @State private var hypeSortReversed = false
     @State private var showAlertsSheet = false
 
-    private let gridColumns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-    ]
+    /// Fixed grid cell geometry so every card matches; spacing is gap between cells.
+    private let gridColumnSpacing: CGFloat = 14
+    private let gridRowSpacing: CGFloat = 20
+    private let gridImageHeight: CGFloat = 162
+    private let gridTextBlockHeight: CGFloat = 92
+
+    private var gridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: gridColumnSpacing),
+            GridItem(.flexible(), spacing: gridColumnSpacing),
+        ]
+    }
 
     var body: some View {
         ScrollView {
@@ -34,7 +42,8 @@ struct ExploreView: View {
                 gridChrome
                     .padding(.top, 20)
                 gridSection
-                    .padding(.top, 12)
+                    .padding(.top, 16)
+                    .padding(.horizontal, 4)
                 Color.clear.frame(height: 88)
             }
             .padding(.horizontal, 18)
@@ -202,13 +211,6 @@ struct ExploreView: View {
                         .frame(height: 200)
                         .clipped()
 
-                    LinearGradient(
-                        colors: [.black.opacity(0.1), .black.opacity(0.75)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 200)
-
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
                             if heroShowBestTonight(drop) {
@@ -222,7 +224,7 @@ struct ExploreView: View {
                                 .foregroundColor(Color(red: 0.15, green: 0.12, blue: 0.11))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(SnagDesignSystem.exploreCoral.opacity(0.95))
+                                .background(SnagDesignSystem.exploreCoralSolid)
                                 .clipShape(Capsule())
                             }
                             Text(habitPillText(for: drop))
@@ -230,7 +232,7 @@ struct ExploreView: View {
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(.ultraThinMaterial, in: Capsule())
+                                .background(Color(white: 0.22), in: Capsule())
                         }
                     }
                     .padding(12)
@@ -254,8 +256,6 @@ struct ExploreView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(url == nil)
-        .opacity(url == nil ? 0.85 : 1)
     }
 
     @ViewBuilder
@@ -330,7 +330,7 @@ struct ExploreView: View {
                     TimelineView(.animation(minimumInterval: 0.8)) { _ in
                         Text("Scanning…")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel.opacity(0.9))
+                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
                     }
                     Spacer()
                     Button {
@@ -456,7 +456,7 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
         } else if !items.isEmpty {
-            LazyVGrid(columns: gridColumns, spacing: 16) {
+            LazyVGrid(columns: gridColumns, spacing: gridRowSpacing) {
                 ForEach(items) { drop in
                     exploreGridCell(drop)
                 }
@@ -482,7 +482,7 @@ struct ExploreView: View {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .topTrailing) {
                     gridThumb(drop)
-                        .frame(height: 148)
+                        .frame(height: gridImageHeight)
                         .frame(maxWidth: .infinity)
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -493,8 +493,9 @@ struct ExploreView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.black.opacity(0.55))
+                            .background(Color(white: 0.12))
                             .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color(white: 0.32), lineWidth: 1))
                             .padding(8)
                     }
 
@@ -505,40 +506,50 @@ struct ExploreView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .background(Color(white: 0.18))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color(white: 0.35), lineWidth: 1))
                             .padding(.bottom, 8)
                     }
                     .frame(maxWidth: .infinity)
                 }
+                .frame(height: gridImageHeight)
 
-                Text(drop.name)
-                    .font(.system(size: 15, weight: .bold, design: .serif))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                Text((drop.neighborhood ?? drop.location ?? "").uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                    .tracking(0.4)
-                    .lineLimit(1)
-
-                HStack(alignment: .top, spacing: 4) {
-                    Image(systemName: insightIcon(for: drop))
-                        .font(.system(size: 10))
-                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                        .padding(.top, 2)
-                    Text(insightLine(for: drop))
-                        .font(.system(size: 10))
-                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                        .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(drop.name)
+                        .font(.system(size: 15, weight: .bold, design: .serif))
+                        .foregroundColor(.white)
                         .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
+
+                    Text((drop.neighborhood ?? drop.location ?? "").uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                        .tracking(0.4)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, minHeight: 14, alignment: .leading)
+
+                    HStack(alignment: .top, spacing: 4) {
+                        Image(systemName: insightIcon(for: drop))
+                            .font(.system(size: 10))
+                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                            .padding(.top, 2)
+                        Text(insightLine(for: drop))
+                            .font(.system(size: 10))
+                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .topLeading)
                 }
+                .frame(maxWidth: .infinity, minHeight: gridTextBlockHeight, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: gridImageHeight + 8 + gridTextBlockHeight, alignment: .topLeading)
         }
         .buttonStyle(.plain)
-        .disabled(url == nil)
-        .opacity(url == nil ? 0.7 : 1)
     }
 
     @ViewBuilder
