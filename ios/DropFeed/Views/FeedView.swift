@@ -161,19 +161,18 @@ struct FeedView: View {
         Array(vm.topDrops.prefix(10))
     }
 
-    private var mockLiveNowDrops: [Drop] {
-        let carouselIds = Set(mockCarouselDrops.map(\.id))
-        let rest = vm.drops.filter { !carouselIds.contains($0.id) }
-        if !rest.isEmpty {
-            return Array(rest.prefix(20))
+    /// Prefer backend `hot_right_now`; otherwise the full ranked live board (not trimmed to “below carousel”).
+    private var homeLiveDropsPool: [Drop] {
+        if let hot = vm.hotRightNow, !hot.isEmpty {
+            return hot
         }
-        // Carousel can cover all current IDs; still show the tail of the ranked list.
-        return Array(vm.drops.dropFirst().prefix(20))
+        return vm.drops
     }
 
-    /// Re-sorted each refresh so higher-signal + fresher drops surface first (list “moves” as the API updates).
-    private var mockLiveNowDropsOrdered: [Drop] {
-        mockLiveNowDrops.sorted { a, b in
+    /// Ranked by score and freshness, then rotated with `liveListShuffleToken` so the list shifts between polls.
+    private var homeLiveDropsOrdered: [Drop] {
+        let pool = homeLiveDropsPool
+        let sorted = pool.sorted { a, b in
             let sa = a.snagScore ?? 0
             let sb = b.snagScore ?? 0
             if sa != sb { return sa > sb }
@@ -181,6 +180,24 @@ struct FeedView: View {
                 return a.secondsSinceDetected < b.secondsSinceDetected
             }
             return a.id < b.id
+        }
+        guard sorted.count > 1 else { return sorted }
+        let n = sorted.count
+        let r = Int(vm.liveListShuffleToken % UInt64(n))
+        return Array(sorted[r...] + sorted[..<r])
+    }
+
+    /// Same title row as Explore `tonightHighlightsSection` (22pt serif + LIVE DATA).
+    private var homeTonightHighlightsHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Tonight's Highlights")
+                .font(.system(size: 22, weight: .bold, design: .serif))
+                .foregroundColor(.white)
+            Spacer()
+            Text("LIVE DATA")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                .tracking(0.8)
         }
     }
 
@@ -190,10 +207,6 @@ struct FeedView: View {
 
     private var mockCarouselCardHeight: CGFloat {
         min(mockCarouselCardWidth * 0.62, 132)
-    }
-
-    private var topDropsActiveCount: Int {
-        mockCarouselDrops.filter { feedDropIsBookable($0) }.count
     }
 
     private var referenceFeedScroll: some View {
@@ -223,18 +236,8 @@ struct FeedView: View {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("🔥 TOP DROPS")
-                            .font(.system(size: 13, weight: .heavy))
-                            .foregroundColor(.white)
-                            .tracking(0.6)
-                        Spacer()
-                        Text("\(topDropsActiveCount) ACTIVE")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.8)
-                    }
-                    .padding(.horizontal, 16)
+                    homeTonightHighlightsHeader
+                        .padding(.horizontal, 16)
 
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 14) {
@@ -255,7 +258,7 @@ struct FeedView: View {
 
     private var mockLiveNowSection: some View {
         Group {
-            if mockLiveNowDrops.isEmpty {
+            if homeLiveDropsPool.isEmpty {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 0) {
@@ -264,10 +267,15 @@ struct FeedView: View {
                             Circle()
                                 .fill(SnagDesignSystem.salmonAccent)
                                 .frame(width: 6, height: 6)
-                            Text("LIVE NOW")
-                                .font(.system(size: 13, weight: .heavy))
+                            Text("Live drops")
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.white)
-                                .tracking(0.6)
+                            Text("·")
+                                .font(.system(size: 12))
+                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            Text("\(homeLiveDropsPool.count) open")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(SnagDesignSystem.darkTextMuted)
                         }
                         Spacer()
                         HStack(spacing: 8) {
@@ -289,14 +297,15 @@ struct FeedView: View {
                     .padding(.horizontal, 16)
 
                     VStack(spacing: 12) {
-                        ForEach(mockLiveNowDropsOrdered, id: \.id) { drop in
+                        ForEach(homeLiveDropsOrdered, id: \.id) { drop in
                             MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
                     .padding(.bottom, 32)
-                    .animation(.easeInOut(duration: 0.32), value: vm.lastRefreshed)
+                    .animation(.easeInOut(duration: 0.4), value: vm.lastRefreshed)
+                    .animation(.easeInOut(duration: 0.45), value: vm.liveListShuffleToken)
                 }
             }
         }

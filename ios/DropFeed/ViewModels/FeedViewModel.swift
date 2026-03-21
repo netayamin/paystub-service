@@ -5,6 +5,7 @@ final class FeedViewModel: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var countdownTask: Task<Void, Never>?
     private var tickerRotationTask: Task<Void, Never>?
+    private var liveListRotationTask: Task<Void, Never>?
     private var tickerSlotIndex: Int = 0   // which slot gets swapped next
 
     @Published var drops: [Drop] = []
@@ -23,6 +24,8 @@ final class FeedViewModel: ObservableObject {
     @Published var newDropsCount: Int = 0
     @Published var secondsUntilNextScan: Int = 0
     @Published var tickerDrops: [Drop] = []
+    /// Bumps on a timer so the home “live drops” list can rotate order between API refreshes.
+    @Published private(set) var liveListShuffleToken: UInt64 = 0
 
     @Published var selectedDates: Set<String> = []
     @Published var selectedPartySizes: Set<Int> = []
@@ -176,6 +179,7 @@ final class FeedViewModel: ObservableObject {
 
     func startPolling() {
         refreshTask?.cancel()
+        liveListRotationTask?.cancel()
         refreshTask = Task { @MainActor in
             while !Task.isCancelled {
                 await refresh()
@@ -184,6 +188,19 @@ final class FeedViewModel: ObservableObject {
         }
         startCountdownTick()
         startTickerRotation()
+        startLiveListRotation()
+    }
+
+    /// Rotates the visible ordering of the live list so it feels active even between polls.
+    private func startLiveListRotation() {
+        liveListRotationTask?.cancel()
+        liveListRotationTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                guard !drops.isEmpty else { continue }
+                liveListShuffleToken &+= 1
+            }
+        }
     }
 
     // MARK: - Ticker rotation
@@ -281,6 +298,7 @@ final class FeedViewModel: ObservableObject {
             previousDropIds = Set(ranked.map { $0.id })
 
             drops = ranked
+            liveListShuffleToken = 0
             rotateTickerDrops()   // seed ticker immediately on each refresh
             topOpportunities = top.isEmpty ? nil : top
             hotRightNow = hot.isEmpty ? nil : hot
