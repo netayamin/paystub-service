@@ -12,23 +12,11 @@ struct HeroCardView: View {
             // Image
             GeometryReader { geo in
                 if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFill()
-                                .frame(width: geo.size.width, height: geo.size.height)
-                                .clipped()
-                        case .empty:
-                            CardImageSkeleton(tone: .heroMuted)
-                                .frame(width: geo.size.width, height: geo.size.height)
-                        case .failure:
-                            gradientFallback
-                                .frame(width: geo.size.width, height: geo.size.height)
-                        @unknown default:
-                            CardImageSkeleton(tone: .heroMuted)
-                                .frame(width: geo.size.width, height: geo.size.height)
-                        }
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
+                        gradientFallback
                     }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
                 } else {
                     gradientFallback
                 }

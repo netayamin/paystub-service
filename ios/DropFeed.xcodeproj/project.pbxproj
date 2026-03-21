@@ -23,6 +23,7 @@
 		A1000037 /* ShimmerModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000038 /* ShimmerModifier.swift */; };
 		A1000107 /* CardAsyncImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000106 /* CardAsyncImage.swift */; };
 		A1000108 /* FeedMetricLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000109 /* FeedMetricLabels.swift */; };
+		A1000111 /* RestaurantImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000110 /* RestaurantImageCache.swift */; };
 		A1000039 /* FeedSkeletonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100003A /* FeedSkeletonView.swift */; };
 		A1000042 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000041 /* AppTheme.swift */; };
 		A1000102 /* FeedPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101 /* FeedPalette.swift */; };
@@ -87,6 +88,7 @@
 		A200000A /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
 		A200000C /* SearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchViewModel.swift; sourceTree = "<group>"; };
 		A200001E /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
+		A1000110 /* RestaurantImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantImageCache.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -196,6 +198,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000109 /* FeedMetricLabels.swift */,
+				A1000110 /* RestaurantImageCache.swift */,
 			);
 			path = Helpers;
 			sourceTree = "<group>";
@@ -282,6 +285,7 @@
 				A100002E /* StaggeredAppearModifier.swift in Sources */,
 				A1000037 /* ShimmerModifier.swift in Sources */,
 				A1000107 /* CardAsyncImage.swift in Sources */,
+				A1000111 /* RestaurantImageCache.swift in Sources */,
 				A1000108 /* FeedMetricLabels.swift in Sources */,
 				A1000039 /* FeedSkeletonView.swift in Sources */,
 				A1000006 /* FeedView.swift in Sources */,

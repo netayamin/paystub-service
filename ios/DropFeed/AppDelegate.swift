@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        RestaurantImageCacheBootstrap.configureURLCache()
         UNUserNotificationCenter.current().delegate = self
         return true
     }

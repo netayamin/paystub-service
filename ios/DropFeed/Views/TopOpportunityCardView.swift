@@ -149,23 +149,10 @@ struct TopOpportunityCardView: View {
     private var cardBackground: some View {
         Group {
             if let url = drop.imageUrl, let imageURL = URL(string: url), !url.isEmpty {
-                AsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    case .empty:
-                        CardImageSkeleton(tone: .warmPlaceholder)
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    case .failure:
-                        gradientFallback
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    @unknown default:
-                        CardImageSkeleton(tone: .warmPlaceholder)
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                    }
+                CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .warmPlaceholder) {
+                    gradientFallback
                 }
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
             } else {
                 gradientFallback
                     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)

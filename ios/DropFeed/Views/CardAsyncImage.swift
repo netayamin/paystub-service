@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Skeleton tone (matches surrounding card surface)
 
@@ -50,23 +51,31 @@ struct CardAsyncImage<Fallback: View>: View {
     var skeletonTone: CardImageSkeletonTone = .lightOnLight
     @ViewBuilder var fallback: () -> Fallback
 
+    @State private var loaded: UIImage?
+    @State private var loadFailed = false
+
     var body: some View {
         Group {
             if let url {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        CardImageSkeleton(tone: skeletonTone)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: contentMode)
-                            .transition(.opacity.animation(.easeOut(duration: 0.22)))
-                    case .failure:
-                        fallback()
-                    @unknown default:
-                        CardImageSkeleton(tone: skeletonTone)
-                    }
+                if loadFailed {
+                    fallback()
+                } else if let ui = loaded ?? RestaurantImageMemoryCache.image(for: url) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                        .transition(.opacity.animation(.easeOut(duration: 0.22)))
+                } else {
+                    CardImageSkeleton(tone: skeletonTone)
+                        .task(id: url.absoluteString) {
+                            loadFailed = false
+                            if let mem = RestaurantImageMemoryCache.image(for: url) {
+                                loaded = mem
+                                return
+                            }
+                            let img = await RestaurantImageLoader.shared.image(for: url)
+                            loaded = img
+                            loadFailed = (img == nil)
+                        }
                 }
             } else {
                 fallback()
