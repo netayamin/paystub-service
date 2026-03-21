@@ -49,6 +49,7 @@ struct CustomTabBar: View {
         .padding(.bottom, 2)
     }
 
+    /// Center action stays **mock-style** always: white disc + red ring + red flame/label — not a filled “selected” pill like side tabs.
     private var dropsCenterButton: some View {
         let on = selectedTab == 0
         return Button {
@@ -58,25 +59,34 @@ struct CustomTabBar: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(on ? SnagDesignSystem.tabBarFeaturedCoral : Color.white)
+                    .fill(Color.white)
                     .frame(width: fabSize, height: fabSize)
-                    .shadow(color: Color.black.opacity(on ? 0.24 : 0.14), radius: on ? 12 : 8, x: 0, y: 5)
+                    .shadow(
+                        color: Color.black.opacity(on ? 0.2 : 0.14),
+                        radius: on ? 14 : 8,
+                        x: 0,
+                        y: on ? 6 : 5
+                    )
                     .overlay(
                         Circle()
-                            .stroke(SnagDesignSystem.tabBarFeaturedCoral.opacity(on ? 0 : 0.5), lineWidth: on ? 0 : 2)
+                            .stroke(
+                                SnagDesignSystem.tabBarFeaturedCoral.opacity(on ? 1 : 0.45),
+                                lineWidth: on ? 2.5 : 2
+                            )
                     )
 
                 VStack(spacing: 3) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 21, weight: .bold))
-                        .foregroundColor(on ? .white : SnagDesignSystem.tabBarFeaturedCoral)
+                        .font(.system(size: on ? 22 : 21, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.tabBarFeaturedCoral)
                     Text("DROPS")
                         .font(.system(size: 8, weight: .black))
-                        .foregroundColor(on ? .white : SnagDesignSystem.tabBarFeaturedCoral)
+                        .foregroundColor(SnagDesignSystem.tabBarFeaturedCoral)
                         .tracking(0.5)
                 }
                 .offset(y: 1)
             }
+            .scaleEffect(on ? 1.04 : 1)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Drops")
