@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Floating pill tab bar: **four equal tabs** in one row — same layout; **red circle + white icon** only when selected.
+/// Bottom dock tab bar: **flush** to screen edges, **no shadow**, **only top corners** rounded; white extends into the **home-indicator safe area**.
 ///
 /// `ContentView`: **DROPS** = 0 Feed · **LIVE FEED** = 1 Search · **BOOKINGS** = 2 Saved · **PROFILE** = 3.
 /// Visual order: LIVE FEED · DROPS · BOOKINGS · PROFILE.
@@ -10,6 +10,7 @@ struct CustomTabBar: View {
 
     private let iconWellSize: CGFloat = 44
     private let pillRowHeight: CGFloat = 62
+    private let topCornerRadius: CGFloat = 22
 
     var body: some View {
         HStack(spacing: 0) {
@@ -22,14 +23,22 @@ struct CustomTabBar: View {
         .padding(.top, 10)
         .padding(.bottom, 10)
         .frame(minHeight: pillRowHeight)
-        .background(
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .fill(Color.white)
-                .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: 6)
-        )
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 2)
+        .background {
+            UnevenRoundedRectangle(
+                topLeadingRadius: topCornerRadius,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: topCornerRadius,
+                style: .continuous
+            )
+            .fill(SnagDesignSystem.pageWhite)
+        }
+        // Same white under the home indicator / bottom inset (no gap color).
+        .background {
+            SnagDesignSystem.pageWhite
+                .ignoresSafeArea(edges: .bottom)
+        }
     }
 
     private func tabButton(tag: Int, icon: String, label: String) -> some View {
@@ -71,7 +80,7 @@ struct CustomTabBar: View {
 
 #Preview("Tab bar — Drops") {
     ZStack {
-        Color(white: 0.2).ignoresSafeArea()
+        Color(white: 0.88).ignoresSafeArea()
         VStack {
             Spacer()
             CustomTabBar(selectedTab: .constant(0))
@@ -81,7 +90,7 @@ struct CustomTabBar: View {
 
 #Preview("Tab bar — Live feed") {
     ZStack {
-        Color(white: 0.2).ignoresSafeArea()
+        Color(white: 0.88).ignoresSafeArea()
         VStack {
             Spacer()
             CustomTabBar(selectedTab: .constant(1))
