@@ -54,7 +54,7 @@ final class SearchViewModel: ObservableObject {
 
     /// When true, `loadResults` skips meal-preset time filtering and uses Explore party / date rules.
     @Published var exploreTabActive: Bool = false
-    @Published var explorePartySegment: ExplorePartySegment = .two
+    @Published var explorePartySegment: ExplorePartySegment = .anyParty
 
     // MARK: - Navigation
     @Published var isSearchActive: Bool = false

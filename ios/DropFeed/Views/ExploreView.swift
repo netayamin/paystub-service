@@ -20,7 +20,6 @@ struct ExploreView: View {
             VStack(alignment: .leading, spacing: 0) {
                 exploreDateStrip
                     .padding(.top, 8)
-                partyRowCompact
                 if let err = vm.error {
                     errorBanner(err).padding(.top, 12)
                 }
@@ -57,19 +56,13 @@ struct ExploreView: View {
 
     /// Single-day selection from the next 14 days (`SearchViewModel.dateOptions`).
     private var exploreDateStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("DATE")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                .tracking(0.9)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(vm.dateOptions, id: \.dateStr) { opt in
-                        exploreDateChip(opt)
-                    }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(vm.dateOptions, id: \.dateStr) { opt in
+                    exploreDateChip(opt)
                 }
-                .padding(.vertical, 2)
             }
+            .padding(.vertical, 2)
         }
         .padding(.top, 4)
     }
@@ -110,34 +103,6 @@ struct ExploreView: View {
         } else if hit.count == 1, vm.selectedDates != Set(hit) {
             vm.selectedDates = Set(hit)
         }
-    }
-
-    private var partyRowCompact: some View {
-        HStack {
-            Text("Guests")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-            Spacer()
-            HStack(spacing: 6) {
-                ForEach(ExplorePartySegment.allCases) { seg in
-                    let on = vm.explorePartySegment == seg
-                    Button {
-                        vm.explorePartySegment = seg
-                        Task { await vm.loadResults() }
-                    } label: {
-                        Text(seg.shortLabel)
-                            .font(.system(size: 12, weight: on ? .bold : .medium))
-                            .foregroundColor(on ? .white : SnagDesignSystem.exploreSecondaryLabel)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(on ? Color(white: 0.22) : Color(white: 0.12))
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(.top, 12)
     }
 
     private func errorBanner(_ message: String) -> some View {
