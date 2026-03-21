@@ -30,6 +30,11 @@ enum SnagDesignSystem {
     static let tabInactive = Color(red: 140 / 255, green: 140 / 255, blue: 145 / 255)
     static let tabPillFill = coral.opacity(0.14)
 
+    /// Floating tab bar: light gray shell, charcoal labels, featured coral FAB (#F1645F)
+    static let tabBarSurface = Color(red: 245 / 255, green: 245 / 255, blue: 245 / 255)
+    static let tabBarCharcoal = Color(red: 74 / 255, green: 74 / 255, blue: 74 / 255)
+    static let tabBarFeaturedCoral = Color(red: 241 / 255, green: 100 / 255, blue: 95 / 255)
+
     // MARK: - Typography
 
     static func sectionTitle(_ s: String) -> some View {
