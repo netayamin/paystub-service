@@ -971,7 +971,18 @@ private struct VelocityFeedSection: View {
 private struct VelocityDropCard: View {
     let drop: Drop
 
-    private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
+    /// From API only — no default duration.
+    private var typicalSlotOpenSeconds: Int? {
+        guard let avg = drop.avgDropDurationSeconds, avg > 0 else { return nil }
+        return Int(avg.rounded())
+    }
+
+    private var partySubtitle: String {
+        if let n = drop.partySizesAvailable.sorted().first {
+            return "Table · \(n) guests"
+        }
+        return "Table available"
+    }
 
     private var urgent: Bool { drop.secondsSinceDetected < 600 }
 
@@ -986,70 +997,101 @@ private struct VelocityDropCard: View {
         UIApplication.shared.open(url)
     }
 
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let window = max(120, Int(drop.avgDropDurationSeconds ?? 300))
-            let left = max(0, window - drop.secondsSinceDetected)
-            let mm = left / 60
-            let ss = left % 60
-            let clock = String(format: "%02d:%02d", mm, ss)
+    /// Seconds left in the estimated window, only when we have real `avg_drop_duration_seconds` and elapsed < window.
+    private func remainingCountdownSeconds() -> Int? {
+        guard let window = typicalSlotOpenSeconds else { return nil }
+        let left = window - drop.secondsSinceDetected
+        return left > 0 ? left : nil
+    }
 
-            VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topLeading) {
-                    CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .heroMuted) {
-                        (urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber).opacity(0.35)
-                    }
-                    .frame(height: 112)
-                    .clipped()
+    @ViewBuilder
+    private func urgencyPrimaryLine(countdownSeconds: Int?) -> some View {
+        if let s = countdownSeconds, s > 0 {
+            let mm = s / 60
+            let ss = s % 60
+            Text(String(format: "%02d:%02d", mm, ss))
+                .font(.system(size: 20, weight: .black, design: .monospaced))
+                .monospacedDigit()
+                .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
+        } else if typicalSlotOpenSeconds != nil {
+            Text("Grab it now")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(SnagDesignSystem.epicureanRed)
+        } else if let fresh = drop.freshnessLabel {
+            Text(fresh)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
+        } else {
+            Text("Live")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(SnagDesignSystem.textDark)
+        }
+    }
 
-                    Text(urgent ? "URGENT" : "PENDING")
-                        .font(.system(size: 9, weight: .heavy))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber)
-                        .clipShape(Capsule())
-                        .padding(10)
+    private func cardShell(countdownSeconds: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .heroMuted) {
+                    (urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber).opacity(0.35)
                 }
+                .frame(height: 112)
+                .clipped()
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(clock)
-                            .font(.system(size: 20, weight: .black, design: .monospaced))
-                            .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
-                        Spacer()
-                    }
-                    Text(drop.name)
-                        .font(.system(size: 16, weight: .bold, design: .serif))
-                        .foregroundColor(SnagDesignSystem.textDark)
-                        .lineLimit(2)
-                    Text("Table · \(partySize) guests")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.textMuted)
-
-                    Button(action: book) {
-                        Text("CLAIM NOW")
-                            .font(.system(size: 13, weight: .heavy))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(14)
+                Text(urgent ? "URGENT" : "PENDING")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber)
+                    .clipShape(Capsule())
+                    .padding(10)
             }
-            .frame(width: 252)
-            .background(SnagDesignSystem.pageWhite)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.black.opacity(urgent ? 0 : 0.07), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 6)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    urgencyPrimaryLine(countdownSeconds: countdownSeconds)
+                    Spacer()
+                }
+                Text(drop.name)
+                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .foregroundColor(SnagDesignSystem.textDark)
+                    .lineLimit(2)
+                Text(partySubtitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+
+                Button(action: book) {
+                    Text("CLAIM NOW")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(14)
+        }
+        .frame(width: 252)
+        .background(SnagDesignSystem.pageWhite)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.black.opacity(urgent ? 0 : 0.07), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 6)
+    }
+
+    var body: some View {
+        if typicalSlotOpenSeconds != nil {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                cardShell(countdownSeconds: remainingCountdownSeconds())
+            }
+        } else {
+            cardShell(countdownSeconds: nil)
         }
     }
 }
