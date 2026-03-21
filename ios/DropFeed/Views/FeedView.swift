@@ -313,7 +313,7 @@ struct FeedView: View {
                         HStack(spacing: 14) {
                             ForEach(trendingHotCarouselDrops, id: \.id) { drop in
                                 MarketLeaderHeroCard(drop: drop)
-                                    .frame(width: trendingCardWidth)
+                                    .frame(width: trendingCardWidth, height: MarketLeaderHeroCard.cardHeight, alignment: .top)
                             }
                         }
                         .padding(.horizontal, 18)
@@ -1267,8 +1267,58 @@ private struct LiveDropsMarqueeTrain: View {
     }
 }
 
+/// Thin urgency meter without a `GeometryReader` in the main `VStack` (avoids stealing height in scroll layouts).
+private struct FeedClaimUrgencyBar: View {
+    let progress: CGFloat
+
+    var body: some View {
+        Capsule()
+            .fill(Color.white.opacity(0.14))
+            .frame(height: 2)
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    Capsule()
+                        .fill(SnagDesignSystem.coral)
+                        .frame(width: max(6, geo.size.width * progress), height: 2)
+                }
+            }
+            .clipShape(Capsule())
+    }
+}
+
+/// Only the numeric claim clock ticks — avoids relayouting the whole hero every second in `ScrollView`.
+private struct MarketLeaderTimeToClaimBadge: View {
+    let drop: Drop
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(feedShouldShowVanishCountdown(drop, requireExploreOpen: false) ? "VANISHES" : "TIME TO CLAIM")
+                .font(.system(size: 8, weight: .heavy))
+                .foregroundColor(.white.opacity(0.88))
+                .tracking(0.45)
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                Text(feedTimeToClaimDisplay(for: drop, requireExploreOpen: false))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(Color.black.opacity(0.48))
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+        )
+    }
+}
+
 private struct MarketLeaderHeroCard: View {
     let drop: Drop
+
+    /// Fixed height for horizontal carousel — parent must use the same value so `ScrollView` does not compress the card.
+    static let cardHeight: CGFloat = 232
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -1282,9 +1332,6 @@ private struct MarketLeaderHeroCard: View {
     private var showVelocityBadge: Bool {
         drop.speedTier == "fast" || drop.velocityUrgent == true
     }
-
-    /// Matches Explore `heroCardHeight` / Tonight’s Highlights card.
-    private let cardHeight: CGFloat = 232
 
     private func executeClaim() {
         let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
@@ -1311,8 +1358,7 @@ private struct MarketLeaderHeroCard: View {
                     )
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: cardHeight)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
 
             LinearGradient(
@@ -1326,100 +1372,72 @@ private struct MarketLeaderHeroCard: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(maxWidth: .infinity)
-            .frame(height: cardHeight)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
 
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .top) {
-                        if showVelocityBadge {
-                            Text("HIGH VELOCITY")
-                                .font(.system(size: 9, weight: .heavy))
-                                .foregroundColor(.white)
-                                .tracking(0.5)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(SnagDesignSystem.coral)
-                                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                        } else {
-                            Color.clear.frame(width: 1, height: 1)
-                        }
-                        Spacer()
-                        HStack(spacing: 5) {
-                            Text(feedShouldShowVanishCountdown(drop, requireExploreOpen: false) ? "VANISHES" : "TIME TO CLAIM")
-                                .font(.system(size: 8, weight: .heavy))
-                                .foregroundColor(.white.opacity(0.88))
-                                .tracking(0.45)
-                            Text(feedTimeToClaimDisplay(for: drop, requireExploreOpen: false))
-                                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                                .foregroundColor(.white)
-                                .monospacedDigit()
-                        }
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.48))
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                    }
-                    .padding(.top, 10)
-                    .padding(.horizontal, 12)
-
-                    Spacer(minLength: 0)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(neighborhoodCaps)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.55)
-                        Text(drop.name)
-                            .font(.system(size: 22, weight: .bold, design: .serif))
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    if showVelocityBadge {
+                        Text("HIGH VELOCITY")
+                            .font(.system(size: 9, weight: .heavy))
                             .foregroundColor(.white)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
-                            .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 2)
-
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.14))
-                                    .frame(height: 2)
-                                Capsule()
-                                    .fill(SnagDesignSystem.coral)
-                                    .frame(width: max(6, geo.size.width * feedClaimUrgencyProgress(for: drop)), height: 2)
-                            }
-                        }
-                        .frame(height: 2)
-
-                        Button(action: executeClaim) {
-                            Text(feedHeroBookingCTALabel(for: drop))
-                                .font(.system(size: 12, weight: .heavy))
-                                .foregroundColor(.white)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.78)
-                                .tracking(0.35)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .padding(.horizontal, 6)
-                                .background(SnagDesignSystem.coral)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
+                            .tracking(0.5)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(SnagDesignSystem.coral)
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    } else {
+                        Color.clear.frame(width: 1, height: 1)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
-                    .padding(.top, 4)
+                    Spacer(minLength: 0)
+                    MarketLeaderTimeToClaimBadge(drop: drop)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: cardHeight)
+                .padding(.top, 10)
+                .padding(.horizontal, 12)
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(neighborhoodCaps)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .tracking(0.55)
+                    Text(drop.name)
+                        .font(.system(size: 22, weight: .bold, design: .serif))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 2)
+
+                    FeedClaimUrgencyBar(progress: feedClaimUrgencyProgress(for: drop))
+
+                    Button(action: executeClaim) {
+                        Text(feedHeroBookingCTALabel(for: drop))
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.coral)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.78)
+                            .tracking(0.35)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 6)
+                            .background(SnagDesignSystem.darkElevated)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .padding(.top, 4)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: cardHeight)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
