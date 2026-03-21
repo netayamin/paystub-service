@@ -256,10 +256,10 @@ struct FeedView: View {
                             .foregroundColor(SnagDesignSystem.darkTextMuted)
                             .tracking(0.85)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 18)
 
                     MarketLeaderHeroCard(drop: hero)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 18)
                 }
             }
         }
@@ -1048,9 +1048,8 @@ private struct MarketLeaderHeroCard: View {
         drop.speedTier == "fast" || drop.velocityUrgent == true
     }
 
-    private var cardHeight: CGFloat {
-        min(UIScreen.main.bounds.width * 1.12, 400)
-    }
+    /// Matches Explore `heroCardHeight` / Tonight’s Highlights card.
+    private let cardHeight: CGFloat = 232
 
     private func executeClaim() {
         let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
@@ -1111,62 +1110,64 @@ private struct MarketLeaderHeroCard: View {
                             .foregroundColor(SnagDesignSystem.darkTextMuted)
                             .tracking(0.6)
                         Text(feedTimeToClaimLabel(for: drop))
-                            .font(.system(size: 22, weight: .heavy, design: .rounded))
+                            .font(.system(size: 17, weight: .heavy, design: .rounded))
                             .foregroundColor(.white)
                     }
                 }
-                .padding(.top, 16)
-                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.horizontal, 12)
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(neighborhoodCaps)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(SnagDesignSystem.darkTextMuted)
                         .tracking(0.55)
                     Text(drop.name)
-                        .font(.system(size: 32, weight: .bold, design: .serif))
+                        .font(.system(size: 22, weight: .bold, design: .serif))
                         .foregroundColor(.white)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.75)
+                        .minimumScaleFactor(0.8)
+                        .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 1)
 
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule()
                                 .fill(Color.white.opacity(0.12))
-                                .frame(height: 3)
+                                .frame(height: 2)
                             Capsule()
                                 .fill(SnagDesignSystem.salmonAccent)
-                                .frame(width: max(8, geo.size.width * feedClaimUrgencyProgress(for: drop)), height: 3)
+                                .frame(width: max(6, geo.size.width * feedClaimUrgencyProgress(for: drop)), height: 2)
                         }
                     }
-                    .frame(height: 3)
+                    .frame(height: 2)
 
                     Button(action: executeClaim) {
                         Text("EXECUTE CLAIM")
-                            .font(.system(size: 12, weight: .heavy))
+                            .font(.system(size: 11, weight: .heavy))
                             .foregroundColor(Color(white: 0.12))
-                            .tracking(0.7)
+                            .tracking(0.65)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 10)
                             .background(bookable ? SnagDesignSystem.salmonAccent : Color(white: 0.35))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .disabled(!bookable)
                 }
-                .padding(16)
-                .padding(.bottom, 4)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .padding(.top, 4)
             }
             .frame(maxWidth: .infinity)
             .frame(height: cardHeight)
         }
         .frame(maxWidth: .infinity)
         .frame(height: cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
         .opacity(bookable ? 1 : 0.88)
