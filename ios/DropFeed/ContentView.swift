@@ -17,7 +17,9 @@ struct ContentView: View {
                         feedVM: feedVM,
                         savedVM: savedVM,
                         premium: premium,
-                        onOpenExplore: { selectedTab = 1 }
+                        onOpenSearch: { selectedTab = 1 },
+                        onOpenExplore: { selectedTab = 1 },
+                        alertBadgeCount: 0
                     )
                 case 1:
                     SearchView(savedVM: savedVM)
@@ -31,6 +33,7 @@ struct ContentView: View {
 
             CustomTabBar(selectedTab: $selectedTab)
         }
+        .background(SnagDesignSystem.pageWhite)
         .task {
             await savedVM.loadAll()
             await premium.checkEntitlements()

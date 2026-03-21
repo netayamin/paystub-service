@@ -16,6 +16,7 @@ struct FeedView: View {
     private let partySizeOptions = [2, 3, 4, 5, 6]
 
     @State private var showFilterSheet = false
+    @State private var sortOpportunitiesReversed = false
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
@@ -39,7 +40,7 @@ struct FeedView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
         }
-        .background(palette.pageBackground)
+        .background(SnagDesignSystem.pageWhite)
         .refreshable { await vm.refresh() }
         .sheet(isPresented: $showFilterSheet) {
             DateTimeFilterSheet(vm: vm)
@@ -93,7 +94,7 @@ struct FeedView: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 10)
-        .background(palette.pageBackground)
+        .background(SnagDesignSystem.pageWhite)
     }
 
     // MARK: - Feed content
@@ -208,9 +209,10 @@ struct FeedView: View {
     private var referenceFeedScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                referenceBrandHeader
-                filterPillsRow
-                    .padding(.top, 12)
+                snagFeedHeader
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
 
                 if vm.newDropsCount > 0 {
                     HStack {
@@ -219,11 +221,14 @@ struct FeedView: View {
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
+                    .padding(.top, 12)
                 }
 
-                bestRightNowSection
+                crownJewelsSection
                     .padding(.top, 20)
+
+                topOpportunitiesSnagSection
+                    .padding(.top, 28)
 
                 if !vm.likelyToOpen.isEmpty {
                     LikelyToOpenSection(
@@ -236,39 +241,198 @@ struct FeedView: View {
                     .padding(.top, 28)
                 }
 
-                liveStreamSection
+                customPredictionsBanner
+                    .padding(.horizontal, 16)
                     .padding(.top, 28)
                     .padding(.bottom, 32)
             }
         }
-        .background(palette.pageBackground)
+        .background(SnagDesignSystem.pageWhite)
     }
 
-    private var referenceBrandHeader: some View {
-        HStack(alignment: .center) {
+    // MARK: - Snag layout: header + sections
+
+    private var snagCrownDrops: [Drop] {
+        Array(vm.topDrops.prefix(6))
+    }
+
+    private var snagTopOpportunityDrops: [Drop] {
+        let crownIds = Set(snagCrownDrops.map(\.id))
+        let pool = vm.hotRightNow ?? vm.justDropped
+        let filtered = pool.filter { !crownIds.contains($0.id) }
+        if !filtered.isEmpty {
+            return Array(filtered.prefix(14))
+        }
+        return Array(vm.justDropped.filter { !crownIds.contains($0.id) }.prefix(14))
+    }
+
+    private var snagFeedHeader: some View {
+        HStack(alignment: .center, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(palette.accentRed)
-                Text("SNAG")
-                    .font(.system(size: 26, weight: .black))
+                Image(systemName: "fork.knife")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.coral)
+                Text("Snag")
+                    .font(.system(size: 30, weight: .bold, design: .serif))
                     .italic()
-                    .foregroundColor(palette.textPrimary)
+                    .foregroundColor(SnagDesignSystem.coral)
             }
-            Spacer()
-            Button { showFilterSheet = true } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(palette.textPrimary)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white)
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.06), radius: 6, x: 0, y: 2)
+            Spacer(minLength: 12)
+            Button {
+                if let open = onOpenSearch {
+                    open()
+                } else {
+                    showFilterSheet = true
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(SnagDesignSystem.textDark.opacity(0.5))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            Button {
+                onOpenAlerts?()
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.textDark.opacity(0.5))
+                        .frame(width: 44, height: 44)
+                    if alertBadgeCount > 0 {
+                        Circle()
+                            .fill(SnagDesignSystem.coral)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 2, y: 6)
+                    }
+                }
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+    }
+
+    private var crownJewelsSection: some View {
+        let top = snagCrownDrops
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("CROWN JEWELS")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textSection)
+                    .tracking(1.0)
+                Spacer()
+                HStack(spacing: 6) {
+                    Text("●")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.coral)
+                    Text("LIVE DROPS")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.coral)
+                        .tracking(0.6)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            if top.isEmpty {
+                Text("No tables match filters — open Search to adjust.")
+                    .font(.system(size: 14))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+                    .padding(.horizontal, 16)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(top, id: \.id) { drop in
+                            CrownJewelCard(drop: drop)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+    }
+
+    private var topOpportunitiesSnagSection: some View {
+        let base = snagTopOpportunityDrops
+        let rows = sortOpportunitiesReversed ? Array(base.reversed()) : base
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("TOP OPPORTUNITIES")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textSection)
+                    .tracking(1.0)
+                Spacer()
+                Button {
+                    sortOpportunitiesReversed.toggle()
+                } label: {
+                    Text("SORT BY SCORE")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.linkBlue)
+                        .tracking(0.4)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+
+            if rows.isEmpty {
+                Text("No additional opportunities right now.")
+                    .font(.system(size: 14))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+                    .padding(.horizontal, 16)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { idx, drop in
+                        TopOpportunitySnagRow(drop: drop)
+                        if idx < rows.count - 1 {
+                            Divider()
+                                .background(Color.black.opacity(0.06))
+                                .padding(.leading, 16)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                .background(SnagDesignSystem.pageWhite)
+            }
+        }
+    }
+
+    private var customPredictionsBanner: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 56, height: 56)
+                    .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 26, weight: .medium))
+                    .foregroundColor(SnagDesignSystem.coral)
+            }
+            Text("Enable Custom Predictions")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(SnagDesignSystem.textDark)
+                .multilineTextAlignment(.center)
+            Text("We can alert you 10 minutes before a likely drop based on your dining history.")
+                .font(.system(size: 13))
+                .foregroundColor(SnagDesignSystem.textMuted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                showFilterSheet = true
+            } label: {
+                Text("SET PREFERENCES")
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(0.9)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .background(SnagDesignSystem.blackCTA)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(SnagDesignSystem.bannerPeach)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var filterPillsRow: some View {
@@ -383,7 +547,7 @@ struct FeedView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
                         ForEach(top, id: \.id) { drop in
-                            BestRightNowCard(drop: drop)
+                            CrownJewelCard(drop: drop)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -606,7 +770,7 @@ struct FeedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(palette.pageBackground)
+        .background(SnagDesignSystem.pageWhite)
     }
 
     private var hasActiveFilters: Bool {
@@ -630,7 +794,7 @@ struct FeedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(palette.pageBackground)
+        .background(SnagDesignSystem.pageWhite)
     }
 }
 
@@ -656,13 +820,13 @@ private func friendlyDate(_ dateStr: String?) -> String? {
     return "\(month)/\(day)"
 }
 
-// MARK: - Best right now card (reference layout)
+// MARK: - Crown Jewels hero card (Snag mockup: full-bleed image + gradient + Book Now)
 
-private struct BestRightNowCard: View {
+private struct CrownJewelCard: View {
     let drop: Drop
 
-    private let palette: FeedPalette = .liveFeedLight
-    private let cardWidth: CGFloat = min(UIScreen.main.bounds.width - 56, 320)
+    private let cardWidth: CGFloat = min(UIScreen.main.bounds.width - 48, 340)
+    private var cardHeight: CGFloat { cardWidth * 1.28 }
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -670,8 +834,11 @@ private struct BestRightNowCard: View {
     }
 
     private var rarityInt: Int { max(0, min(100, Int((drop.rarityScore ?? 0).rounded()))) }
-    private var showRarePill: Bool {
-        drop.feedHot == true || rarityInt >= 60 || drop.scarcityTier == .rare
+    private var rarityBadge: String {
+        if drop.feedHot == true || rarityInt >= 88 { return "LEGENDARY" }
+        if rarityInt >= 70 || drop.scarcityTier == .rare { return "ULTRA RARE" }
+        if rarityInt >= 50 { return "RARE" }
+        return "HOT"
     }
 
     private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
@@ -685,22 +852,33 @@ private struct BestRightNowCard: View {
         return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
     }
 
-    private var headlineTime: String {
+    private var whenLabel: String {
+        let ds = drop.dateStr ?? drop.slots.first?.dateStr
+        guard let ds, !ds.isEmpty else { return "Tonight" }
+        let parts = ds.split(separator: "-")
+        guard parts.count == 3,
+              let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return "Tonight" }
+        var c = DateComponents()
+        c.year = y
+        c.month = mo
+        c.day = d
+        guard let date = Calendar.current.date(from: c) else { return "Tonight" }
+        if Calendar.current.isDateInToday(date) { return "Tonight" }
+        if Calendar.current.isDateInTomorrow(date) { return "Tomorrow" }
+        return "Soon"
+    }
+
+    private var detailLine: String {
         let t = drop.slots.first?.time ?? ""
-        return t.isEmpty ? "" : formatTime(t)
+        let timePart = t.isEmpty ? "" : formatTime(t)
+        if timePart.isEmpty {
+            return "\(whenLabel) · \(partySize) Guests"
+        }
+        return "\(whenLabel) · \(timePart) · \(partySize) Guests"
     }
 
-    private var openedAgoBadge: String? {
-        let s = drop.secondsSinceDetected
-        guard s < 7200 else { return nil }
-        if s < 60 { return "OPENED \(s)S AGO" }
-        if s < 3600 { return "OPENED \(s / 60)M AGO" }
-        return "OPENED \(s / 3600)H AGO"
-    }
-
-    private var neighborhoodCaps: String {
-        let nb = (drop.neighborhood ?? drop.location ?? "NEW YORK").uppercased()
-        return nb
+    private var cityLine: String {
+        (drop.neighborhood ?? drop.location ?? "New York City").uppercased()
     }
 
     private func book() {
@@ -710,89 +888,236 @@ private struct BestRightNowCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                Group {
-                    if let url = imageURL {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img): img.resizable().scaledToFill()
-                            default:
-                                LinearGradient(
-                                    colors: [Color(white: 0.22), Color(white: 0.14)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                )
-                            }
+        ZStack(alignment: .bottom) {
+            Group {
+                if let url = imageURL {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFill()
+                        default:
+                            LinearGradient(
+                                colors: [Color(white: 0.35), Color(white: 0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         }
-                    } else {
-                        LinearGradient(
-                            colors: [Color(white: 0.22), Color(white: 0.14)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
                     }
+                } else {
+                    LinearGradient(
+                        colors: [Color(white: 0.35), Color(white: 0.2)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
-                .frame(width: cardWidth, height: 200)
-                .clipped()
-
-                HStack(alignment: .top) {
-                    if showRarePill {
-                        Text("RARE DROP")
-                            .font(.system(size: 10, weight: .black))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(palette.accentRed)
-                            .clipShape(Capsule())
-                    }
-                    Spacer()
-                    if let ob = openedAgoBadge {
-                        Text(ob)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.55))
-                            .clipShape(Capsule())
-                    }
-                }
-                .padding(12)
             }
+            .frame(width: cardWidth, height: cardHeight)
+            .clipped()
+
+            LinearGradient(
+                colors: [
+                    .clear,
+                    .black.opacity(0.25),
+                    .black.opacity(0.82),
+                ],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+            .frame(width: cardWidth, height: cardHeight)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(rarityBadge)
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(SnagDesignSystem.coral)
+                        .clipShape(Capsule())
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(cityLine)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.85))
+                        .tracking(1.2)
+                    Text(drop.name)
+                        .font(SnagDesignSystem.venueSerifTitle)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+                    Text(detailLine)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.92))
+
+                    Button(action: book) {
+                        Text("Book Now")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(SnagDesignSystem.coral)
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
+                }
+                .padding(16)
+                .padding(.bottom, 8)
+            }
+            .frame(width: cardWidth, height: cardHeight, alignment: .bottom)
+        }
+        .frame(width: cardWidth, height: cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .shadow(color: .black.opacity(0.14), radius: 18, x: 0, y: 10)
+    }
+}
+
+// MARK: - Top opportunities row (Snag mockup)
+
+private struct TopOpportunitySnagRow: View {
+    let drop: Drop
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var time24: String {
+        let t = drop.slots.first?.time ?? ""
+        let p = t.split(separator: ":")
+        guard let h = p.first.flatMap({ Int($0) }) else { return t.isEmpty ? "—" : String(t.prefix(5)) }
+        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+        return String(format: "%02d:%02d", h, m)
+    }
+
+    private var dayCaps: String {
+        let ds = drop.dateStr ?? drop.slots.first?.dateStr
+        guard let ds, !ds.isEmpty else { return "TONIGHT" }
+        let parts = ds.split(separator: "-")
+        guard parts.count == 3,
+              let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return "TONIGHT" }
+        var c = DateComponents()
+        c.year = y
+        c.month = mo
+        c.day = d
+        guard let date = Calendar.current.date(from: c) else { return "TONIGHT" }
+        if Calendar.current.isDateInToday(date) { return "TONIGHT" }
+        if Calendar.current.isDateInTomorrow(date) { return "TOMORROW" }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "EEE"
+        return fmt.string(from: date).uppercased()
+    }
+
+    private var snagScore: Int {
+        let r = Int((drop.rarityScore ?? 0) * 100)
+        if drop.feedHot == true { return min(99, max(88, r == 0 ? 92 : r)) }
+        return min(99, max(38, r))
+    }
+
+    private var speedPair: (String, Color) {
+        guard let sec = drop.avgDropDurationSeconds, sec > 0 else {
+            return ("FAST", SnagDesignSystem.mint)
+        }
+        if sec < 180 { return ("FAST", SnagDesignSystem.mint) }
+        if sec < 900 { return ("MED", Color(red: 0.95, green: 0.75, blue: 0.22)) }
+        return ("SLOW", Color(red: 0.95, green: 0.75, blue: 0.22))
+    }
+
+    private var resyUrl: URL? {
+        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    var body: some View {
+        let sp = speedPair
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(time24)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textDark)
+                Text(dayCaps)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+                    .tracking(0.5)
+            }
+            .frame(width: 58, alignment: .leading)
+
+            AsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFill()
+                default:
+                    SnagDesignSystem.cardGray
+                }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if !headlineTime.isEmpty {
-                        Text(headlineTime)
-                            .font(.system(size: 20, weight: .black))
-                            .foregroundColor(palette.textPrimary)
+                Text(drop.name)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textDark)
+                    .lineLimit(1)
+
+                HStack(spacing: 14) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(SnagDesignSystem.coral)
+                        Text("\(snagScore)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(SnagDesignSystem.coral)
                     }
-                    Text(drop.name)
-                        .font(.system(size: 20, weight: .black))
-                        .foregroundColor(palette.textPrimary)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(sp.1)
+                        Text(sp.0)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(sp.1)
+                    }
+                    if let rc = drop.ratingCount, rc > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "eye.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(SnagDesignSystem.textMuted)
+                            Text(rc >= 1000 ? String(format: "%.1fk", Double(rc) / 1000.0) : "\(rc)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(SnagDesignSystem.textMuted)
+                        }
+                    }
                 }
-
-                Text("PARTY OF \(partySize) · \(neighborhoodCaps)")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(palette.textTertiary)
-                    .tracking(0.4)
-
-                Button(action: book) {
-                    Text("BOOK NOW")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(palette.accentRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
             }
-            .padding(16)
-            .frame(width: cardWidth, alignment: .leading)
-            .background(Color.white)
+
+            Spacer(minLength: 4)
+
+            Button {
+                guard let url = resyUrl else { return }
+                UIApplication.shared.open(url)
+            } label: {
+                Text("BOOK")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.coral)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(SnagDesignSystem.coralSoft)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(SnagDesignSystem.coral.opacity(0.45), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.10), radius: 14, x: 0, y: 6)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(SnagDesignSystem.pageWhite)
     }
 }
 

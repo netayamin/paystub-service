@@ -48,18 +48,19 @@ struct FeedPalette {
 
     /// Light palette — warm white cards on a soft gray background,
     /// coral accent — matches the DropTable reference design.
+    /// Snag mockup: white canvas, #F5F5F5 cards, #F07167 coral.
     static let liveFeedLight: FeedPalette = FeedPalette(
-        pageBackground:  Color(red: 0.96, green: 0.95, blue: 0.95),   // warm off-white
-        surface:         Color.white,
-        surfaceElevated: Color.white,
-        textPrimary:     Color(red: 0.11, green: 0.11, blue: 0.13),   // near-black
-        textSecondary:   Color(red: 0.38, green: 0.38, blue: 0.42),
-        textTertiary:    Color(red: 0.58, green: 0.58, blue: 0.62),
-        border:          Color.black.opacity(0.07),
-        accent:          AppTheme.accentRed,
-        accentRed:       AppTheme.accentRed,
-        pillUnselected:  Color.black.opacity(0.05),
-        pillSelected:    AppTheme.accentRed
+        pageBackground:  SnagDesignSystem.pageWhite,
+        surface:         SnagDesignSystem.pageWhite,
+        surfaceElevated: SnagDesignSystem.cardGray,
+        textPrimary:     SnagDesignSystem.textDark,
+        textSecondary:   SnagDesignSystem.textMuted,
+        textTertiary:    SnagDesignSystem.textSection,
+        border:          Color.black.opacity(0.06),
+        accent:          SnagDesignSystem.coral,
+        accentRed:       SnagDesignSystem.coral,
+        pillUnselected:  SnagDesignSystem.cardGray,
+        pillSelected:    SnagDesignSystem.coral
     )
 }
 
