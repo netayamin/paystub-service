@@ -85,4 +85,10 @@ enum SnagDesignSystem {
     static let exploreCoral = Color(red: 255 / 255, green: 160 / 255, blue: 140 / 255)
     /// Explore mock — brand red / active tab (~#FF4B3A).
     static let exploreRed = Color(red: 255 / 255, green: 75 / 255, blue: 58 / 255)
+    /// Explore discovery canvas (~#0A0A0A).
+    static let exploreCanvas = Color(red: 10 / 255, green: 10 / 255, blue: 10 / 255)
+    /// Solid coral for filled pills / underlines (~#D1453B).
+    static let exploreCoralSolid = Color(red: 209 / 255, green: 69 / 255, blue: 59 / 255)
+    /// Secondary labels (~#8E8E93).
+    static let exploreSecondaryLabel = Color(red: 142 / 255, green: 142 / 255, blue: 147 / 255)
 }

@@ -1,39 +1,45 @@
 import SwiftUI
 
-/// Explore tab — dark NYC layout with date/party filters and time-bucket accordions (`just-opened` data).
+/// Explore tab — discovery layout: hero highlight, likely-to-drop, hot areas, time tabs, two-column grid.
 struct ExploreView: View {
     @ObservedObject var vm: SearchViewModel
     @ObservedObject var savedVM: SavedViewModel
     @ObservedObject var alertsVM: AlertsViewModel
     @ObservedObject var premium: PremiumManager
 
-    @State private var expandedBuckets: Set<ExploreTimeBucket> = [.evening]
+    @State private var gridTimeTab: ExploreGridTimeTab = .evening
+    @State private var hypeSortReversed = false
     @State private var showAlertsSheet = false
 
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    topChrome
-                    exploreTitle
-                    datePills
-                    partyRow
-                    if let err = vm.error {
-                        errorBanner(err)
-                            .padding(.top, 14)
-                    }
-                    bucketsBlock
-                        .padding(.top, 22)
-                    Color.clear.frame(height: 96)
-                }
-                .padding(.horizontal, 20)
-            }
+    private let gridColumns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+    ]
 
-            alertsFAB
-                .padding(.trailing, 20)
-                .padding(.bottom, 8)
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                topChrome
+                datePills
+                partyRowCompact
+                if let err = vm.error {
+                    errorBanner(err).padding(.top, 12)
+                }
+                tonightHighlightsSection
+                    .padding(.top, 22)
+                likelyToDropCard
+                    .padding(.top, 14)
+                hotAreasCard
+                    .padding(.top, 12)
+                gridChrome
+                    .padding(.top, 20)
+                gridSection
+                    .padding(.top, 12)
+                Color.clear.frame(height: 88)
+            }
+            .padding(.horizontal, 18)
         }
-        .background(Color(red: 13 / 255, green: 13 / 255, blue: 13 / 255).ignoresSafeArea())
+        .background(SnagDesignSystem.exploreCanvas.ignoresSafeArea())
         .sheet(isPresented: $showAlertsSheet) {
             NavigationStack {
                 AlertsView(alertsVM: alertsVM, savedVM: savedVM, premium: premium)
@@ -44,7 +50,6 @@ struct ExploreView: View {
             vm.selectedMealPreset = nil
             vm.isSearchActive = true
             vm.applyExploreDatesFromPreset()
-            syncExpandedBuckets()
             vm.startPolling()
         }
         .onDisappear {
@@ -53,32 +58,38 @@ struct ExploreView: View {
         }
     }
 
-    // MARK: - Chrome
+    // MARK: - Header
 
     private var topChrome: some View {
         HStack(alignment: .center) {
-            HStack(spacing: 6) {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 18))
-                    .foregroundColor(SnagDesignSystem.exploreRed)
-                Text("Snag")
-                    .font(.system(size: 17, weight: .bold, design: .serif))
-                    .foregroundColor(SnagDesignSystem.exploreRed)
+            HStack(spacing: 8) {
+                Image(systemName: "dot.radiowaves.right")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.exploreCoralSolid)
+                Text("SNAG")
+                    .font(.system(size: 18, weight: .bold, design: .serif))
+                    .italic()
+                    .foregroundColor(SnagDesignSystem.exploreCoralSolid)
             }
             Spacer()
-            Text("NYC • LIVE")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(SnagDesignSystem.exploreRed.opacity(0.88))
-                .tracking(1.0)
+            Button {
+                showAlertsSheet = true
+            } label: {
+                Image(systemName: "bell")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+            }
+            .buttonStyle(.plain)
+            .overlay(alignment: .topTrailing) {
+                if alertsVM.unreadCount > 0 {
+                    Circle()
+                        .fill(SnagDesignSystem.exploreCoralSolid)
+                        .frame(width: 7, height: 7)
+                        .offset(x: 2, y: -2)
+                }
+            }
         }
-        .padding(.top, 6)
-    }
-
-    private var exploreTitle: some View {
-        Text("Explore NYC")
-            .font(.system(size: 30, weight: .bold, design: .serif))
-            .foregroundColor(.white)
-            .padding(.top, 10)
+        .padding(.top, 4)
     }
 
     private var datePills: some View {
@@ -91,28 +102,26 @@ struct ExploreView: View {
                     Task { await vm.loadResults() }
                 } label: {
                     Text(preset.label)
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(0.5)
-                        .foregroundColor(on ? SnagDesignSystem.exploreRed : SnagDesignSystem.darkTextMuted)
-                        .padding(.horizontal, 12)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(on ? .white : SnagDesignSystem.exploreSecondaryLabel)
+                        .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(on ? SnagDesignSystem.activePillBackground : Color(white: 0.14))
+                        .background(on ? SnagDesignSystem.exploreCoralSolid : Color(white: 0.16))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, 18)
+        .padding(.top, 16)
     }
 
-    private var partyRow: some View {
+    private var partyRowCompact: some View {
         HStack {
-            Text("PARTY SIZE")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                .tracking(0.9)
+            Text("Guests")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
             Spacer()
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 ForEach(ExplorePartySegment.allCases) { seg in
                     let on = vm.explorePartySegment == seg
                     Button {
@@ -120,28 +129,18 @@ struct ExploreView: View {
                         Task { await vm.loadResults() }
                     } label: {
                         Text(seg.shortLabel)
-                            .font(.system(size: 13, weight: on ? .bold : .medium))
-                            .foregroundColor(on ? .white : SnagDesignSystem.darkTextMuted)
-                            .frame(minWidth: 36, minHeight: 36)
-                            .background(
-                                Group {
-                                    if on {
-                                        Circle().fill(Color(white: 0.22))
-                                    } else {
-                                        Color.clear
-                                    }
-                                }
-                            )
+                            .font(.system(size: 12, weight: on ? .bold : .medium))
+                            .foregroundColor(on ? .white : SnagDesignSystem.exploreSecondaryLabel)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(on ? Color(white: 0.22) : Color(white: 0.12))
+                            .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(Color(white: 0.12))
-            .clipShape(Capsule())
         }
-        .padding(.top, 16)
+        .padding(.top, 12)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -150,253 +149,480 @@ struct ExploreView: View {
             Text(message)
                 .font(.system(size: 13))
         }
-        .foregroundColor(SnagDesignSystem.exploreRed)
+        .foregroundColor(SnagDesignSystem.exploreCoralSolid)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SnagDesignSystem.exploreRed.opacity(0.12))
+        .background(SnagDesignSystem.exploreCoralSolid.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    // MARK: - Accordions
+    // MARK: - Tonight's Highlights (hero)
 
-    private var bucketsBlock: some View {
-        VStack(alignment: .leading, spacing: 14) {
+    private var tonightHighlightsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Tonight's Highlights")
+                    .font(.system(size: 22, weight: .bold, design: .serif))
+                    .foregroundColor(.white)
+                Spacer()
+                Text("LIVE DATA")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                    .tracking(0.8)
+            }
+
             if vm.isLoading && vm.rankedResults.isEmpty {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .tint(SnagDesignSystem.exploreCoral)
-                    Text("Loading tables…")
-                        .font(.system(size: 14))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 32)
-            } else if vm.hasSearched && vm.rankedResults.isEmpty && !vm.isLoading {
-                Text("No tables for these filters. Try another day or party size.")
-                    .font(.system(size: 14))
-                    .foregroundColor(SnagDesignSystem.darkTextMuted)
-                    .padding(.vertical, 24)
+                ProgressView()
+                    .tint(SnagDesignSystem.exploreCoralSolid)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+            } else if let hero = highlightDrop {
+                heroCard(hero)
             } else {
-                ForEach(ExploreTimeBucket.allCases) { bucket in
-                    bucketSection(bucket)
-                }
+                Text("No featured tables for this window yet.")
+                    .font(.system(size: 14))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                    .padding(.vertical, 20)
             }
         }
     }
 
-    private func bucketSection(_ bucket: ExploreTimeBucket) -> some View {
-        let expanded = expandedBuckets.contains(bucket)
-        let active = ExploreTimeBucket.isActiveNow(bucket)
-        let drops = vm.exploreDrops(in: bucket)
-
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 0) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(expanded && active ? SnagDesignSystem.exploreCoral : Color.clear)
-                    .frame(width: 3)
-                    .padding(.vertical, expanded ? 0 : 2)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.22)) {
-                            if expanded { expandedBuckets.remove(bucket) } else { expandedBuckets.insert(bucket) }
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: bucket.headerIcon)
-                                .font(.system(size: 16))
-                                .foregroundColor(headerIconColor(expanded: expanded, active: active))
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(bucket.title)
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(headerTitleColor(expanded: expanded, active: active))
-                                    if expanded && active {
-                                        Text("• ACTIVE")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(SnagDesignSystem.exploreCoral)
-                                    }
-                                }
-                                Text(bucket.timeRangeLabel)
-                                    .font(.system(size: 12))
-                                    .foregroundColor(headerSubtitleColor(expanded: expanded, active: active))
-                            }
-                            Spacer()
-                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        }
-                        .padding(.vertical, 12)
-                        .padding(.leading, 10)
-                        .padding(.trailing, 4)
-                    }
-                    .buttonStyle(.plain)
-
-                    if expanded {
-                        if drops.isEmpty {
-                            Text("Nothing in this time window.")
-                                .font(.system(size: 13))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                                .padding(.leading, 10)
-                                .padding(.bottom, 12)
-                        } else {
-                            VStack(spacing: 10) {
-                                ForEach(drops) { drop in
-                                    exploreCard(drop)
-                                }
-                            }
-                            .padding(.leading, 10)
-                            .padding(.bottom, 14)
-                        }
-                    }
-                }
-            }
-        }
-        .background(Color(white: 0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    private var highlightDrop: Drop? {
+        vm.rankedResults.first
     }
 
-    private func headerIconColor(expanded: Bool, active: Bool) -> Color {
-        if expanded && active { return SnagDesignSystem.exploreCoral }
-        return SnagDesignSystem.darkTextMuted
-    }
-
-    private func headerTitleColor(expanded: Bool, active: Bool) -> Color {
-        if expanded && active { return SnagDesignSystem.exploreCoral.opacity(0.95) }
-        return SnagDesignSystem.darkTextSecondary
-    }
-
-    private func headerSubtitleColor(expanded: Bool, active: Bool) -> Color {
-        if expanded && active { return SnagDesignSystem.exploreCoral.opacity(0.65) }
-        return SnagDesignSystem.darkTextMuted
-    }
-
-    // MARK: - Venue card
-
-    private func exploreCard(_ drop: Drop) -> some View {
-        let canSnag = drop.exploreCanSnag
+    private func heroCard(_ drop: Drop) -> some View {
         let url = resyURL(for: drop)
+        return Button {
+            if let url { UIApplication.shared.open(url) }
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    heroImage(drop)
+                        .frame(height: 200)
+                        .clipped()
 
-        return HStack(alignment: .center, spacing: 12) {
-            ZStack(alignment: .topLeading) {
-                Group {
-                    if let s = drop.imageUrl, let u = URL(string: s) {
-                        CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .darkCard) {
-                            Color(white: 0.2)
+                    LinearGradient(
+                        colors: [.black.opacity(0.1), .black.opacity(0.75)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 200)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            if heroShowBestTonight(drop) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "flame.fill")
+                                        .font(.system(size: 11))
+                                    Text("BEST TONIGHT")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .tracking(0.4)
+                                }
+                                .foregroundColor(Color(red: 0.15, green: 0.12, blue: 0.11))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(SnagDesignSystem.exploreCoral.opacity(0.95))
+                                .clipShape(Capsule())
+                            }
+                            Text(habitPillText(for: drop))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: Capsule())
                         }
-                    } else {
-                        Color(white: 0.2)
                     }
+                    .padding(12)
                 }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-                if drop.exploreShowDot == true {
-                    Circle()
-                        .fill(SnagDesignSystem.exploreRed)
-                        .frame(width: 7, height: 7)
-                        .offset(x: 2, y: 2)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(drop.name)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 22, weight: .bold, design: .serif))
                         .foregroundColor(.white)
-                        .lineLimit(1)
-                    if let pill = venuePill(for: drop) {
-                        Text(pill)
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(SnagDesignSystem.exploreCoral)
-                            .tracking(0.4)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .overlay(
-                                Capsule()
-                                    .stroke(SnagDesignSystem.exploreCoral.opacity(0.55), lineWidth: 1)
-                            )
-                            .lineLimit(1)
+                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 12))
+                        Text(heroMetaLine(for: drop))
+                            .font(.system(size: 13))
                     }
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
                 }
-                Text(exploreSubtitle(drop))
-                    .font(.system(size: 11))
-                    .foregroundColor(SnagDesignSystem.darkTextMuted)
-                    .lineLimit(2)
+                .padding(.top, 12)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .disabled(url == nil)
+        .opacity(url == nil ? 0.85 : 1)
+    }
 
-            VStack(alignment: .trailing, spacing: 8) {
-                if let tag = drop.exploreStatusTag, !tag.isEmpty {
-                    Text(tag)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(SnagDesignSystem.darkTextSecondary)
+    @ViewBuilder
+    private func heroImage(_ drop: Drop) -> some View {
+        if let s = drop.imageUrl, let u = URL(string: s) {
+            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
+                Color(white: 0.18)
+            }
+        } else {
+            Color(white: 0.18)
+        }
+    }
+
+    private func heroShowBestTonight(_ drop: Drop) -> Bool {
+        if drop.feedHot == true { return true }
+        if let s = drop.snagScore, s >= 85 { return true }
+        return false
+    }
+
+    private func habitPillText(for drop: Drop) -> String {
+        if let v = drop.velocityPrimaryLabel, !v.isEmpty, v.count <= 44 { return v }
+        if let s = drop.metricsSubtitle, !s.isEmpty, s.count <= 44 { return s }
+        if let h = drop.heroDescription, !h.isEmpty {
+            let t = h.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.count <= 44 { return t }
+            return String(t.prefix(41)) + "…"
+        }
+        return "Fresh availability"
+    }
+
+    private func heroMetaLine(for drop: Drop) -> String {
+        let table = tablePhrase
+        let time = formatFirstSlotTime(drop)
+        let area = (drop.neighborhood ?? drop.location ?? "NYC").trimmingCharacters(in: .whitespaces)
+        if time.isEmpty { return "\(table) • \(area)" }
+        return "\(table) • \(time) • \(area)"
+    }
+
+    private var tablePhrase: String {
+        switch vm.explorePartySegment {
+        case .two: return "Table for 2"
+        case .four: return "Table for 4"
+        case .anyParty: return "Table"
+        }
+    }
+
+    // MARK: - Likely to drop
+
+    @ViewBuilder
+    private var likelyToDropCard: some View {
+        if let venue = vm.likelyToOpen.first {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 12))
+                    Text("LIKELY TO DROP")
+                        .font(.system(size: 10, weight: .bold))
                         .tracking(0.6)
                 }
-                if canSnag {
+                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+
+                Text(venue.name)
+                    .font(.system(size: 18, weight: .bold, design: .serif))
+                    .foregroundColor(.white)
+
+                Text(likelySubtext(venue))
+                    .font(.system(size: 13))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    TimelineView(.animation(minimumInterval: 0.8)) { _ in
+                        Text("Scanning…")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel.opacity(0.9))
+                    }
+                    Spacer()
                     Button {
-                        if let url { UIApplication.shared.open(url) }
+                        savedVM.toggleWatch(venue.name)
                     } label: {
-                        Text("SNAG")
+                        Text(savedVM.isWatched(venue.name) ? "Watching" : "Watch")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(SnagDesignSystem.exploreCoral)
+                            .background(SnagDesignSystem.exploreCoralSolid)
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .disabled(url == nil)
-                    .opacity(url == nil ? 0.45 : 1)
-                } else {
-                    Text("TAKEN")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .tracking(0.8)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(white: 0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private func likelySubtext(_ venue: LikelyToOpenVenue) -> String {
+        if let r = venue.reason, !r.isEmpty { return r }
+        if let d = venue.lastSeenDescription, !d.isEmpty { return d }
+        return "Pattern watch — we’ll surface when slots appear."
+    }
+
+    // MARK: - Hot areas
+
+    private var hotAreasCard: some View {
+        let areas = topNeighborhoods
+        return Group {
+            if !areas.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 12))
+                        Text("HOT AREAS")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(0.6)
+                    }
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+
+                    HStack(spacing: 10) {
+                        ForEach(areas, id: \.self) { n in
+                            Text(n.uppercased())
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color(white: 0.16))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(white: 0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+        }
+    }
+
+    private var topNeighborhoods: [String] {
+        let names = vm.rankedResults.compactMap { $0.neighborhood?.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let counts = Dictionary(grouping: names, by: { $0 }).mapValues(\.count)
+        return counts.sorted { $0.value > $1.value }.prefix(2).map(\.key)
+    }
+
+    // MARK: - Grid chrome
+
+    private var gridChrome: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 0) {
+                ForEach(ExploreGridTimeTab.allCases, id: \.self) { tab in
+                    let on = gridTimeTab == tab
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { gridTimeTab = tab }
+                    } label: {
+                        VStack(spacing: 6) {
+                            Text(tab.title)
+                                .font(.system(size: 11, weight: on ? .bold : .semibold))
+                                .foregroundColor(on ? .white : SnagDesignSystem.exploreSecondaryLabel)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Rectangle()
+                                .fill(on ? SnagDesignSystem.exploreCoralSolid : Color.clear)
+                                .frame(height: 2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            HStack {
+                Spacer()
+                Text("RANKED BY HYPE")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                    .tracking(0.6)
+                Button {
+                    hypeSortReversed.toggle()
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var gridSection: some View {
+        let items = gridDrops
+        if items.isEmpty, vm.rankedResults.count > 1 {
+            Text("No tables in this time band. Try the other tab or another day.")
+                .font(.system(size: 13))
+                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+        } else if items.isEmpty {
+            EmptyView()
+        } else {
+            LazyVGrid(columns: gridColumns, spacing: 16) {
+                ForEach(items) { drop in
+                    exploreGridCell(drop)
                 }
             }
         }
-        .padding(12)
-        .background(Color(white: 0.14))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func venuePill(for drop: Drop) -> String? {
-        if let p = drop.exploreVenuePill, !p.isEmpty { return p }
-        if let c = drop.crownBadgeLabel, c.count <= 18 { return c.uppercased() }
-        return nil
+    private var gridDrops: [Drop] {
+        let heroId = highlightDrop?.id
+        var list = vm.rankedResults.filter { $0.id != heroId }
+        list = list.filter { dropMatchesGridTab($0, tab: gridTimeTab) }
+        if hypeSortReversed {
+            list.reverse()
+        }
+        return list
     }
 
-    private func exploreSubtitle(_ drop: Drop) -> String {
-        let day = exploreDayWord(for: drop)
-        let time = formatFirstSlotTime(drop)
-        let party = partyGuestsLabel
-        if time.isEmpty { return "\(day) • \(party)" }
-        return "\(day) \(time) • \(party)"
+    private func exploreGridCell(_ drop: Drop) -> some View {
+        let url = resyURL(for: drop)
+        return Button {
+            if let url { UIApplication.shared.open(url) }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topTrailing) {
+                    gridThumb(drop)
+                        .frame(height: 148)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    if let badge = gridImageBadge(drop) {
+                        Text(badge)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(Capsule())
+                            .padding(8)
+                    }
+
+                    VStack {
+                        Spacer()
+                        Text(gridTimeOverlay(drop))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.bottom, 8)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+
+                Text(drop.name)
+                    .font(.system(size: 15, weight: .bold, design: .serif))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+
+                Text((drop.neighborhood ?? drop.location ?? "").uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                    .tracking(0.4)
+                    .lineLimit(1)
+
+                HStack(alignment: .top, spacing: 4) {
+                    Image(systemName: insightIcon(for: drop))
+                        .font(.system(size: 10))
+                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                        .padding(.top, 2)
+                    Text(insightLine(for: drop))
+                        .font(.system(size: 10))
+                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(url == nil)
+        .opacity(url == nil ? 0.7 : 1)
     }
 
-    private var partyGuestsLabel: String {
-        switch vm.explorePartySegment {
-        case .two: return "2 GUESTS"
-        case .four: return "4 GUESTS"
-        case .anyParty: return "ANY GUESTS"
+    @ViewBuilder
+    private func gridThumb(_ drop: Drop) -> some View {
+        if let s = drop.imageUrl, let u = URL(string: s) {
+            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .darkCard) {
+                Color(white: 0.2)
+            }
+        } else {
+            Color(white: 0.2)
         }
     }
 
-    private func exploreDayWord(for drop: Drop) -> String {
-        let ds = drop.dateStr ?? drop.slots.first?.dateStr ?? ""
-        let parts = ds.split(separator: "-")
-        guard parts.count == 3,
-              let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]) else { return "TONIGHT" }
-        var comps = DateComponents()
-        comps.year = y
-        comps.month = m
-        comps.day = d
-        let cal = Calendar.current
-        guard let date = cal.date(from: comps) else { return "TONIGHT" }
-        if cal.isDateInToday(date) { return "TONIGHT" }
-        if cal.isDateInTomorrow(date) { return "TOMORROW" }
-        return "SOON"
+    private func gridImageBadge(_ drop: Drop) -> String? {
+        if let h = hypeBadgeText(drop) { return h }
+        if drop.brandNewDrop == true { return "New Drop" }
+        if drop.exploreStatusTag == "JUST DROPPED" { return "New Drop" }
+        if let t = drop.exploreStatusTag, !t.isEmpty { return t }
+        if drop.velocityUrgent == true { return "Fast Drop" }
+        return nil
+    }
+
+    private func hypeBadgeText(_ drop: Drop) -> String? {
+        if let s = drop.snagScore { return "\(s)% Hype" }
+        if let r = drop.rarityPoints, r > 0 { return "\(r)% Hype" }
+        return nil
+    }
+
+    private func gridTimeOverlay(_ drop: Drop) -> String {
+        let t = formatFirstSlotTime(drop)
+        let seats = seatsLabelShort
+        if t.isEmpty { return seats }
+        return "\(t) • \(seats)"
+    }
+
+    private var seatsLabelShort: String {
+        switch vm.explorePartySegment {
+        case .two: return "2 Seats"
+        case .four: return "4 Seats"
+        case .anyParty: return "Open seats"
+        }
+    }
+
+    private func insightIcon(for drop: Drop) -> String {
+        if (drop.ratingAverage ?? 0) >= 4.5 { return "star.fill" }
+        if drop.velocityPrimaryLabel != nil { return "clock.fill" }
+        return "fork.knife"
+    }
+
+    private func insightLine(for drop: Drop) -> String {
+        let sorted = savedVM.watchedVenues.sorted()
+        if !sorted.isEmpty {
+            let idx = abs(drop.id.hashValue) % sorted.count
+            let w = sorted[idx]
+            return "Similar to your \(w.capitalized) watch"
+        }
+        if let m = drop.topOpportunitySubtitleLine, !m.isEmpty, m.count < 52 { return m }
+        if let r = drop.rareDropDetailLine, !r.isEmpty, r.count < 52 { return r }
+        if (drop.ratingAverage ?? 0) >= 4.5 { return "Highly rated" }
+        return "Prime-time demand"
+    }
+
+    // MARK: - Time tab + slots
+
+    private func dropMatchesGridTab(_ drop: Drop, tab: ExploreGridTimeTab) -> Bool {
+        guard let mins = primarySlotMinutes(drop) else { return tab == .evening }
+        let eveningStart = 17 * 60 + 30
+        let eveningEnd = 21 * 60 + 30
+        let lateStart = 21 * 60 + 45
+        switch tab {
+        case .evening:
+            return mins >= eveningStart && mins <= eveningEnd
+        case .lateNight:
+            return mins >= lateStart || mins < eveningStart
+        }
+    }
+
+    private func primarySlotMinutes(_ drop: Drop) -> Int? {
+        guard let t = drop.slots.first?.time, !t.isEmpty else { return nil }
+        let parts = t.split(separator: ":")
+        guard let h = parts.first.flatMap({ Int($0) }) else { return nil }
+        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
+        return h * 60 + m
     }
 
     private func formatFirstSlotTime(_ drop: Drop) -> String {
@@ -414,40 +640,18 @@ struct ExploreView: View {
         let s = drop.resyUrl ?? drop.slots.first?.resyUrl ?? ""
         return URL(string: s)
     }
+}
 
-    // MARK: - FAB
+// MARK: - Grid time tabs
 
-    private var alertsFAB: some View {
-        Button {
-            showAlertsSheet = true
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-                    .background(SnagDesignSystem.exploreCoral)
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 4)
+private enum ExploreGridTimeTab: CaseIterable {
+    case evening
+    case lateNight
 
-                if alertsVM.unreadCount > 0 {
-                    Circle()
-                        .fill(SnagDesignSystem.exploreRed)
-                        .frame(width: 10, height: 10)
-                        .offset(x: 4, y: -4)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Alerts")
-    }
-
-    private func syncExpandedBuckets() {
-        for b in ExploreTimeBucket.allCases where ExploreTimeBucket.isActiveNow(b) {
-            expandedBuckets.insert(b)
-        }
-        if expandedBuckets.isEmpty {
-            expandedBuckets = [.evening]
+    var title: String {
+        switch self {
+        case .evening: return "EVENING (5:30-9:30)"
+        case .lateNight: return "LATE NIGHT (9:45+)"
         }
     }
 }

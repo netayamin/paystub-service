@@ -32,9 +32,9 @@ enum ExploreDatePreset: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .today: return "TODAY"
-        case .tomorrow: return "TOMORROW"
-        case .weekend: return "THIS WEEKEND"
+        case .today: return "Today"
+        case .tomorrow: return "Tomorrow"
+        case .weekend: return "Weekend"
         }
     }
 }
