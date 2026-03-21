@@ -21,23 +21,25 @@ struct ExploreView: View {
             VStack(alignment: .leading, spacing: 0) {
                 exploreDateStrip
                     .padding(.top, 8)
-                if let err = vm.error {
-                    errorBanner(err).padding(.top, 12)
+                VStack(alignment: .leading, spacing: 0) {
+                    if let err = vm.error {
+                        errorBanner(err).padding(.top, 12)
+                    }
+                    tonightHighlightsSection
+                        .padding(.top, 22)
+                    likelyToDropCard
+                        .padding(.top, 14)
+                    hotAreasCard
+                        .padding(.top, 12)
+                    gridChrome
+                        .padding(.top, 20)
+                    gridSection
+                        .padding(.top, 16)
+                        .padding(.horizontal, 4)
+                    Color.clear.frame(height: 88)
                 }
-                tonightHighlightsSection
-                    .padding(.top, 22)
-                likelyToDropCard
-                    .padding(.top, 14)
-                hotAreasCard
-                    .padding(.top, 12)
-                gridChrome
-                    .padding(.top, 20)
-                gridSection
-                    .padding(.top, 16)
-                    .padding(.horizontal, 4)
-                Color.clear.frame(height: 88)
+                .padding(.horizontal, 18)
             }
-            .padding(.horizontal, 18)
         }
         .background(SnagDesignSystem.exploreCanvas.ignoresSafeArea())
         .onAppear {
@@ -63,9 +65,19 @@ struct ExploreView: View {
                     exploreDateChip(opt)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 18)
         }
         .padding(.top, 4)
+        .padding(.bottom, 14)
+        .background(SnagDesignSystem.exploreCanvas)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .frame(height: 1)
+        }
+        .compositingGroup()
+        .shadow(color: Color.black.opacity(0.55), radius: 16, x: 0, y: 10)
     }
 
     private func exploreDateChip(_ opt: (dateStr: String, monthAbbrev: String, dayNum: String)) -> some View {

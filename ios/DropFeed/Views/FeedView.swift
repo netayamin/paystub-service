@@ -27,6 +27,7 @@ struct FeedView: View {
 
     @State private var showFilterSheet = false
     @State private var signalStreamFilter: SignalStreamFilter = .all
+    @State private var marketLeaderCarouselIndex: Int = 0
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
@@ -241,25 +242,65 @@ struct FeedView: View {
         .background(SnagDesignSystem.darkCanvas)
     }
 
+    /// Up to six featured venues for the market-leader carousel (falls back to #1 drop).
+    private var marketLeaderCarouselDrops: [Drop] {
+        let top = Array(vm.topDrops.prefix(6))
+        if !top.isEmpty { return top }
+        if let h = vm.heroCard { return [h] }
+        return []
+    }
+
+    private var marketLeaderFocusedDrop: Drop? {
+        let arr = marketLeaderCarouselDrops
+        guard !arr.isEmpty else { return nil }
+        let i = min(max(0, marketLeaderCarouselIndex), arr.count - 1)
+        return arr[i]
+    }
+
     private var marketLeaderHeroSection: some View {
         Group {
-            if let hero = vm.heroCard {
+            if let focused = marketLeaderFocusedDrop {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(marketLeaderLeftCaption(hero))
+                        Text(marketLeaderLeftCaption(focused))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(SnagDesignSystem.darkTextMuted)
                             .tracking(0.85)
                         Spacer()
-                        Text(marketLeaderRightCaption(hero))
+                        Text(marketLeaderRightCaption(focused))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(SnagDesignSystem.darkTextMuted)
                             .tracking(0.85)
                     }
                     .padding(.horizontal, 18)
 
-                    MarketLeaderHeroCard(drop: hero)
+                    TabView(selection: $marketLeaderCarouselIndex) {
+                        ForEach(Array(marketLeaderCarouselDrops.enumerated()), id: \.element.id) { idx, drop in
+                            MarketLeaderHeroCard(drop: drop)
+                                .tag(idx)
+                        }
+                    }
+                    .frame(height: 232)
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .padding(.horizontal, 18)
+                    .onChange(of: marketLeaderCarouselDrops.count) { _, newCount in
+                        if marketLeaderCarouselIndex >= newCount {
+                            marketLeaderCarouselIndex = max(0, newCount - 1)
+                        }
+                    }
+
+                    if marketLeaderCarouselDrops.count > 1 {
+                        HStack(spacing: 6) {
+                            ForEach(Array(marketLeaderCarouselDrops.enumerated()), id: \.element.id) { idx, _ in
+                                Circle()
+                                    .fill(idx == marketLeaderCarouselIndex ? Color.white : Color.white.opacity(0.28))
+                                    .frame(width: 6, height: 6)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, 18)
+                        .padding(.top, 6)
+                    }
                 }
             }
         }
