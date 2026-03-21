@@ -329,36 +329,7 @@ struct FeedView: View {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("FOR YOUR NEXT MEAL")
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                                .tracking(0.85)
-                            Text(mealSectionTitle)
-                                .font(.system(size: 22, weight: .bold, design: .serif))
-                                .foregroundColor(.white)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        HStack(spacing: 8) {
-                            ForEach([2, 4], id: \.self) { size in
-                                Button {
-                                    mockFeedPartySizeTap(size)
-                                } label: {
-                                    Text("\(size)")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(vm.selectedPartySizes.contains(size) ? .white : SnagDesignSystem.darkTextMuted)
-                                        .frame(width: 34, height: 30)
-                                        .background(vm.selectedPartySizes.contains(size) ? SnagDesignSystem.coral : Color(white: 0.12))
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 18)
-
-                    VStack(spacing: 12) {
+                   VStack(spacing: 12) {
                         ForEach(mealWindowDrops, id: \.id) { drop in
                             MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
                         }
@@ -1267,22 +1238,21 @@ private struct LiveDropsMarqueeTrain: View {
     }
 }
 
-/// Thin urgency meter without a `GeometryReader` in the main `VStack` (avoids stealing height in scroll layouts).
+/// Thin urgency meter — no `GeometryReader` (avoids flex/overflow glitches inside `ScrollView` rows).
 private struct FeedClaimUrgencyBar: View {
     let progress: CGFloat
 
     var body: some View {
-        Capsule()
-            .fill(Color.white.opacity(0.14))
-            .frame(height: 2)
-            .overlay(alignment: .leading) {
-                GeometryReader { geo in
-                    Capsule()
-                        .fill(SnagDesignSystem.coral)
-                        .frame(width: max(6, geo.size.width * progress), height: 2)
-                }
-            }
-            .clipShape(Capsule())
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.white.opacity(0.14))
+            Capsule()
+                .fill(SnagDesignSystem.coral)
+                .frame(maxWidth: .infinity)
+                .scaleEffect(x: max(0.06, min(1, progress)), y: 1, anchor: .leading)
+        }
+        .frame(height: 2)
+        .clipShape(Capsule())
     }
 }
 
@@ -1340,7 +1310,8 @@ private struct MarketLeaderHeroCard: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack(alignment: .bottom) {
+            // Full-bleed photo (fixed bounds — never participates in text measurement).
             Group {
                 if let url = imageURL {
                     CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
@@ -1358,25 +1329,30 @@ private struct MarketLeaderHeroCard: View {
                     )
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: nil, height: Self.cardHeight)
+            .frame(maxWidth: .infinity)
             .clipped()
 
+            // Readable scrim: clear through ~upper half, then solid black toward bottom.
             LinearGradient(
                 stops: [
                     .init(color: .black.opacity(0.0), location: 0.0),
-                    .init(color: .black.opacity(0.0), location: 0.5),
-                    .init(color: .black.opacity(0.4), location: 0.62),
-                    .init(color: .black.opacity(0.78), location: 0.82),
-                    .init(color: .black.opacity(0.94), location: 1.0)
+                    .init(color: .black.opacity(0.0), location: 0.48),
+                    .init(color: .black.opacity(0.42), location: 0.52),
+                    .init(color: .black.opacity(0.72), location: 0.7),
+                    .init(color: .black.opacity(0.9), location: 0.88),
+                    .init(color: .black.opacity(0.96), location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: nil, height: Self.cardHeight)
+            .frame(maxWidth: .infinity)
             .allowsHitTesting(false)
 
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
+            // Top badges — overlay only; does not squeeze the bottom stack.
+            VStack {
+                HStack(alignment: .top, spacing: 0) {
                     if showVelocityBadge {
                         Text("HIGH VELOCITY")
                             .font(.system(size: 9, weight: .heavy))
@@ -1394,50 +1370,54 @@ private struct MarketLeaderHeroCard: View {
                 }
                 .padding(.top, 10)
                 .padding(.horizontal, 12)
-
                 Spacer(minLength: 0)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(neighborhoodCaps)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .tracking(0.55)
-                    Text(drop.name)
-                        .font(.system(size: 22, weight: .bold, design: .serif))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-                        .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 2)
-
-                    FeedClaimUrgencyBar(progress: feedClaimUrgencyProgress(for: drop))
-
-                    Button(action: executeClaim) {
-                        Text(feedHeroBookingCTALabel(for: drop))
-                            .font(.system(size: 12, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.coral)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.78)
-                            .tracking(0.35)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 6)
-                            .background(SnagDesignSystem.darkElevated)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
-                .padding(.top, 4)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            // Footer pinned to bottom — same baseline for every card in the carousel.
+            VStack(alignment: .leading, spacing: 5) {
+                Text(neighborhoodCaps)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.darkTextMuted)
+                    .tracking(0.55)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Text(drop.name)
+                    .font(.system(size: 20, weight: .bold, design: .serif))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.72)
+                    .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 2)
+
+                FeedClaimUrgencyBar(progress: feedClaimUrgencyProgress(for: drop))
+
+                Button(action: executeClaim) {
+                    Text(feedHeroBookingCTALabel(for: drop))
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(SnagDesignSystem.coral)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                        .tracking(0.3)
+                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .center)
+                        .padding(.horizontal, 6)
+                        .background(SnagDesignSystem.darkElevated)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(height: Self.cardHeight)
+        .frame(maxWidth: .infinity)
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
