@@ -19,32 +19,15 @@ struct TopOpportunityCardView: View {
     }
     
     private var isJustReleased: Bool {
-        guard let iso = drop.detectedAt ?? drop.createdAt else { return false }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = formatter.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return false }
-        return d.timeIntervalSinceNow > -600  // within last 10 mins
+        drop.showNewBadge == true
     }
     
-    /// Web-aligned: "Just now" (0–5 min), "Last 30 mins", "Last hour", or nil after 60 min
     private var freshnessLabel: String? {
-        guard let iso = drop.detectedAt ?? drop.createdAt else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = formatter.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return nil }
-        let sec = Int(-d.timeIntervalSinceNow)
-        if sec < 5 * 60 { return "Just now" }
-        if sec < 30 * 60 { return "Last 30 mins" }
-        if sec < 60 * 60 { return "Last hour" }
-        return nil
+        drop.topOpportunityFreshnessBadge
     }
     
     private var demandLabel: String {
-        if drop.feedHot == true { return "HIGH DEMAND" }
-        return FeedMetricLabels.demandLevel(
-            rarityScore: drop.rarityScore,
-            availabilityRate: drop.availabilityRate14d
-        ).uppercased()
+        drop.topOpportunityDemandLabel ?? "POPULAR"
     }
     
     var body: some View {
@@ -211,21 +194,7 @@ struct TopOpportunityCardView: View {
     }
     
     private var subtitleSuffix: String {
-        var parts: [String] = []
-        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) {
-            parts.append("Tables ~\(v)")
-        }
-        if let d = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) {
-            parts.append(d)
-        }
-        if let t = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
-            parts.append(t)
-        }
-        if !parts.isEmpty {
-            return parts.joined(separator: " · ")
-        }
-        if (drop.ratingCount ?? 0) > 500 || drop.feedHot == true { return "Usually fully booked" }
-        return FeedMetricLabels.rarityTier(score: drop.rarityScore)
+        drop.topOpportunitySubtitleLine ?? "Popular"
     }
     
     /// Parses slot time (e.g. "19:30" or "7:30") and returns "7:30 PM". Fallback "Reserve" if missing/invalid.

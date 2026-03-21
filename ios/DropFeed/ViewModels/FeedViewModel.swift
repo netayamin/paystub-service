@@ -52,7 +52,7 @@ final class FeedViewModel: ObservableObject {
     }
 
     var rareDrops: [Drop] {
-        drops.filter { $0.scarcityTier == .rare || ($0.rarityScore ?? 0) > 0.65 }
+        drops.filter { $0.feedsRareCarousel == true }
     }
 
     var trendingDrops: [Drop] {
@@ -62,31 +62,25 @@ final class FeedViewModel: ObservableObject {
     /// Number of curated elite (hotspot) venues currently open.
     var eliteDropsCount: Int { drops.filter { $0.feedHot == true }.count }
     /// Number of truly rare venues (rarity > 70) currently open.
-    var rareDropsCount:  Int { drops.filter { ($0.rarityScore ?? 0) > 70 }.count }
+    var rareDropsCount:  Int { drops.filter { $0.feedsRareCarousel == true }.count }
     /// Number of venues whose availability is trending up vs last 14 days.
     var trendingCount:   Int { drops.filter { ($0.trendPct ?? 0) > 10 }.count }
 
     /// Venues from likelyToOpen that have a drop likelihood for today specifically
     var likelyTodayVenues: [LikelyToOpenVenue] {
-        likelyToOpen.filter { ($0.rarityScore ?? 0) > 0.5 }.prefix(5).map { $0 }
+        likelyToOpen.filter { ($0.probability ?? 0) >= 50 }.prefix(5).map { $0 }
     }
 
-    /// likelyToOpen sorted by probability descending — drives the Drop Forecast section.
-    /// Sorted by backend open-forecast score (1–99); falls back to availability_rate_14d when needed.
+    /// likelyToOpen sorted by backend forecast score (1–99) descending.
     var forecastVenues: [LikelyToOpenVenue] {
         likelyToOpen
-            .filter { $0.probability != nil || $0.availabilityRate14d != nil }
-            .sorted {
-                let a = $0.probability ?? Int(round(($0.availabilityRate14d ?? 0) * 100))
-                let b = $1.probability ?? Int(round(($1.availabilityRate14d ?? 0) * 100))
-                return a > b
-            }
+            .filter { $0.probability != nil }
+            .sorted { ($0.probability ?? 0) > ($1.probability ?? 0) }
     }
 
-    /// Live drops where tables disappear quickly — used for urgency callouts.
+    /// Live drops where tables disappear quickly — backend `speed_tier` == fast.
     var fastVanishDrops: [Drop] {
-        drops.filter { ($0.avgDropDurationSeconds ?? Double.infinity) < 120 }
-             .sorted { ($0.avgDropDurationSeconds ?? 999) < ($1.avgDropDurationSeconds ?? 999) }
+        drops.filter { $0.speedTier == "fast" }
     }
 
     /// Neighborhoods with active drop counts — fully derived from live drops, no hardcoding.

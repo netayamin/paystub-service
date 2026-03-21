@@ -971,12 +971,6 @@ private struct VelocityFeedSection: View {
 private struct VelocityDropCard: View {
     let drop: Drop
 
-    /// From API only — no default duration.
-    private var typicalSlotOpenSeconds: Int? {
-        guard let avg = drop.avgDropDurationSeconds, avg > 0 else { return nil }
-        return Int(avg.rounded())
-    }
-
     private var partySubtitle: String {
         if let n = drop.partySizesAvailable.sorted().first {
             return "Table · \(n) guests"
@@ -984,7 +978,7 @@ private struct VelocityDropCard: View {
         return "Table available"
     }
 
-    private var urgent: Bool { drop.secondsSinceDetected < 600 }
+    private var urgent: Bool { drop.velocityUrgent == true }
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -997,38 +991,7 @@ private struct VelocityDropCard: View {
         UIApplication.shared.open(url)
     }
 
-    /// Seconds left in the estimated window, only when we have real `avg_drop_duration_seconds` and elapsed < window.
-    private func remainingCountdownSeconds() -> Int? {
-        guard let window = typicalSlotOpenSeconds else { return nil }
-        let left = window - drop.secondsSinceDetected
-        return left > 0 ? left : nil
-    }
-
-    @ViewBuilder
-    private func urgencyPrimaryLine(countdownSeconds: Int?) -> some View {
-        if let s = countdownSeconds, s > 0 {
-            let mm = s / 60
-            let ss = s % 60
-            Text(String(format: "%02d:%02d", mm, ss))
-                .font(.system(size: 20, weight: .black, design: .monospaced))
-                .monospacedDigit()
-                .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
-        } else if typicalSlotOpenSeconds != nil {
-            Text("Grab it now")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundColor(SnagDesignSystem.epicureanRed)
-        } else if let fresh = drop.freshnessLabel {
-            Text(fresh)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
-        } else {
-            Text("Live")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundColor(SnagDesignSystem.textDark)
-        }
-    }
-
-    private func cardShell(countdownSeconds: Int?) -> some View {
+    private func cardShell() -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .heroMuted) {
@@ -1049,7 +1012,10 @@ private struct VelocityDropCard: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    urgencyPrimaryLine(countdownSeconds: countdownSeconds)
+                    Text(drop.velocityPrimaryLabel ?? "Live")
+                        .font(.system(size: 20, weight: .black, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
                     Spacer()
                 }
                 Text(drop.name)
@@ -1086,13 +1052,7 @@ private struct VelocityDropCard: View {
     }
 
     var body: some View {
-        if typicalSlotOpenSeconds != nil {
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                cardShell(countdownSeconds: remainingCountdownSeconds())
-            }
-        } else {
-            cardShell(countdownSeconds: nil)
-        }
+        cardShell()
     }
 }
 
@@ -1142,26 +1102,13 @@ private struct HottestOpeningCard: View {
         return "\(nb) · Live availability"
     }
 
-    /// Prefer `snag_score` from the API (same model as backend `_top_opportunity_score`). Fallback for older payloads.
     private var scoreValue: Int? {
-        if let s = drop.snagScore {
-            return min(99, max(1, s))
-        }
-        let r = drop.rarityScore ?? 0
-        let p = (drop.resyPopularityScore ?? 0) * 32
-        let cred = min(1.0, Double(drop.ratingCount ?? 0) / 250.0)
-        let ratingPart = ((drop.ratingAverage ?? 0) / 5.0) * 24
-        let rat = ratingPart * (cred > 0 ? cred : 0.45)
-        let hot: Double = (drop.feedHot == true || drop.isHotspot == true) ? 15 : 0
-        let raw = r * 0.32 + p + rat + hot
-        if raw < 0.75 && hot == 0 {
-            return nil
-        }
-        return min(99, max(1, Int(raw.rounded())))
+        guard let s = drop.snagScore else { return nil }
+        return min(99, max(1, s))
     }
 
     private var showExclusive: Bool {
-        drop.feedHot == true || (drop.rarityScore ?? 0) >= 65
+        drop.showExclusiveBadge == true
     }
 
     private func book() {
@@ -1323,7 +1270,9 @@ private struct InventoryPredictionRow: View {
     }
 
     private var statusTag: (String, Color) {
-        let p = venue.probability ?? 50
+        guard let p = venue.probability else {
+            return ("EMERGING", SnagDesignSystem.textMuted)
+        }
         switch p {
         case 80...: return ("ALMOST CERTAIN", SnagDesignSystem.mint)
         case 60..<80: return ("VERY LIKELY", Color(red: 0.92, green: 0.35, blue: 0.55))
@@ -1393,27 +1342,12 @@ private struct CrownJewelCard: View {
         return URL(string: s)
     }
 
-    private var rarityInt: Int { max(0, min(100, Int((drop.rarityScore ?? 0).rounded()))) }
     private var rarityBadge: String {
-        if drop.feedHot == true || rarityInt >= 88 { return "LEGENDARY" }
-        if rarityInt >= 70 || drop.scarcityTier == .rare { return "ULTRA RARE" }
-        if rarityInt >= 50 { return "RARE" }
-        return "HOT"
+        drop.crownBadgeLabel ?? "HOT"
     }
 
-    /// Subtitle from live-scan metrics (vanish speed, cadence, week trend).
     private var metricsSubtitle: String? {
-        var parts: [String] = []
-        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) {
-            parts.append("Gone in \(v)")
-        }
-        if let d = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) {
-            parts.append("Open \(d)")
-        }
-        if let t = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
-            parts.append(t)
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        drop.metricsSubtitle
     }
 
     private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
@@ -1604,23 +1538,17 @@ private struct TopOpportunitySnagRow: View {
         return fmt.string(from: date).uppercased()
     }
 
-    /// Primary metric line: rarity tier + score from rolling scan data.
-    private var rarityLine: String? {
-        if drop.rarityScore != nil, drop.rarityScore! > 0 {
-            return FeedMetricLabels.rarityHeadline(score: drop.rarityScore)
-        }
-        if let pop = drop.resyPopularityScore, pop > 0 {
-            let pct = Int(min(0.99, pop) * 100)
-            return "Demand \(pct)%"
-        }
-        return nil
+    private var primaryMetricLine: String? {
+        drop.rowPrimaryMetric
     }
 
     private var speedPair: (String, Color)? {
-        guard let sec = drop.avgDropDurationSeconds, sec > 0 else { return nil }
-        if sec < 180 { return ("FAST", SnagDesignSystem.mint) }
-        if sec < 900 { return ("MED", Color(red: 0.95, green: 0.75, blue: 0.22)) }
-        return ("SLOW", Color(red: 0.95, green: 0.75, blue: 0.22))
+        switch drop.speedTier {
+        case "fast": return ("FAST", SnagDesignSystem.mint)
+        case "med": return ("MED", Color(red: 0.95, green: 0.75, blue: 0.22))
+        case "slow": return ("SLOW", Color(red: 0.95, green: 0.75, blue: 0.22))
+        default: return nil
+        }
     }
 
     private var resyUrl: URL? {
@@ -1654,7 +1582,7 @@ private struct TopOpportunitySnagRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 10) {
-                    if let line = rarityLine {
+                    if let line = primaryMetricLine {
                         HStack(spacing: 4) {
                             Image(systemName: "chart.bar.fill")
                                 .font(.system(size: 11, weight: .bold))
@@ -1675,32 +1603,21 @@ private struct TopOpportunitySnagRow: View {
                                 .foregroundColor(sp.1)
                         }
                     }
-                    if let rc = drop.ratingCount, rc > 0 {
+                    if let rr = drop.ratingReviewsCompact, !rr.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
                                 .font(.system(size: 11))
                                 .foregroundColor(SnagDesignSystem.textMuted)
-                            Text(rc >= 1000 ? String(format: "%.1fk", Double(rc) / 1000.0) : "\(rc)")
+                            Text(rr)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(SnagDesignSystem.textMuted)
                         }
                     }
                 }
-                HStack(spacing: 8) {
-                    if let days = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) {
-                        Text(days)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(SnagDesignSystem.textMuted)
-                    }
-                    if let t = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
-                        Text(t)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(SnagDesignSystem.mint)
-                    } else if drop.trendPct != nil {
-                        Text(FeedMetricLabels.heatLabel(trendPct: drop.trendPct))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(SnagDesignSystem.textMuted)
-                    }
+                if let m2 = drop.metricsSecondaryCompact, !m2.isEmpty {
+                    Text(m2)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.textMuted)
                 }
             }
 
@@ -1753,23 +1670,12 @@ private struct LiveStreamRow: View {
         return m > 0 ? String(format: "%d:%02d", h12, m) : "\(h12):00"
     }
 
-    /// Lightning metric: historical vanish speed, else freshness since detected.
     private var velocityLabel: String {
-        if let d = drop.avgDropDurationSeconds, d > 0 {
-            if d < 60 { return "\(Int(d))S" }
-            return "\(Int(d / 60))M"
-        }
-        let s = drop.secondsSinceDetected
-        if s < 60 { return "\(s)S" }
-        return "\(s / 60)M"
+        drop.liveStreamVelocityBadge ?? "—"
     }
 
     private var fireCount: Int {
-        if drop.feedHot == true { return 3 }
-        let r = Int((drop.rarityScore ?? 0).rounded())
-        if r >= 75 { return 3 }
-        if r >= 45 { return 2 }
-        return 1
+        max(1, min(3, drop.flameCount ?? 1))
     }
 
     private var resyUrl: URL? {
@@ -1817,23 +1723,18 @@ private struct LiveStreamRow: View {
                         }
                     }
 
-                    if let rc = drop.ratingCount, rc > 0 {
+                    if let rr = drop.ratingReviewsCompact, !rr.isEmpty {
                         HStack(spacing: 3) {
                             Image(systemName: "star.fill")
                                 .font(.system(size: 11))
                                 .foregroundColor(palette.textTertiary)
-                            Text(rc > 999 ? String(format: "%.1fK", Double(rc) / 1000.0) : "\(rc)")
+                            Text(rr)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(palette.textTertiary)
                         }
                     }
-                    if let tr = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
-                        Text(tr)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(AppTheme.liveDot)
-                    }
-                    if let d = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) {
-                        Text(d)
+                    if let m2 = drop.metricsSecondaryCompact, !m2.isEmpty {
+                        Text(m2)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(palette.textTertiary)
                     }
@@ -2052,24 +1953,20 @@ private struct RareDropCard: View {
                         .foregroundColor(AppTheme.textTertiary)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(FeedMetricLabels.rarityHeadline(score: drop.rarityScore))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(AppTheme.scarcityRare)
-                        .lineLimit(1)
+                    if let rh = drop.rarityHeadline, !rh.isEmpty {
+                        Text(rh)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AppTheme.scarcityRare)
+                            .lineLimit(1)
+                    }
                     Text(daysLabel)
                         .font(.system(size: 10))
                         .foregroundColor(AppTheme.textTertiary)
-                    HStack(spacing: 6) {
-                        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) {
-                            Text("~\(v) open")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(AppTheme.textTertiary)
-                        }
-                        if let t = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
-                            Text(t)
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(AppTheme.liveDot)
-                        }
+                    if let rd = drop.rareDropDetailLine, !rd.isEmpty {
+                        Text(rd)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(AppTheme.textTertiary)
+                            .lineLimit(2)
                     }
                 }
 
@@ -2107,7 +2004,7 @@ private struct TrendingDropCard: View {
     let onToggleWatch: (String) -> Void
 
     private var trendStr: String {
-        FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) ?? ""
+        drop.trendHeadlineShort ?? ""
     }
 
     private var resyUrl: URL? {
@@ -2200,18 +2097,15 @@ struct LatestDropRowView: View {
     let onToggleWatch: (String) -> Void
 
     private var statusBadge: (text: String, color: Color)? {
-        let sec = drop.secondsSinceDetected
-        if sec >= 0 && sec < 300 { return ("NEW", Color(red: 0.4, green: 0.6, blue: 0.95)) }
-        if drop.scarcityTier == .rare { return ("RARE", AppTheme.scarcityRare) }
+        if drop.brandNewDrop == true {
+            return ("NEW", Color(red: 0.4, green: 0.6, blue: 0.95))
+        }
+        if drop.feedsRareCarousel == true { return ("RARE", AppTheme.scarcityRare) }
         return nil
     }
 
     private var timestampLabel: String {
-        let sec = drop.secondsSinceDetected
-        if sec < 60 { return "JUST NOW" }
-        if sec < 3600 { return "\(sec / 60)M AGO" }
-        if sec < 86400 { return "\(sec / 3600)H AGO" }
-        return "1D+ AGO"
+        drop.serverFreshnessLabel ?? "Live"
     }
 
     private var resyUrl: URL? {
@@ -2231,15 +2125,12 @@ struct LatestDropRowView: View {
         var parts: [String] = []
         if !dateLabel.isEmpty { parts.append(dateLabel) }
         if let nb = drop.neighborhood, !nb.isEmpty { parts.append(nb) }
-        if let sl = drop.scarcityLabel { parts.append(sl) }
-        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) {
-            parts.append("Gone in \(v)")
-        }
+        if let tail = drop.latestDropSubtitleMetrics, !tail.isEmpty { parts.append(tail) }
         return parts.joined(separator: " · ")
     }
 
     private var trendBadge: String? {
-        FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct)
+        drop.trendHeadlineShort
     }
 
     var body: some View {
@@ -2330,7 +2221,7 @@ struct HotRightNowCard: View {
     }
 
     private var trendStr: String {
-        FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) ?? ""
+        drop.trendHeadlineShort ?? ""
     }
 
     private var neighborhoodStr: String {
@@ -2338,10 +2229,7 @@ struct HotRightNowCard: View {
     }
 
     private var metricsFootnote: String? {
-        var parts: [String] = []
-        if let d = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) { parts.append(d) }
-        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) { parts.append("~\(v)") }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        drop.footnoteMetricsCompact
     }
 
     var body: some View {

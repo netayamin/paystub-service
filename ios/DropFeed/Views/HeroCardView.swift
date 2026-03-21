@@ -6,31 +6,6 @@ struct HeroCardView: View {
     var onToggleWatch: ((String) -> Void)?
     
     private var slots: [DropSlot] { Array(drop.slots.prefix(5)) }
-    private var rarityScoreInt: Int {
-        FeedMetricLabels.rarityPoints(score: drop.rarityScore) ?? 0
-    }
-    private var scanMetricsLine: String? {
-        var parts: [String] = []
-        if let v = FeedMetricLabels.vanishShort(avgDurationSeconds: drop.avgDropDurationSeconds) {
-            parts.append("Tables gone in ~\(v)")
-        }
-        if let d = FeedMetricLabels.activeDaysShort(daysWithDrops: drop.daysWithDrops) {
-            parts.append("open \(d)")
-        }
-        if let t = FeedMetricLabels.trendShortLabel(trendPct: drop.trendPct) {
-            parts.append(t)
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-    private var heroDescription: String {
-        let party = drop.partySizesAvailable.sorted().first.map { "\($0)" } ?? "2"
-        let time = slots.first.flatMap { formatTime($0.time ?? "") } ?? "tonight"
-        let highRarity = (FeedMetricLabels.rarityPoints(score: drop.rarityScore) ?? 0) >= 70
-        if (drop.ratingCount ?? 0) > 500 || highRarity {
-            return "Rare table for \(party) around \(time). Our scans show this spot rarely drops—grab it fast."
-        }
-        return "Table for \(party) around \(time)."
-    }
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -114,27 +89,31 @@ struct HeroCardView: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(FeedMetricLabels.rarityHeadline(score: drop.rarityScore))
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white.opacity(0.95))
-                            .multilineTextAlignment(.trailing)
-                        if rarityScoreInt > 0 {
-                            Text("scan score \(rarityScoreInt)/100")
+                        if let rh = drop.rarityHeadline, !rh.isEmpty {
+                            Text(rh)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white.opacity(0.95))
+                                .multilineTextAlignment(.trailing)
+                        }
+                        if let cap = drop.heroScoreCaption, !cap.isEmpty {
+                            Text(cap)
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(.white.opacity(0.75))
                         }
                     }
                 }
-                if let scan = scanMetricsLine {
+                if let scan = drop.heroScanMetricsLine, !scan.isEmpty {
                     Text(scan)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
                 }
 
-                Text(heroDescription)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
+                if let hd = drop.heroDescription, !hd.isEmpty {
+                    Text(hd)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 
                 if let firstUrl = drop.resyUrl ?? slots.first?.resyUrl, let url = URL(string: firstUrl) {
                     Button {
@@ -164,17 +143,6 @@ struct HeroCardView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(AppTheme.border, lineWidth: 0.5)
         )
-    }
-    
-    private func formatTime(_ time: String) -> String {
-        let t = time.split(separator: "–").first.map(String.init) ?? time
-        let parts = t.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        guard let h = parts.first.flatMap({ Int($0) }) else { return "tonight" }
-        let m = parts.count > 1 ? Int(parts[1].prefix(2)) ?? 0 : 0
-        let hour12 = h % 12 == 0 ? 12 : h % 12
-        let ampm = h < 12 ? "AM" : "PM"
-        if m > 0 { return "tonight at \(hour12):\(String(format: "%02d", m)) \(ampm)" }
-        return "tonight at \(hour12) \(ampm)"
     }
     
     private var gradientFallback: some View {

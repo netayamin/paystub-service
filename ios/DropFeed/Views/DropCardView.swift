@@ -140,7 +140,7 @@ struct DropCardView: View {
                         .cornerRadius(6)
                     }
                     
-                    if let freshness = drop.freshnessLabel {
+                    if let freshness = drop.serverFreshnessLabel {
                         Text(freshness)
                             .font(.system(size: 11))
                             .foregroundColor(AppTheme.textTertiary)

@@ -59,7 +59,7 @@ struct LikelyToOpenSection: View {
     }
 
     private func likelyToOpenSnagCard(_ venue: LikelyToOpenVenue) -> some View {
-        let forecastScore = venue.probability ?? forecastFallbackScore(venue)
+        let forecastScore = venue.probability
         let conf = (venue.confidence ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let confColor: Color = {
             switch conf.lowercased() {
@@ -94,7 +94,7 @@ struct LikelyToOpenSection: View {
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(SnagDesignSystem.textMuted)
                             .tracking(0.6)
-                        Text("\(min(99, max(1, forecastScore)))")
+                        Text(forecastScore.map { "\(min(99, max(1, $0)))" } ?? "—")
                             .font(.system(size: 20, weight: .black))
                             .foregroundColor(SnagDesignSystem.mint)
                     }
@@ -121,7 +121,7 @@ struct LikelyToOpenSection: View {
                     .foregroundColor(SnagDesignSystem.textMuted)
                     .padding(.top, 4)
 
-                if let ml = metricsLineString(venue) {
+                if let ml = venue.forecastMetricsCompact, !ml.isEmpty {
                     Text(ml)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(SnagDesignSystem.textMuted)
@@ -143,32 +143,6 @@ struct LikelyToOpenSection: View {
             .frame(width: 172, height: 188, alignment: .topLeading)
         }
         .frame(width: 172, height: 188)
-    }
-
-    /// When API omits `probability`, derive a rough display score from availability + trend (not a real probability).
-    private func forecastFallbackScore(_ venue: LikelyToOpenVenue) -> Int {
-        let base = Int(round((venue.availabilityRate14d ?? 0) * 55))
-        let trendBoost: Int = {
-            guard let t = venue.trendPct else { return 0 }
-            let pts = abs(t) <= 1 ? t * 100 : t
-            return pts > 5 ? min(25, Int(pts / 4)) : 0
-        }()
-        return min(99, max(12, base + trendBoost))
-    }
-
-    private func metricsLineString(_ venue: LikelyToOpenVenue) -> String? {
-        var parts: [String] = []
-        if let d = venue.daysWithDrops, d > 0 {
-            parts.append("\(d)/14d active")
-        }
-        if let r = FeedMetricLabels.rarityPoints(score: venue.rarityScore) {
-            parts.append("rarity \(r)")
-        }
-        if let t = FeedMetricLabels.trendShortLabel(trendPct: venue.trendPct) {
-            parts.append(t)
-        }
-        let s = parts.joined(separator: " · ")
-        return s.isEmpty ? nil : s
     }
 
     private func likelyTimeLine(_ venue: LikelyToOpenVenue) -> String {

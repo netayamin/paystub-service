@@ -63,6 +63,36 @@ struct Drop: Codable, Identifiable {
     let avgDropDurationSeconds: Double?
     /// Server-computed 1–99 from the same signals as backend `build_feed` / `_top_opportunity_score`.
     let snagScore: Int?
+    /// Display-only strings and flags from `feed_display.attach_feed_card_display_fields` — render as-is.
+    let crownBadgeLabel: String?
+    let showExclusiveBadge: Bool?
+    let metricsSubtitle: String?
+    let rarityHeadline: String?
+    let rowPrimaryMetric: String?
+    let speedTier: String?
+    let ratingReviewsCompact: String?
+    let metricsSecondaryCompact: String?
+    let velocityUrgent: Bool?
+    let velocityPrimaryLabel: String?
+    let serverFreshnessLabel: String?
+    let brandNewDrop: Bool?
+    let feedsRareCarousel: Bool?
+    let heroDescription: String?
+    let heroScanMetricsLine: String?
+    let heroScoreCaption: String?
+    let topOpportunityDemandLabel: String?
+    let topOpportunitySubtitleLine: String?
+    let topOpportunityFreshnessBadge: String?
+    let showNewBadge: Bool?
+    let flameCount: Int?
+    let liveStreamVelocityBadge: String?
+    let rareDropDetailLine: String?
+    /// Mirrors backend `scarcity_label` (do not recompute from `availabilityRate14d` in UI).
+    let feedScarcityLabel: String?
+    let latestDropSubtitleMetrics: String?
+    let footnoteMetricsCompact: String?
+    let trendHeadlineShort: String?
+    let rarityPoints: Int?
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -98,6 +128,34 @@ struct Drop: Codable, Identifiable {
         trendPct = try c.decodeIfPresent(Double.self, forKey: .trendPct)
         avgDropDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .avgDropDurationSeconds)
         snagScore = Self.decodeFlexibleInt(c, forKey: .snagScore)
+        crownBadgeLabel = try c.decodeIfPresent(String.self, forKey: .crownBadgeLabel)
+        showExclusiveBadge = try c.decodeIfPresent(Bool.self, forKey: .showExclusiveBadge)
+        metricsSubtitle = try c.decodeIfPresent(String.self, forKey: .metricsSubtitle)
+        rarityHeadline = try c.decodeIfPresent(String.self, forKey: .rarityHeadline)
+        rowPrimaryMetric = try c.decodeIfPresent(String.self, forKey: .rowPrimaryMetric)
+        speedTier = try c.decodeIfPresent(String.self, forKey: .speedTier)
+        ratingReviewsCompact = try c.decodeIfPresent(String.self, forKey: .ratingReviewsCompact)
+        metricsSecondaryCompact = try c.decodeIfPresent(String.self, forKey: .metricsSecondaryCompact)
+        velocityUrgent = try c.decodeIfPresent(Bool.self, forKey: .velocityUrgent)
+        velocityPrimaryLabel = try c.decodeIfPresent(String.self, forKey: .velocityPrimaryLabel)
+        serverFreshnessLabel = try c.decodeIfPresent(String.self, forKey: .serverFreshnessLabel)
+        brandNewDrop = try c.decodeIfPresent(Bool.self, forKey: .brandNewDrop)
+        feedsRareCarousel = try c.decodeIfPresent(Bool.self, forKey: .feedsRareCarousel)
+        heroDescription = try c.decodeIfPresent(String.self, forKey: .heroDescription)
+        heroScanMetricsLine = try c.decodeIfPresent(String.self, forKey: .heroScanMetricsLine)
+        heroScoreCaption = try c.decodeIfPresent(String.self, forKey: .heroScoreCaption)
+        topOpportunityDemandLabel = try c.decodeIfPresent(String.self, forKey: .topOpportunityDemandLabel)
+        topOpportunitySubtitleLine = try c.decodeIfPresent(String.self, forKey: .topOpportunitySubtitleLine)
+        topOpportunityFreshnessBadge = try c.decodeIfPresent(String.self, forKey: .topOpportunityFreshnessBadge)
+        showNewBadge = try c.decodeIfPresent(Bool.self, forKey: .showNewBadge)
+        flameCount = Self.decodeFlexibleInt(c, forKey: .flameCount)
+        liveStreamVelocityBadge = try c.decodeIfPresent(String.self, forKey: .liveStreamVelocityBadge)
+        rareDropDetailLine = try c.decodeIfPresent(String.self, forKey: .rareDropDetailLine)
+        feedScarcityLabel = try c.decodeIfPresent(String.self, forKey: .feedScarcityLabel)
+        latestDropSubtitleMetrics = try c.decodeIfPresent(String.self, forKey: .latestDropSubtitleMetrics)
+        footnoteMetricsCompact = try c.decodeIfPresent(String.self, forKey: .footnoteMetricsCompact)
+        trendHeadlineShort = try c.decodeIfPresent(String.self, forKey: .trendHeadlineShort)
+        rarityPoints = Self.decodeFlexibleInt(c, forKey: .rarityPoints)
     }
 
     private static func decodeFlexibleInt(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Int? {
@@ -131,7 +189,35 @@ struct Drop: Codable, Identifiable {
         neighborhood: String? = nil,
         trendPct: Double? = nil,
         avgDropDurationSeconds: Double? = nil,
-        snagScore: Int? = nil
+        snagScore: Int? = nil,
+        crownBadgeLabel: String? = nil,
+        showExclusiveBadge: Bool? = nil,
+        metricsSubtitle: String? = nil,
+        rarityHeadline: String? = nil,
+        rowPrimaryMetric: String? = nil,
+        speedTier: String? = nil,
+        ratingReviewsCompact: String? = nil,
+        metricsSecondaryCompact: String? = nil,
+        velocityUrgent: Bool? = nil,
+        velocityPrimaryLabel: String? = nil,
+        serverFreshnessLabel: String? = nil,
+        brandNewDrop: Bool? = nil,
+        feedsRareCarousel: Bool? = nil,
+        heroDescription: String? = nil,
+        heroScanMetricsLine: String? = nil,
+        heroScoreCaption: String? = nil,
+        topOpportunityDemandLabel: String? = nil,
+        topOpportunitySubtitleLine: String? = nil,
+        topOpportunityFreshnessBadge: String? = nil,
+        showNewBadge: Bool? = nil,
+        flameCount: Int? = nil,
+        liveStreamVelocityBadge: String? = nil,
+        rareDropDetailLine: String? = nil,
+        feedScarcityLabel: String? = nil,
+        latestDropSubtitleMetrics: String? = nil,
+        footnoteMetricsCompact: String? = nil,
+        trendHeadlineShort: String? = nil,
+        rarityPoints: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -157,6 +243,34 @@ struct Drop: Codable, Identifiable {
         self.trendPct = trendPct
         self.avgDropDurationSeconds = avgDropDurationSeconds
         self.snagScore = snagScore
+        self.crownBadgeLabel = crownBadgeLabel
+        self.showExclusiveBadge = showExclusiveBadge
+        self.metricsSubtitle = metricsSubtitle
+        self.rarityHeadline = rarityHeadline
+        self.rowPrimaryMetric = rowPrimaryMetric
+        self.speedTier = speedTier
+        self.ratingReviewsCompact = ratingReviewsCompact
+        self.metricsSecondaryCompact = metricsSecondaryCompact
+        self.velocityUrgent = velocityUrgent
+        self.velocityPrimaryLabel = velocityPrimaryLabel
+        self.serverFreshnessLabel = serverFreshnessLabel
+        self.brandNewDrop = brandNewDrop
+        self.feedsRareCarousel = feedsRareCarousel
+        self.heroDescription = heroDescription
+        self.heroScanMetricsLine = heroScanMetricsLine
+        self.heroScoreCaption = heroScoreCaption
+        self.topOpportunityDemandLabel = topOpportunityDemandLabel
+        self.topOpportunitySubtitleLine = topOpportunitySubtitleLine
+        self.topOpportunityFreshnessBadge = topOpportunityFreshnessBadge
+        self.showNewBadge = showNewBadge
+        self.flameCount = flameCount
+        self.liveStreamVelocityBadge = liveStreamVelocityBadge
+        self.rareDropDetailLine = rareDropDetailLine
+        self.feedScarcityLabel = feedScarcityLabel
+        self.latestDropSubtitleMetrics = latestDropSubtitleMetrics
+        self.footnoteMetricsCompact = footnoteMetricsCompact
+        self.trendHeadlineShort = trendHeadlineShort
+        self.rarityPoints = rarityPoints
     }
     
     /// "Trending" when trend_pct > 0, "Cooling" when < 0, nil otherwise
@@ -196,6 +310,34 @@ struct Drop: Codable, Identifiable {
         case trendPct = "trend_pct"
         case avgDropDurationSeconds = "avg_drop_duration_seconds"
         case snagScore = "snag_score"
+        case crownBadgeLabel = "crown_badge_label"
+        case showExclusiveBadge = "show_exclusive_badge"
+        case metricsSubtitle = "metrics_subtitle"
+        case rarityHeadline = "rarity_headline"
+        case rowPrimaryMetric = "row_primary_metric"
+        case speedTier = "speed_tier"
+        case ratingReviewsCompact = "rating_reviews_compact"
+        case metricsSecondaryCompact = "metrics_secondary_compact"
+        case velocityUrgent = "velocity_urgent"
+        case velocityPrimaryLabel = "velocity_primary_label"
+        case serverFreshnessLabel = "freshness_label"
+        case brandNewDrop = "brand_new_drop"
+        case feedsRareCarousel = "feeds_rare_carousel"
+        case heroDescription = "hero_description"
+        case heroScanMetricsLine = "hero_scan_metrics_line"
+        case heroScoreCaption = "hero_score_caption"
+        case topOpportunityDemandLabel = "top_opportunity_demand_label"
+        case topOpportunitySubtitleLine = "top_opportunity_subtitle_line"
+        case topOpportunityFreshnessBadge = "top_opportunity_freshness_badge"
+        case showNewBadge = "show_new_badge"
+        case flameCount = "flame_count"
+        case liveStreamVelocityBadge = "live_stream_velocity_badge"
+        case rareDropDetailLine = "rare_drop_detail_line"
+        case feedScarcityLabel = "scarcity_label"
+        case latestDropSubtitleMetrics = "latest_drop_subtitle_metrics"
+        case footnoteMetricsCompact = "footnote_metrics_compact"
+        case trendHeadlineShort = "trend_headline_short"
+        case rarityPoints = "rarity_points"
     }
     
     // MARK: - Scarcity helpers
@@ -220,17 +362,6 @@ struct Drop: Codable, Identifiable {
         case .available: return "Available · open \(days)/14 days"
         case .unknown: return nil
         }
-    }
-    
-    var freshnessLabel: String? {
-        guard let iso = detectedAt ?? createdAt else { return nil }
-        guard let d = Self.parseISO(iso) else { return nil }
-        let sec = Int(-d.timeIntervalSinceNow)
-        if sec < 0 { return "Just dropped" }
-        if sec < 60 { return "Just dropped" }
-        if sec < 3600 { return "\(sec / 60)m ago" }
-        if sec < 86400 { return "\(sec / 3600)h ago" }
-        return nil
     }
     
     var secondsSinceDetected: Int {
@@ -267,6 +398,7 @@ struct LikelyToOpenVenue: Identifiable {
     let trendPct: Double?
     let probability: Int?           // 1–99 — computed from availability_rate_14d + trend
     let reason: String?             // data-driven explanation from backend metrics
+    let forecastMetricsCompact: String?
 
     /// Memberwise init — all fields except `name` default to nil.
     init(
@@ -281,7 +413,8 @@ struct LikelyToOpenVenue: Identifiable {
         predictedDropTime: String? = nil,
         trendPct: Double? = nil,
         probability: Int? = nil,
-        reason: String? = nil
+        reason: String? = nil,
+        forecastMetricsCompact: String? = nil
     ) {
         self.name                = name
         self.imageUrl            = imageUrl
@@ -295,6 +428,7 @@ struct LikelyToOpenVenue: Identifiable {
         self.trendPct            = trendPct
         self.probability         = probability
         self.reason              = reason
+        self.forecastMetricsCompact = forecastMetricsCompact
     }
 }
 
@@ -313,6 +447,7 @@ extension LikelyToOpenVenue: Codable {
         case trendPct            = "trend_pct"
         case probability
         case reason
+        case forecastMetricsCompact = "forecast_metrics_compact"
     }
 
     init(from decoder: Decoder) throws {
@@ -332,6 +467,7 @@ extension LikelyToOpenVenue: Codable {
         trendPct            = try? c.decodeIfPresent(Double.self, forKey: .trendPct)
         probability         = try? c.decodeIfPresent(Int.self,    forKey: .probability)
         reason              = try? c.decodeIfPresent(String.self, forKey: .reason)
+        forecastMetricsCompact = try? c.decodeIfPresent(String.self, forKey: .forecastMetricsCompact)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -348,6 +484,7 @@ extension LikelyToOpenVenue: Codable {
         try c.encodeIfPresent(trendPct,            forKey: .trendPct)
         try c.encodeIfPresent(probability,         forKey: .probability)
         try c.encodeIfPresent(reason,              forKey: .reason)
+        try c.encodeIfPresent(forecastMetricsCompact, forKey: .forecastMetricsCompact)
     }
 }
 
@@ -584,7 +721,12 @@ extension Drop {
             rarityScore: 0.95,
             availabilityRate14d: 0.07,
             daysWithDrops: 1,
-            isHotspot: true
+            isHotspot: true,
+            snagScore: 92,
+            rarityHeadline: "Ultra Rare · 95",
+            heroDescription: "Rare table for 2 around tonight at 7:00 PM. Our scans show this spot rarely drops—grab it fast.",
+            heroScanMetricsLine: "Tables gone in ~3m · open 1/14d",
+            heroScoreCaption: "Opportunity score 92/99"
         )
     }
 }

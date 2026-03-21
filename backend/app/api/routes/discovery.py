@@ -73,6 +73,7 @@ from app.services.discovery.feed import (
     sanitize_feed_cards_for_client,
     snag_feed_meta,
 )
+from app.services.discovery.feed_display import attach_feed_card_display_fields
 from app.services.discovery.likely_open_scoring import enrich_likely_open_item
 from app.services.discovery.snapshot_store import (
     get_snapshot,
@@ -1181,6 +1182,11 @@ async def list_just_opened(
         _attach_metrics(ranked_board)
         _attach_metrics(top_opportunities)
         _attach_metrics(hot_right_now)
+
+        _now_disp = datetime.now(timezone.utc)
+        attach_feed_card_display_fields(ranked_board, _now_disp)
+        attach_feed_card_display_fields(top_opportunities, _now_disp)
+        attach_feed_card_display_fields(hot_right_now, _now_disp)
 
         sanitize_feed_cards_for_client(ranked_board)
         sanitize_feed_cards_for_client(top_opportunities)

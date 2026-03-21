@@ -90,11 +90,12 @@ def rebuild_snapshot(db: Session) -> None:
         get_last_scan_info_buckets,
     )
     from app.services.discovery.feed import (
-    attach_likely_open_labels,
-    build_feed,
-    sanitize_feed_cards_for_client,
-    snag_feed_meta,
-)
+        attach_likely_open_labels,
+        build_feed,
+        sanitize_feed_cards_for_client,
+        snag_feed_meta,
+    )
+    from app.services.discovery.feed_display import attach_feed_card_display_fields
     from app.services.discovery.likely_open_scoring import enrich_likely_open_item
     from app.models.venue_rolling_metrics import VenueRollingMetrics
     from app.models.venue_metrics import VenueMetrics
@@ -279,6 +280,12 @@ def rebuild_snapshot(db: Session) -> None:
         _attach_metrics(ticker_board)
         _attach_metrics(top_opportunities)
         _attach_metrics(hot_right_now)
+
+        _now_disp = datetime.now(timezone.utc)
+        attach_feed_card_display_fields(ranked_board, _now_disp)
+        attach_feed_card_display_fields(ticker_board, _now_disp)
+        attach_feed_card_display_fields(top_opportunities, _now_disp)
+        attach_feed_card_display_fields(hot_right_now, _now_disp)
 
         sanitize_feed_cards_for_client(ranked_board)
         sanitize_feed_cards_for_client(ticker_board)

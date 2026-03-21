@@ -756,21 +756,17 @@ private struct SearchResultCard: View {
         return URL(string: s)
     }
 
-    private var rarityInt: Int {
-        guard let r = drop.rarityScore else { return 0 }
-        return min(100, max(0, r <= 1 ? Int(r * 100) : Int(r.rounded())))
-    }
+    private var rarityPoints: Int { drop.rarityPoints ?? 0 }
 
     private var isElite: Bool { drop.feedHot == true }
 
-    private var isTrending: Bool { (drop.trendPct ?? 0) > 10 }
+    private var isTrending: Bool {
+        guard let t = drop.trendHeadlineShort else { return false }
+        return !t.isEmpty
+    }
 
     private var scarcityContext: String? {
-        if let days = drop.daysWithDrops {
-            return "Available \(days)/14 days"
-        }
-        if let label = drop.scarcityLabel { return label }
-        return nil
+        drop.feedScarcityLabel
     }
 
     private var dateLabel: String {
@@ -854,7 +850,7 @@ private struct SearchResultCard: View {
                     if let ctx = scarcityContext {
                         Text(ctx)
                             .font(.system(size: 11))
-                            .foregroundColor(rarityInt >= 70 ? palette.accentRed : palette.textTertiary)
+                            .foregroundColor(rarityPoints >= 70 ? palette.accentRed : palette.textTertiary)
                     }
                 }
 
@@ -889,7 +885,7 @@ private struct SearchResultCard: View {
 
             // ── Bottom row: time slot pills + rarity badge ────────────
             let slots = drop.slots.prefix(6)
-            if !slots.isEmpty || rarityInt > 0 {
+            if !slots.isEmpty || rarityPoints > 0 {
                 HStack(spacing: 8) {
                     // Time slot pills — tap each to open Resy
                     if !slots.isEmpty {
@@ -921,18 +917,18 @@ private struct SearchResultCard: View {
                     }
 
                     // Rarity badge — shown when we have real metrics
-                    if rarityInt > 0 {
+                    if rarityPoints > 0 {
                         HStack(spacing: 3) {
                             Image(systemName: "bolt.fill")
                                 .font(.system(size: 9, weight: .bold))
-                            Text("\(rarityInt)/100")
+                            Text("\(rarityPoints)/100")
                                 .font(.system(size: 10, weight: .black))
                         }
-                        .foregroundColor(rarityInt >= 80 ? palette.accentRed : palette.textTertiary)
+                        .foregroundColor(rarityPoints >= 80 ? palette.accentRed : palette.textTertiary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            (rarityInt >= 80 ? palette.accentRed : palette.textTertiary).opacity(0.08)
+                            (rarityPoints >= 80 ? palette.accentRed : palette.textTertiary).opacity(0.08)
                         )
                         .clipShape(Capsule())
                     }

@@ -16,6 +16,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from app.services.discovery.feed_display import forecast_metrics_compact_for_likely_item
+
 _FALLBACK_PREDICTED_TIMES = ("Evening", "Dinner", "Late Night", "Afternoon")
 
 
@@ -197,6 +199,11 @@ def enrich_likely_open_item(item: dict[str, Any], index: int) -> None:
     item["probability"] = likely_open_index_1_99(item)
     item["confidence"] = confidence_label(item)
     item["reason"] = reason_text(item)
+    fm = forecast_metrics_compact_for_likely_item(item)
+    if fm:
+        item["forecast_metrics_compact"] = fm
+    else:
+        item.pop("forecast_metrics_compact", None)
     modal_hour = item.get("modal_drop_hour")
     if modal_hour is not None:
         item["predicted_drop_time"] = _hour_to_label(modal_hour)

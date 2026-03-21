@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.core.hotspots import is_hotspot, top_priority_names
+from app.services.discovery.feed_display import attach_feed_card_display_fields
 
 TOP_OPPORTUNITIES_MAX = 4
 HOT_RIGHT_NOW_MAX = 12
@@ -459,6 +460,7 @@ def build_feed(
     for c in cards:
         c["_top_score"] = _top_opportunity_score(c)
     attach_snag_display_scores(cards)
+    attach_feed_card_display_fields(cards, now_ts)
     quality_ranked = sorted(cards, key=lambda x: -(x.get("_top_score") or 0))
 
     # Top opportunities:
