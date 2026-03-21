@@ -6,6 +6,7 @@ from app.models.feed_cache import FeedCache
 from app.models.market_metrics import MarketMetrics
 from app.models.notify_preference import NotifyPreference
 from app.models.push_token import PushToken
+from app.models.recent_missed_drop import RecentMissedDrop
 from app.models.slot_availability import SlotAvailability
 from app.models.venue import Venue
 from app.models.venue_metrics import VenueMetrics
@@ -20,6 +21,7 @@ __all__ = [
     "MarketMetrics",
     "NotifyPreference",
     "PushToken",
+    "RecentMissedDrop",
     "SlotAvailability",
     "Venue",
     "VenueMetrics",

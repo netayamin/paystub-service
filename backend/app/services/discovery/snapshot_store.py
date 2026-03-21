@@ -270,6 +270,10 @@ def rebuild_snapshot(db: Session) -> None:
         for i, item in enumerate(likely_to_open):
             enrich_likely_open_item(item, i)
 
+        from app.services.discovery.recent_missed import build_just_missed_payload
+
+        just_missed = build_just_missed_payload(db, now=now_utc)
+
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:
                 rm = _lookup_metrics(c.get("venue_id"), c.get("name"))
@@ -328,6 +332,7 @@ def rebuild_snapshot(db: Session) -> None:
             "top_opportunities": top_opportunities,
             "hot_right_now": hot_right_now,
             "likely_to_open": likely_to_open,
+            "just_missed": just_missed,
             "likely_open_today": [],
             "likely_open_tomorrow": [],
             "likely_open_soon": [],
@@ -366,6 +371,7 @@ def rebuild_snapshot(db: Session) -> None:
             "top_opportunities": top_opportunities,
             "hot_right_now":     hot_right_now,
             "likely_to_open":    likely_to_open,
+            "just_missed":       just_missed,
             "likely_open_today": [],
             "likely_open_tomorrow": [],
             "likely_open_soon":  [],
@@ -444,6 +450,11 @@ def filter_snapshot_for_request(
             return items
         return [x for x in items if (x.get("market") or "nyc") in mkt_set]
 
+    def _filter_just_missed(items: list[dict]) -> list[dict]:
+        if not mkt_set:
+            return items
+        return [x for x in items if (x.get("market") or "nyc") in mkt_set]
+
     rb = _filter_cards(snap["ranked_board"])
     top = _filter_cards(snap["top_opportunities"])
     hrn = _filter_cards(snap["hot_right_now"])
@@ -458,6 +469,7 @@ def filter_snapshot_for_request(
         "top_opportunities": top,
         "hot_right_now": hrn,
         "likely_to_open": _filter_likely_to_open(snap.get("likely_to_open", [])),
+        "just_missed": _filter_just_missed(snap.get("just_missed", [])),
         "likely_open_today": [],
         "likely_open_tomorrow": [],
         "likely_open_soon": [],

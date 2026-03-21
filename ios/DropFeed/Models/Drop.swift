@@ -520,6 +520,34 @@ extension LikelyToOpenVenue: Codable {
     }
 }
 
+// MARK: - Just missed (slots that recently closed)
+
+struct JustMissedVenue: Codable, Identifiable, Hashable {
+    let venueId: String?
+    let name: String
+    let imageUrl: String?
+    let neighborhood: String?
+    let goneAt: String?
+    let slotTime: String?
+    let market: String?
+
+    enum CodingKeys: String, CodingKey {
+        case venueId = "venue_id"
+        case name
+        case imageUrl = "image_url"
+        case neighborhood
+        case goneAt = "gone_at"
+        case slotTime = "slot_time"
+        case market
+    }
+
+    var id: String {
+        let v = (venueId ?? "").trimmingCharacters(in: .whitespaces)
+        if !v.isEmpty { return v }
+        return name.trimmingCharacters(in: .whitespaces).lowercased()
+    }
+}
+
 // MARK: - Calendar counts
 
 struct CalendarCounts: Codable {
@@ -543,6 +571,7 @@ struct JustOpenedResponse: Codable {
     let topOpportunities: [Drop]?
     let hotRightNow: [Drop]?
     let likelyToOpen: [LikelyToOpenVenue]?
+    let justMissed: [JustMissedVenue]?
     let lastScanAt: String?
     let totalVenuesScanned: Int?
     let nextScanAt: String?
@@ -552,6 +581,7 @@ struct JustOpenedResponse: Codable {
         case topOpportunities = "top_opportunities"
         case hotRightNow = "hot_right_now"
         case likelyToOpen = "likely_to_open"
+        case justMissed = "just_missed"
         case lastScanAt = "last_scan_at"
         case totalVenuesScanned = "total_venues_scanned"
         case nextScanAt = "next_scan_at"
@@ -581,6 +611,14 @@ struct JustOpenedResponse: Codable {
                 return v
             }
         }
+        var missedVenues: [JustMissedVenue] = []
+        if let arr = json["just_missed"] as? [[String: Any]] {
+            missedVenues = arr.compactMap { item in
+                guard let d = try? JSONSerialization.data(withJSONObject: item),
+                      let v = try? decoder.decode(JustMissedVenue.self, from: d) else { return nil }
+                return v
+            }
+        }
         var rankedBoard = decodeDrops("ranked_board")
         if rankedBoard.isEmpty, let justOpenedDays = json["just_opened"] as? [[String: Any]] {
             rankedBoard = Self.dropsFromJustOpened(justOpenedDays)
@@ -590,6 +628,7 @@ struct JustOpenedResponse: Codable {
             topOpportunities: decodeDrops("top_opportunities"),
             hotRightNow: decodeDrops("hot_right_now"),
             likelyToOpen: likelyVenues.isEmpty ? nil : likelyVenues,
+            justMissed: missedVenues.isEmpty ? nil : missedVenues,
             lastScanAt: json["last_scan_at"] as? String,
             totalVenuesScanned: intValue("total_venues_scanned"),
             nextScanAt: json["next_scan_at"] as? String

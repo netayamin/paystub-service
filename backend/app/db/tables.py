@@ -10,6 +10,7 @@ Use these names when writing raw SQL (e.g. TRUNCATE). Do not reference dropped t
 ALL_TABLE_NAMES = (
     "discovery_buckets",
     "drop_events",
+    "recent_missed_drops",
     "slot_availability",
     "availability_sessions",  # legacy; we write to availability_state now
     "availability_state",
@@ -26,6 +27,7 @@ ALL_TABLE_NAMES = (
 # availability_sessions omitted (legacy; may be dropped in some DBs; we use availability_state).
 DISCOVERY_TABLE_NAMES = (
     "drop_events",
+    "recent_missed_drops",
     "slot_availability",
     "availability_state",
     "discovery_buckets",
@@ -34,6 +36,7 @@ DISCOVERY_TABLE_NAMES = (
 # Tables cleared for a full reset (discovery + metrics + cache + venues). Keeps push_tokens, notify_preferences, alembic_version.
 FULL_RESET_TABLE_NAMES = (
     "drop_events",
+    "recent_missed_drops",
     "slot_availability",
     "availability_state",
     "feed_cache",

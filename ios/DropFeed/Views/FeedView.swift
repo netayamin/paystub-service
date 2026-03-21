@@ -174,11 +174,11 @@ struct FeedView: View {
     }
 
     private var mockCarouselCardWidth: CGFloat {
-        min(UIScreen.main.bounds.width * 0.72, 300)
+        min(UIScreen.main.bounds.width * 0.62, 240)
     }
 
     private var mockCarouselCardHeight: CGFloat {
-        mockCarouselCardWidth * 1.32
+        min(mockCarouselCardWidth * 0.62, 132)
     }
 
     private var topDropsActiveCount: Int {
@@ -194,6 +194,8 @@ struct FeedView: View {
                         .padding(.top, 20)
                     mockLiveNowSection
                         .padding(.top, 28)
+                    mockJustMissedSection
+                    mockPredictWillOpenSection
                     Color.clear.frame(height: vm.newDropsCount > 0 ? 96 : 28)
                 }
             }
@@ -342,6 +344,56 @@ struct FeedView: View {
             vm.selectedPartySizes = [size]
         }
         vm.applyFiltersAndRefresh()
+    }
+
+    private var mockJustMissedSection: some View {
+        let items = vm.justMissed
+        return Group {
+            if items.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("⏱ JUST MISSED")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.white)
+                            .tracking(0.6)
+                        Spacer()
+                        Text("GONE")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .tracking(0.8)
+                    }
+                    .padding(.horizontal, 16)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(items) { venue in
+                                MockJustMissedCard(venue: venue)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.top, 28)
+            }
+        }
+    }
+
+    private var mockPredictWillOpenSection: some View {
+        Group {
+            if vm.likelyToOpen.isEmpty {
+                EmptyView()
+            } else {
+                FeedPredictWillOpenSection(
+                    venues: vm.likelyToOpen,
+                    premium: premium,
+                    onNotify: { savedVM.toggleWatch($0) },
+                    isWatched: { savedVM.isWatched($0) }
+                )
+                .padding(.top, 28)
+            }
+        }
     }
 
     private var floatingNewDropsPill: some View {
@@ -877,6 +929,14 @@ private func feedGoneLabel(_ drop: Drop) -> String {
     return "GONE"
 }
 
+private func feedRelativeMissedLabel(_ iso: String?) -> String {
+    guard let iso, let d = Drop.parseISO(iso) else { return "JUST NOW" }
+    let sec = max(0, Int(-d.timeIntervalSinceNow))
+    if sec < 90 { return "JUST NOW" }
+    if sec < 3600 { return "\(max(1, sec / 60))M AGO" }
+    return "\(sec / 3600)H AGO"
+}
+
 private func mockFeedBadges(for drop: Drop) -> [MockFeedBadge] {
     var out: [MockFeedBadge] = []
     if drop.slots.count == 1 {
@@ -959,41 +1019,233 @@ private struct MockTopDropsCarouselCard: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(neighborhoodCaps)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 8, weight: .semibold))
                         .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .tracking(0.6)
+                        .tracking(0.5)
                     Text(drop.name)
-                        .font(.system(size: 24, weight: .bold, design: .serif))
+                        .font(.system(size: 16, weight: .bold, design: .serif))
                         .foregroundColor(.white)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.85)
+                        .minimumScaleFactor(0.8)
 
                     Button(action: snag) {
                         Text("SNAG IT")
-                            .font(.system(size: 14, weight: .heavy))
+                            .font(.system(size: 11, weight: .heavy))
                             .foregroundColor(.white)
-                            .tracking(0.8)
+                            .tracking(0.6)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 8)
                             .background(bookable ? SnagDesignSystem.salmonAccent : Color(white: 0.35))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .disabled(!bookable)
                 }
-                .padding(16)
+                .padding(10)
             }
             .frame(width: width, height: height, alignment: .bottom)
         }
         .frame(width: width, height: height)
         .opacity(bookable ? 1 : 0.55)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+private struct MockJustMissedCard: View {
+    let venue: JustMissedVenue
+
+    private var imageURL: URL? {
+        guard let s = venue.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private let cardW: CGFloat = 118
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if let url = imageURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                        SnagDesignSystem.darkElevated
+                    }
+                } else {
+                    SnagDesignSystem.darkElevated
+                }
+            }
+            .frame(width: cardW, height: 86)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(venue.name)
+                    .font(.system(size: 13, weight: .bold, design: .serif))
+                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                Text(feedRelativeMissedLabel(venue.goneAt))
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundColor(SnagDesignSystem.darkTextMuted)
+                    .tracking(0.35)
+                if let nb = venue.neighborhood, !nb.isEmpty {
+                    Text(nb.uppercased())
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .lineLimit(1)
+                }
+            }
+            .padding(8)
+            .frame(width: cardW, alignment: .leading)
+            .background(Color(white: 0.14))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+private struct FeedPredictWillOpenSection: View {
+    let venues: [LikelyToOpenVenue]
+    @ObservedObject var premium: PremiumManager
+    var onNotify: (String) -> Void
+    var isWatched: (String) -> Bool
+
+    @State private var showPaywall = false
+
+    private var freeLimit: Int { PremiumManager.freeLikelyToOpenLimit }
+    private var freeVenues: [LikelyToOpenVenue] { Array(venues.prefix(freeLimit)) }
+    private var lockedVenues: [LikelyToOpenVenue] { premium.isPremium ? [] : Array(venues.dropFirst(freeLimit)) }
+    private var allVisible: [LikelyToOpenVenue] { premium.isPremium ? venues : freeVenues }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("WE PREDICT WILL OPEN")
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundColor(.white)
+                    .tracking(0.6)
+                Text("From live scans — tap the bell to get notified when we spot a table.")
+                    .font(.system(size: 11))
+                    .foregroundColor(SnagDesignSystem.darkTextMuted)
+            }
+            .padding(.horizontal, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(allVisible) { venue in
+                        predictCard(venue)
+                    }
+                    if !lockedVenues.isEmpty {
+                        Button {
+                            showPaywall = true
+                        } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 18))
+                                Text("\(lockedVenues.count) more")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(SnagDesignSystem.salmonAccent)
+                            .frame(width: 148, height: 168)
+                            .background(Color(white: 0.14))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PremiumPaywallView(premium: premium)
+        }
+    }
+
+    private func predictSubtitle(_ venue: LikelyToOpenVenue) -> String {
+        if let t = venue.predictedDropTime, !t.isEmpty {
+            return "Often drops: \(t)"
+        }
+        if let d = venue.daysWithDrops {
+            return "Tables \(d)× / 14d"
+        }
+        return "Watch for releases"
+    }
+
+    private func predictCard(_ venue: LikelyToOpenVenue) -> some View {
+        let watched = isWatched(venue.name)
+        let score = venue.probability.map { min(99, max(1, $0)) }
+        let imgURL: URL? = {
+            guard let s = venue.imageUrl, !s.isEmpty else { return nil }
+            return URL(string: s)
+        }()
+
+        return ZStack(alignment: .topTrailing) {
+            VStack(alignment: .leading, spacing: 0) {
+                Group {
+                    if let url = imgURL {
+                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                            SnagDesignSystem.darkElevated
+                        }
+                    } else {
+                        SnagDesignSystem.darkElevated
+                    }
+                }
+                .frame(width: 148, height: 72)
+                .clipped()
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("FORECAST")
+                            .font(.system(size: 8, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        Spacer()
+                        if let s = score {
+                            Text("\(s)")
+                                .font(.system(size: 16, weight: .black))
+                                .foregroundColor(SnagDesignSystem.mint)
+                        }
+                    }
+                    Text(venue.name)
+                        .font(.system(size: 14, weight: .bold, design: .serif))
+                        .foregroundColor(SnagDesignSystem.darkTextPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                    Text(predictSubtitle(venue))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .lineLimit(2)
+                }
+                .padding(10)
+                .frame(width: 148, alignment: .leading)
+                .background(Color(white: 0.12))
+            }
+            .frame(width: 148, height: 168, alignment: .top)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            )
+
+            Button {
+                onNotify(venue.name)
+            } label: {
+                Image(systemName: watched ? "bell.fill" : "bell")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(watched ? SnagDesignSystem.salmonAccent : .white)
+                    .padding(8)
+                    .background(Color.black.opacity(0.45))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+        }
+        .frame(width: 148, height: 168)
     }
 }
 

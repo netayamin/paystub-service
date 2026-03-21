@@ -628,6 +628,12 @@ def run_poll_for_bucket(
     )
     closed_slot_ids = {row.slot_id for row in closed_rows}
     if closed_slot_ids:
+        try:
+            from app.services.discovery.recent_missed import record_closed_slots_as_missed
+
+            record_closed_slots_as_missed(db, closed_rows, market=market, now=now)
+        except Exception as e:
+            logger.debug("record_closed_slots_as_missed skipped: %s", e)
         db.query(SlotAvailability).filter(
             SlotAvailability.bucket_id == bid,
             SlotAvailability.slot_id.in_(closed_slot_ids),
