@@ -826,7 +826,8 @@ private struct CrownJewelCard: View {
     let drop: Drop
 
     private let cardWidth: CGFloat = min(UIScreen.main.bounds.width - 48, 340)
-    private var cardHeight: CGFloat { cardWidth * 1.28 }
+    /// Shorter than the original 1.28× portrait ratio so the carousel doesn’t dominate the feed.
+    private var cardHeight: CGFloat { cardWidth * 0.92 }
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -932,53 +933,57 @@ private struct CrownJewelCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(rarityBadge)
-                        .font(.system(size: 10, weight: .black))
+                        .font(.system(size: 9, weight: .black))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
                         .background(SnagDesignSystem.coral)
                         .clipShape(Capsule())
                     Spacer()
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(cityLine)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.white.opacity(0.85))
-                        .tracking(1.2)
+                        .tracking(1.1)
                     Text(drop.name)
-                        .font(SnagDesignSystem.venueSerifTitle)
+                        .font(.system(size: 22, weight: .bold, design: .serif))
                         .foregroundColor(.white)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.88)
                         .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
                     Text(detailLine)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.92))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
 
                     Button(action: book) {
                         Text("Book Now")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, 12)
                             .background(SnagDesignSystem.coral)
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 6)
+                    .padding(.top, 4)
                 }
-                .padding(16)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
             }
             .frame(width: cardWidth, height: cardHeight, alignment: .bottom)
         }
         .frame(width: cardWidth, height: cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .shadow(color: .black.opacity(0.14), radius: 18, x: 0, y: 10)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 }
 
