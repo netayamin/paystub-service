@@ -66,6 +66,7 @@ from app.models.slot_availability import SlotAvailability
 from app.models.user_notification import UserNotification
 from app.models.venue import Venue
 from app.models.venue_rolling_metrics import VenueRollingMetrics
+from app.services.discovery.likely_open_scoring import score_likely_open_rank
 from app.services.aggregation import aggregate_closed_events_into_metrics
 from app.services.providers import get_provider
 
@@ -867,12 +868,15 @@ def prune_old_venues(db: Session, keep_days: int | None = None) -> int:
 
 
 LIKELY_TO_OPEN_LIMIT = 25
+# Pre-filter pool before composite sort (avoids loading unbounded rows per market).
+LIKELY_TO_OPEN_CANDIDATE_POOL = 400
 
 
 def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_OPEN_LIMIT) -> list[dict]:
     """
-    Venues that have NO open slots right now but have strong drop history (high availability_rate_14d).
-    For "Likely to open" / "Often has drops — nothing open yet" section.
+    Venues that have NO open slots right now but score highly on a composite of rolling metrics
+    (calendar habit, release churn, momentum, recent activity). Not a literal P(open) — see
+    likely_open_scoring.enrich_likely_open_item for client-facing index and copy.
     Returns 'name' (not just 'venue_name') so iOS clients can decode without remapping.
     """
     from app.models.drop_event import DropEvent
@@ -892,18 +896,35 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     latest = db.query(func.max(VenueRollingMetrics.as_of_date)).scalar()
     if not latest:
         return []
-    rows = (
-        db.query(VenueRollingMetrics)
-        .filter(
-            VenueRollingMetrics.as_of_date == latest,
-            VenueRollingMetrics.venue_id.notin_(open_venue_ids) if open_venue_ids else True,
-        )
-        .order_by(VenueRollingMetrics.availability_rate_14d.desc().nullslast())
-        .limit(limit)
-        .all()
+    base_q = db.query(VenueRollingMetrics).filter(
+        VenueRollingMetrics.as_of_date == latest,
+        VenueRollingMetrics.venue_id.notin_(open_venue_ids) if open_venue_ids else True,
     )
+    rows = base_q.all()
     if not rows:
         return []
+    # Cap candidate count, then rank by composite score (not availability_rate alone).
+    if len(rows) > LIKELY_TO_OPEN_CANDIDATE_POOL:
+        rows = sorted(
+            rows,
+            key=lambda r: (
+                r.availability_rate_14d or 0.0,
+                r.total_last_7d or 0,
+                r.drop_frequency_per_day or 0.0,
+            ),
+            reverse=True,
+        )[:LIKELY_TO_OPEN_CANDIDATE_POOL]
+    rows = sorted(
+        rows,
+        key=lambda r: score_likely_open_rank(
+            r.availability_rate_14d,
+            r.days_with_drops,
+            r.drop_frequency_per_day,
+            r.trend_pct,
+            r.total_last_7d,
+        ),
+        reverse=True,
+    )[:limit]
 
     import json as _json
 
@@ -953,6 +974,10 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
             "days_with_drops": r.days_with_drops,
             "rarity_score": r.rarity_score,
             "trend_pct": r.trend_pct,
+            "drop_frequency_per_day": r.drop_frequency_per_day,
+            "total_last_7d": r.total_last_7d,
+            "total_prev_7d": r.total_prev_7d,
+            "total_new_drops": r.total_new_drops,
         }
         for r in rows
     ]

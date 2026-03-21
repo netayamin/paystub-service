@@ -42,9 +42,10 @@ enum FeedMetricLabels {
     }
 
     // MARK: - Urgency (avg_drop_duration_seconds)
-    /// "Gone in 5 min" / "Typically gone in <5 min" when unknown
+    /// "Gone in 5 min" when we have avg duration; otherwise no false "<5 min" claim.
     static func urgencyText(avgDurationSeconds: Double?) -> String {
-        guard let sec = avgDurationSeconds, sec > 0 else { return "Typically gone in <5 min" }
+        // No duration yet — don’t imply tables always vanish in <5 min.
+        guard let sec = avgDurationSeconds, sec > 0 else { return "Vanish speed unknown" }
         if sec < 60 { return "Gone in <1 min" }
         let mins = Int(sec / 60)
         if mins == 1 { return "Gone in 1 min" }

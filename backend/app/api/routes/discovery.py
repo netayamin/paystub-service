@@ -68,6 +68,7 @@ from app.services.discovery.buckets import (
 )
 from app.services.providers import get_provider, list_providers
 from app.services.discovery.feed import attach_likely_open_labels, build_feed
+from app.services.discovery.likely_open_scoring import enrich_likely_open_item
 from app.services.discovery.snapshot_store import (
     get_snapshot,
     get_snapshot_json,
@@ -1154,22 +1155,9 @@ async def list_just_opened(
         except Exception:
             pass
 
-        # Enrich likely_to_open for Live Market: name, predicted_drop_time, confidence (from metrics + hotlist)
-        _PREDICTED_TIMES = ["Evening", "Midnight", "10:00 AM"]
         for i, item in enumerate(likely_to_open):
             item["name"] = item.get("venue_name") or item.get("name") or ""
-            rarity = item.get("rarity_score")
-            rate = item.get("availability_rate_14d")
-            if rarity is not None and rate is not None:
-                if rarity >= 70 or rate <= 0.2:
-                    item["confidence"] = "High"
-                elif rarity >= 40 or rate <= 0.5:
-                    item["confidence"] = "Medium"
-                else:
-                    item["confidence"] = "Low"
-            else:
-                item["confidence"] = "Medium"
-            item["predicted_drop_time"] = _PREDICTED_TIMES[i % len(_PREDICTED_TIMES)]
+            enrich_likely_open_item(item, i)
 
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:

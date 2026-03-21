@@ -86,6 +86,7 @@ def rebuild_snapshot(db: Session) -> None:
         get_last_scan_info_buckets,
     )
     from app.services.discovery.feed import attach_likely_open_labels, build_feed
+    from app.services.discovery.likely_open_scoring import enrich_likely_open_item
     from app.models.venue_rolling_metrics import VenueRollingMetrics
     from app.models.venue_metrics import VenueMetrics
 
@@ -194,66 +195,8 @@ def rebuild_snapshot(db: Session) -> None:
 
         likely_to_open = get_likely_to_open_venues(db, today)
 
-        # Enrich likely_to_open with confidence, probability, reason, and predicted drop time.
-        # All values are computed from real metrics — nothing is hardcoded per venue.
-        _PREDICTED_TIMES = ("Evening", "Dinner", "Midnight", "10:00 AM")
         for i, item in enumerate(likely_to_open):
-            rarity = item.get("rarity_score")
-            rate   = item.get("availability_rate_14d")
-            days   = item.get("days_with_drops") or 0
-            trend  = item.get("trend_pct")
-
-            # Confidence label
-            if rarity is not None and rate is not None:
-                if rarity >= 70 or rate <= 0.2:
-                    conf = "High"
-                elif rarity >= 40 or rate <= 0.5:
-                    conf = "Medium"
-                else:
-                    conf = "Low"
-            else:
-                conf = "Medium"
-            item["confidence"] = conf
-
-            item["predicted_drop_time"] = _PREDICTED_TIMES[i % len(_PREDICTED_TIMES)]
-
-            # Probability = availability_rate_14d with a small upward trend boost.
-            # Represents "this venue has historically had a slot available X% of the 14-day window".
-            r = float(rate) if rate is not None else 0.0
-            trend_boost = min(0.08, max(0.0, float(trend))) if trend and trend > 0 else 0.0
-            probability = min(99, max(1, int(round((r + trend_boost) * 100))))
-            item["probability"] = probability
-
-            # Reason — human-readable explanation generated entirely from the stored metrics.
-            if trend and trend > 0.15:
-                reason = (
-                    f"Availability up {int(trend * 100)}% vs prior week — demand rising at this location."
-                )
-            elif conf == "High" and r >= 0.6:
-                reason = (
-                    f"Opens {days}/14 days on average. High-frequency drop pattern — "
-                    "consistently releases tables."
-                )
-            elif r < 0.25 and days > 0:
-                reason = (
-                    f"Very rare — only {days}/14 days with observed drops. "
-                    "Act fast when a table appears."
-                )
-            elif trend and trend < -0.1:
-                reason = (
-                    f"Availability down {abs(int(trend * 100))}% vs last week — becoming harder to get."
-                )
-            elif conf == "High":
-                reason = (
-                    f"High-confidence prediction based on {days} drops observed "
-                    "in the last 14 days."
-                )
-            else:
-                reason = (
-                    f"Pattern analysis shows {days} drop{'s' if days != 1 else ''} "
-                    "in last 14 days at this location."
-                )
-            item["reason"] = reason
+            enrich_likely_open_item(item, i)
 
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:

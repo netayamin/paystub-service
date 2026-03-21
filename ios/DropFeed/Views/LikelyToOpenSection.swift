@@ -27,7 +27,7 @@ struct LikelyToOpenSection: View {
                             Text("Likely to Open")
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundColor(AppTheme.textPrimary)
-                            Text("Predictive alerts based on cancellation patterns")
+                            Text("From 14-day table-release patterns — not cancellations")
                                 .font(.system(size: 12))
                                 .foregroundColor(AppTheme.textTertiary)
                         }
@@ -90,22 +90,35 @@ struct LikelyToOpenSection: View {
     }
     
     private func likelyToOpenCard(_ venue: LikelyToOpenVenue) -> some View {
-        let confidence = Int((venue.availabilityRate14d ?? 0) * 100)
+        // Backend `probability` is a composite pattern-strength index (1–99), not P(open).
+        let score = min(99, max(1, venue.probability ?? Int(round((venue.availabilityRate14d ?? 0) * 100))))
         let watched = isWatched?(venue.name) ?? false
-        let predictedTime = venue.lastSeenDescription ?? (venue.daysWithDrops.map { "Open \($0)/14 days" } ?? "Often opens this week")
+        let subtitle: String = {
+            if let r = venue.reason, !r.isEmpty { return r }
+            if let t = venue.predictedDropTime { return "Typical window: \(t)" }
+            if let d = venue.daysWithDrops { return "Activity on \(d) of last 14 days" }
+            return "Nothing open now — watch for releases"
+        }()
         
         return VStack(alignment: .leading, spacing: 10) {
             Text(venue.name)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(AppTheme.textPrimary)
                 .lineLimit(1)
-            Text(predictedTime)
+            Text(subtitle)
                 .font(.system(size: 12))
                 .foregroundColor(AppTheme.textTertiary)
-                .lineLimit(1)
-            Text("\(min(100, confidence))% CONFIDENCE")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(AppTheme.textTertiary)
+                .lineLimit(2)
+            HStack(spacing: 6) {
+                Text("\(score)% pattern match")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(AppTheme.textTertiary)
+                if let c = venue.confidence, !c.isEmpty {
+                    Text(c.uppercased())
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(AppTheme.textTertiary.opacity(0.85))
+                }
+            }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2)
@@ -113,7 +126,7 @@ struct LikelyToOpenSection: View {
                         .frame(height: 4)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppTheme.accentOrange)
-                        .frame(width: geo.size.width * CGFloat(confidence) / 100, height: 4)
+                        .frame(width: geo.size.width * CGFloat(score) / 100, height: 4)
                 }
             }
             .frame(height: 4)

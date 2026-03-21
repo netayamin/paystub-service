@@ -92,8 +92,8 @@ final class FeedViewModel: ObservableObject {
     }
 
     /// likelyToOpen sorted by probability descending — drives the Drop Forecast section.
-    /// Uses the real `probability` field from backend metrics; falls back to availability_rate_14d
-    /// so the section always shows data when metrics exist.
+    /// Sorted by backend `probability` (composite pattern-strength index 1–99, not literal P(open));
+    /// falls back to availability_rate_14d when needed.
     var forecastVenues: [LikelyToOpenVenue] {
         likelyToOpen
             .filter { $0.probability != nil || $0.availabilityRate14d != nil }
