@@ -20,8 +20,8 @@ struct ContentView: View {
                     savedVM: savedVM,
                     premium: premium,
                     onOpenSearch: { selectedTab = 1 },
-                    onOpenExplore: { selectedTab = 1 },
                     onOpenAlerts: { showFeedAlerts = true },
+                    onOpenExplore: { selectedTab = 1 },
                     alertBadgeCount: alertsVM.unreadCount
                 )
             case 1:
