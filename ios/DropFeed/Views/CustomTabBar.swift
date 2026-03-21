@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Bottom dock tab bar: **flush** to screen edges, **no shadow**, **only top corners** rounded; white extends into the **home-indicator safe area**.
 ///
-/// `ContentView`: **DROPS** = 0 Feed · **LIVE FEED** = 1 Search · **BOOKINGS** = 2 Saved · **PROFILE** = 3.
-/// Visual order: LIVE FEED · DROPS · BOOKINGS · PROFILE.
+/// `ContentView`: **DISCOVERY** = 0 Feed · **ANALYTICS** = 1 Search · **SNIPES** = 2 Saved · **PROFILE** = 3.
+/// Visual order matches reference: DISCOVERY · SNIPES · ANALYTICS · PROFILE.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     var alertBadgeCount: Int = 0
@@ -15,9 +15,9 @@ struct CustomTabBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            tabButton(tag: 1, icon: "gauge.with.dots.needle.67percent", label: "LIVE FEED")
-            tabButton(tag: 0, icon: "flame.fill", label: "DROPS")
-            tabButton(tag: 2, icon: "ticket.fill", label: "BOOKINGS")
+            tabButton(tag: 0, icon: "safari.fill", label: "DISCOVERY")
+            tabButton(tag: 2, icon: "scope", label: "SNIPES")
+            tabButton(tag: 1, icon: "chart.line.uptrend.xyaxis", label: "ANALYTICS")
             tabButton(tag: 3, icon: "person.fill", label: "PROFILE")
         }
         .padding(.horizontal, 6)

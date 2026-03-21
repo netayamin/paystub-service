@@ -162,12 +162,7 @@ struct FeedView: View {
     private var referenceFeedScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                liveDropsHeader
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-
-                filterPillsRow
-                    .padding(.top, 12)
+                epicureanNavBar
 
                 if vm.newDropsCount > 0 {
                     HStack {
@@ -176,68 +171,138 @@ struct FeedView: View {
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                 }
 
-                crownJewelsSection
-                    .padding(.top, vm.newDropsCount > 0 ? 16 : 12)
+                if let hero = epicureanFeaturedHeroDrop {
+                    EpicureanFeaturedHeroCard(drop: hero)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                }
 
-                topOpportunitiesSnagSection
-                    .padding(.top, 24)
+                VelocityFeedSection(
+                    drops: velocityCarouselDrops,
+                    onViewAll: { showFilterSheet = true }
+                )
+                .padding(.top, 28)
+
+                HottestOpeningsSection(drops: hottestVerticalDrops)
+                    .padding(.top, 28)
 
                 if !vm.likelyToOpen.isEmpty {
-                    LikelyToOpenSection(
+                    InventoryPredictionsSection(
                         venues: vm.likelyToOpen,
                         premium: premium,
-                        onNotifyMe: { savedVM.toggleWatch($0) },
-                        isWatched: { savedVM.isWatched($0) }
+                        onNotifyMe: { savedVM.toggleWatch($0) }
                     )
                     .padding(.horizontal, 16)
-                    .padding(.top, 24)
-                    .padding(.bottom, 8)
+                    .padding(.top, 28)
                 }
 
-                // Secondary: full date/party filters — not promoted on the main scroll (feed-first).
+                filterPillsRow
+                    .padding(.top, 20)
+
                 Button {
                     showFilterSheet = true
                 } label: {
                     Text("More filters")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.linkBlue)
+                        .foregroundColor(SnagDesignSystem.epicureanRed)
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 12)
+                .padding(.bottom, 36)
             }
         }
         .background(SnagDesignSystem.pageCanvas)
     }
 
-    /// Feed-first hero: answers “what’s best right now?” without extra setup.
-    private var liveDropsHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("LIVE DROPS")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(SnagDesignSystem.coral)
-                    .tracking(1.0)
-                Text("Best tables right now")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(SnagDesignSystem.textDark)
-                Text("Next 14 days · updates every scan")
-                    .font(.system(size: 12))
-                    .foregroundColor(SnagDesignSystem.textMuted)
+    /// #1 curated top drop, else first live card.
+    private var epicureanFeaturedHeroDrop: Drop? {
+        vm.topDrops.first ?? vm.drops.first
+    }
+
+    /// Horizontal “velocity” strip: top picks after the hero, then other live drops (deduped).
+    private var velocityCarouselDrops: [Drop] {
+        let heroId = epicureanFeaturedHeroDrop?.id
+        var seen = Set<String>()
+        var out: [Drop] = []
+        for d in vm.topDrops.dropFirst() + vm.justDropped {
+            if d.id == heroId { continue }
+            if seen.insert(d.id).inserted {
+                out.append(d)
             }
-            Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Updated")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.textMuted)
-                Text(vm.lastScanText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(SnagDesignSystem.textSection)
+            if out.count >= 12 { break }
+        }
+        return out
+    }
+
+    /// Vertical “hottest” list: strong opportunities not already in hero or velocity strip.
+    private var hottestVerticalDrops: [Drop] {
+        let exclude = Set(
+            [epicureanFeaturedHeroDrop?.id].compactMap { $0 } + velocityCarouselDrops.map(\.id)
+        )
+        let primary = snagTopOpportunityDrops.filter { !exclude.contains($0.id) }
+        if primary.count >= 4 { return Array(primary.prefix(12)) }
+        let fill = vm.justDropped.filter { !exclude.contains($0.id) && !primary.map(\.id).contains($0.id) }
+        return Array((primary + fill).prefix(12))
+    }
+
+    private var epicureanNavBar: some View {
+        ZStack {
+            Text("SNAG")
+                .font(.system(size: 21, weight: .semibold, design: .serif))
+                .tracking(3)
+                .foregroundColor(SnagDesignSystem.textDark)
+
+            HStack(alignment: .center) {
+                Button {
+                    showFilterSheet = true
+                } label: {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.textDark)
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 6) {
+                    TimelineView(.animation(minimumInterval: 0.8)) { _ in
+                        Circle()
+                            .fill(SnagDesignSystem.epicureanRed)
+                            .frame(width: 7, height: 7)
+                            .opacity(0.45)
+                            .overlay(
+                                Circle()
+                                    .fill(SnagDesignSystem.epicureanRed)
+                                    .frame(width: 5, height: 5)
+                            )
+                    }
+                    Text("LIVE SCAN ACTIVE")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundColor(SnagDesignSystem.epicureanRed)
+                        .tracking(0.4)
+                }
+
+                Button {
+                    onOpenAlerts?()
+                } label: {
+                    Image(systemName: "bell.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.textDark)
+                }
+                .buttonStyle(.plain)
             }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(SnagDesignSystem.pageWhite)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.black.opacity(0.06))
+                .frame(height: 1)
         }
     }
 
@@ -709,6 +774,551 @@ private func friendlyDate(_ dateStr: String?) -> String? {
     if cal.isDateInToday(d)     { return "Today" }
     if cal.isDateInTomorrow(d)  { return "Tomorrow" }
     return "\(month)/\(day)"
+}
+
+// MARK: - Epicurean reference layout (hero + velocity + hottest + inventory)
+
+private struct EpicureanFeaturedHeroCard: View {
+    let drop: Drop
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var cityScanLine: String {
+        let nb = (drop.neighborhood ?? drop.location ?? "Manhattan").uppercased()
+        return "LIVE SCANNING \(nb)"
+    }
+
+    private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
+
+    private func formatTime(_ t: String) -> String {
+        let p = t.split(separator: ":")
+        guard let h = p.first.flatMap({ Int($0) }) else { return t.isEmpty ? "" : String(t.prefix(5)) }
+        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+        let h12 = h % 12 == 0 ? 12 : h % 12
+        let ap = h < 12 ? "AM" : "PM"
+        return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
+    }
+
+    private var availabilityLine: String {
+        let ds = drop.dateStr ?? drop.slots.first?.dateStr
+        let when: String = {
+            guard let ds, !ds.isEmpty else { return "Tonight" }
+            let parts = ds.split(separator: "-")
+            guard parts.count == 3,
+                  let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return "Tonight" }
+            var c = DateComponents()
+            c.year = y
+            c.month = mo
+            c.day = d
+            guard let date = Calendar.current.date(from: c) else { return "Tonight" }
+            let cal = Calendar.current
+            if cal.isDateInToday(date) { return "Tonight" }
+            if cal.isDateInTomorrow(date) { return "Tomorrow" }
+            let fmt = DateFormatter()
+            fmt.dateFormat = "EEE, MMM d"
+            return fmt.string(from: date)
+        }()
+        let t = drop.slots.first?.time ?? ""
+        let timePart = t.isEmpty ? "" : formatTime(t)
+        if timePart.isEmpty {
+            return "AVAILABILITY / \(when) · (\(partySize))"
+        }
+        return "AVAILABILITY / \(when), \(timePart) (\(partySize))"
+    }
+
+    private func book() {
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    private var cardWidth: CGFloat { min(UIScreen.main.bounds.width - 32, 400) }
+    private var cardHeight: CGFloat { cardWidth * 0.95 }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if let url = imageURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
+                        LinearGradient(
+                            colors: [Color(white: 0.32), Color(white: 0.18)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                } else {
+                    LinearGradient(
+                        colors: [Color(white: 0.32), Color(white: 0.18)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            }
+            .frame(width: cardWidth, height: cardHeight)
+            .clipped()
+
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.2), .black.opacity(0.88)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+            .frame(width: cardWidth, height: cardHeight)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(SnagDesignSystem.epicureanRed)
+                            .frame(width: 6, height: 6)
+                        Text(cityScanLine)
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(.white)
+                            .tracking(0.6)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.45))
+                    .clipShape(Capsule())
+                    Spacer()
+                }
+                .padding(14)
+
+                Spacer(minLength: 0)
+
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(drop.name)
+                            .font(.system(size: 26, weight: .bold, design: .serif))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                            .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 2)
+                        Text(availabilityLine)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 8)
+                    Button(action: book) {
+                        HStack(spacing: 6) {
+                            Text("SNAG SEAT")
+                                .font(.system(size: 12, weight: .heavy))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 14)
+                        .background(SnagDesignSystem.epicureanRed)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(16)
+            }
+            .frame(width: cardWidth, height: cardHeight, alignment: .bottom)
+        }
+        .frame(width: cardWidth, height: cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 20, x: 0, y: 10)
+    }
+}
+
+private struct VelocityFeedSection: View {
+    let drops: [Drop]
+    var onViewAll: () -> Void
+
+    var body: some View {
+        if drops.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("THE VELOCITY FEED")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.epicureanRed)
+                            .tracking(0.9)
+                        Text("Velvet drops")
+                            .font(SnagDesignSystem.sectionSerif)
+                            .foregroundColor(SnagDesignSystem.textDark)
+                    }
+                    Spacer()
+                    Button(action: onViewAll) {
+                        Text("VIEW ALL")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundColor(SnagDesignSystem.textMuted)
+                            .tracking(0.5)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(drops, id: \.id) { VelocityDropCard(drop: $0) }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+    }
+}
+
+private struct VelocityDropCard: View {
+    let drop: Drop
+
+    private var partySize: Int { drop.partySizesAvailable.sorted().first ?? 2 }
+
+    private var urgent: Bool { drop.secondsSinceDetected < 600 }
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private func book() {
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let window = max(120, Int(drop.avgDropDurationSeconds ?? 300))
+            let left = max(0, window - drop.secondsSinceDetected)
+            let mm = left / 60
+            let ss = left % 60
+            let clock = String(format: "%02d:%02d", mm, ss)
+
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .heroMuted) {
+                        (urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber).opacity(0.35)
+                    }
+                    .frame(height: 112)
+                    .clipped()
+
+                    Text(urgent ? "URGENT" : "PENDING")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.velocityAmber)
+                        .clipShape(Capsule())
+                        .padding(10)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(clock)
+                            .font(.system(size: 20, weight: .black, design: .monospaced))
+                            .foregroundColor(urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark)
+                        Spacer()
+                    }
+                    Text(drop.name)
+                        .font(.system(size: 16, weight: .bold, design: .serif))
+                        .foregroundColor(SnagDesignSystem.textDark)
+                        .lineLimit(2)
+                    Text("Table · \(partySize) guests")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.textMuted)
+
+                    Button(action: book) {
+                        Text("CLAIM NOW")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                urgent ? SnagDesignSystem.epicureanRed : SnagDesignSystem.textDark
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(14)
+            }
+            .frame(width: 252)
+            .background(SnagDesignSystem.pageWhite)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.black.opacity(urgent ? 0 : 0.07), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 6)
+        }
+    }
+}
+
+private struct HottestOpeningsSection: View {
+    let drops: [Drop]
+
+    var body: some View {
+        if drops.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .center, spacing: 10) {
+                    Text("Hottest Openings")
+                        .font(SnagDesignSystem.sectionSerif)
+                        .foregroundColor(SnagDesignSystem.textDark)
+                    Text("NEW RELEASES")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundColor(SnagDesignSystem.textMuted)
+                        .tracking(0.6)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(SnagDesignSystem.cardGray)
+                        .clipShape(Capsule())
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+
+                VStack(spacing: 22) {
+                    ForEach(drops, id: \.id) { HottestOpeningCard(drop: $0) }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+}
+
+private struct HottestOpeningCard: View {
+    let drop: Drop
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var subtitleLine: String {
+        let nb = drop.neighborhood ?? drop.location ?? "NYC"
+        return "\(nb) · Live availability"
+    }
+
+    private var score: Int {
+        let r = drop.rarityScore ?? 0
+        let p = (drop.resyPopularityScore ?? 0) * 38
+        let rat = ((drop.ratingAverage ?? 0) / 5.0) * 22
+        let hot: Double = drop.feedHot == true ? 14 : 0
+        return min(99, max(55, Int(r * 0.28 + p + rat + hot)))
+    }
+
+    private var showExclusive: Bool {
+        drop.feedHot == true || (drop.rarityScore ?? 0) >= 65
+    }
+
+    private func book() {
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .snagMuted) {
+                    SnagDesignSystem.cardGray
+                }
+                .frame(height: 200)
+                .clipped()
+
+                if showExclusive {
+                    Text("EXCLUSIVE")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(SnagDesignSystem.epicureanRed)
+                        .clipShape(Capsule())
+                        .padding(12)
+                }
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(drop.name)
+                        .font(.system(size: 20, weight: .bold, design: .serif))
+                        .foregroundColor(SnagDesignSystem.textDark)
+                        .lineLimit(2)
+                    Text(subtitleLine)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.textMuted)
+                }
+                Spacer(minLength: 8)
+                VStack(spacing: 4) {
+                    Text("SCORE")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(SnagDesignSystem.textMuted)
+                    Text("\(score)")
+                        .font(.system(size: 22, weight: .black, design: .serif))
+                        .foregroundColor(SnagDesignSystem.textDark)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(SnagDesignSystem.cardGray)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(16)
+            .background(SnagDesignSystem.pageWhite)
+
+            Button(action: book) {
+                Text("View on Resy")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.epicureanRed)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(SnagDesignSystem.pageWhite)
+            }
+            .buttonStyle(.plain)
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Color.black.opacity(0.06))
+                    .frame(height: 1)
+            }
+        }
+        .background(SnagDesignSystem.pageWhite)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .black.opacity(0.1), radius: 16, x: 0, y: 8)
+    }
+}
+
+/// List-style “inventory predictions” matching the reference layout (premium gating like `LikelyToOpenSection`).
+private struct InventoryPredictionsSection: View {
+    let venues: [LikelyToOpenVenue]
+    @ObservedObject var premium: PremiumManager
+    var onNotifyMe: ((String) -> Void)?
+
+    @State private var showPaywall = false
+
+    private var freeLimit: Int { PremiumManager.freeLikelyToOpenLimit }
+    private var freeVenues: [LikelyToOpenVenue] { Array(venues.prefix(freeLimit)) }
+    private var lockedVenues: [LikelyToOpenVenue] { premium.isPremium ? [] : Array(venues.dropFirst(freeLimit)) }
+    private var allVisible: [LikelyToOpenVenue] { premium.isPremium ? venues : freeVenues }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Inventory Predictions")
+                        .font(SnagDesignSystem.sectionSerif)
+                        .foregroundColor(SnagDesignSystem.textDark)
+                    Text("Upcoming drop probabilities based on live traffic.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.textMuted)
+                }
+                Spacer()
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(allVisible.enumerated()), id: \.element.id) { idx, venue in
+                    InventoryPredictionRow(
+                        venue: venue,
+                        onNotify: { onNotifyMe?(venue.name) }
+                    )
+                    if idx < allVisible.count - 1 {
+                        Divider()
+                            .background(Color.black.opacity(0.08))
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+
+            if !lockedVenues.isEmpty {
+                Button {
+                    showPaywall = true
+                } label: {
+                    HStack {
+                        Image(systemName: "lock.fill")
+                        Text("Unlock \(lockedVenues.count) more predictions")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundColor(SnagDesignSystem.epicureanRed)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(SnagDesignSystem.coralSoft)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PremiumPaywallView(premium: premium)
+        }
+    }
+}
+
+private struct InventoryPredictionRow: View {
+    let venue: LikelyToOpenVenue
+    var onNotify: () -> Void
+
+    private var imageURL: URL? {
+        guard let s = venue.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var statusTag: (String, Color) {
+        let p = venue.probability ?? 50
+        switch p {
+        case 80...: return ("ALMOST CERTAIN", SnagDesignSystem.mint)
+        case 60..<80: return ("VERY LIKELY", Color(red: 0.92, green: 0.35, blue: 0.55))
+        default: return ("EMERGING", SnagDesignSystem.velocityAmber)
+        }
+    }
+
+    private var dropEst: String {
+        if let t = venue.predictedDropTime, !t.isEmpty {
+            return t.uppercased()
+        }
+        return "EVENING"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            CardAsyncImage(url: imageURL, contentMode: .fill, skeletonTone: .snagMuted) {
+                SnagDesignSystem.cardGray
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(venue.name)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(SnagDesignSystem.textDark)
+                    .lineLimit(1)
+                Text(venue.neighborhood ?? "NYC")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(SnagDesignSystem.textMuted)
+            }
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(statusTag.0)
+                    .font(.system(size: 8, weight: .heavy))
+                    .foregroundColor(statusTag.1)
+                    .tracking(0.4)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("DROP EST.")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundColor(SnagDesignSystem.textMuted)
+                    Text(dropEst)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.textDark)
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onTapGesture { onNotify() }
+    }
 }
 
 // MARK: - Crown Jewels hero card (Snag mockup: full-bleed image + gradient + Book Now)

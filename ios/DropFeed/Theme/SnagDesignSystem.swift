@@ -8,6 +8,12 @@ enum SnagDesignSystem {
     /// Primary red — buttons, badges, links (not orange/coral)
     static let coral = Color(red: 220 / 255, green: 38 / 255, blue: 38 / 255) // #DC2626
 
+    /// Deeper editorial red (reference UI / hero CTAs)
+    static let epicureanRed = Color(red: 178 / 255, green: 34 / 255, blue: 34 / 255) // #B22222
+
+    /// Velocity “pending” / warm accent
+    static let velocityAmber = Color(red: 230 / 255, green: 126 / 255, blue: 34 / 255)
+
     /// Light tint for pill backgrounds
     static let coralSoft = Color(red: 220 / 255, green: 38 / 255, blue: 38 / 255).opacity(0.12)
 
@@ -49,5 +55,14 @@ enum SnagDesignSystem {
 
     static var venueSerifTitle: Font {
         .system(size: 26, weight: .bold, design: .serif)
+    }
+
+    /// Large display titles (hero + section headers) — New York / serif feel on iOS.
+    static var displaySerif: Font {
+        .system(size: 28, weight: .bold, design: .serif)
+    }
+
+    static var sectionSerif: Font {
+        .system(size: 22, weight: .bold, design: .serif)
     }
 }
