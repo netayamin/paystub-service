@@ -91,6 +91,25 @@ final class FeedViewModel: ObservableObject {
         likelyToOpen.filter { ($0.rarityScore ?? 0) > 0.5 }.prefix(5).map { $0 }
     }
 
+    /// likelyToOpen sorted by probability descending — drives the Drop Forecast section.
+    /// Uses the real `probability` field from backend metrics; falls back to availability_rate_14d
+    /// so the section always shows data when metrics exist.
+    var forecastVenues: [LikelyToOpenVenue] {
+        likelyToOpen
+            .filter { $0.probability != nil || $0.availabilityRate14d != nil }
+            .sorted {
+                let a = $0.probability ?? Int(round(($0.availabilityRate14d ?? 0) * 100))
+                let b = $1.probability ?? Int(round(($1.availabilityRate14d ?? 0) * 100))
+                return a > b
+            }
+    }
+
+    /// Live drops where tables disappear quickly — used for urgency callouts.
+    var fastVanishDrops: [Drop] {
+        drops.filter { ($0.avgDropDurationSeconds ?? Double.infinity) < 120 }
+             .sorted { ($0.avgDropDurationSeconds ?? 999) < ($1.avgDropDurationSeconds ?? 999) }
+    }
+
     /// Neighborhoods with active drop counts — fully derived from live drops, no hardcoding.
     var hotZones: [(name: String, activeCount: Int)] {
         var counts: [String: Int] = [:]

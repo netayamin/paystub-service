@@ -224,6 +224,11 @@ struct FeedView: View {
                 crownJewelsSection
                     .padding(.bottom, 32)
 
+                if !vm.forecastVenues.isEmpty {
+                    dropForecastSection
+                        .padding(.bottom, 32)
+                }
+
                 velocityFeedSection
                     .padding(.bottom, 32)
 
@@ -407,6 +412,109 @@ struct FeedView: View {
                 .padding(.horizontal, 16)
             }
         }
+    }
+
+    // MARK: - Drop Forecast
+
+    private var dropForecastSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("DROP FORECAST")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(palette.accentRed)
+                        .tracking(1.2)
+                    Text("Predictions")
+                        .font(.system(size: 26, weight: .black))
+                        .foregroundColor(palette.textPrimary)
+                }
+                Spacer()
+                Text("Based on 14-day history")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(palette.textTertiary)
+            }
+            .padding(.horizontal, 16)
+
+            // Urgency callout — from avgDropDurationSeconds (real venue_metrics data)
+            let fast = vm.fastVanishDrops.prefix(2)
+            if !fast.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(Array(fast), id: \.id) { drop in
+                        urgencyRow(drop)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+
+            // Forecast cards — horizontal scroll sorted by probability desc
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(vm.forecastVenues.prefix(8)) { venue in
+                        ForecastCard(
+                            venue: venue,
+                            isWatched: savedVM.isWatched(venue.name)
+                        ) {
+                            savedVM.toggleWatch(venue.name)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    /// Urgency banner for a currently-live drop where tables historically vanish fast.
+    private func urgencyRow(_ drop: Drop) -> some View {
+        let secs = drop.avgDropDurationSeconds ?? 0
+        let label: String = {
+            if secs < 60 { return "~\(Int(secs))s avg" }
+            return "~\(Int(secs / 60))m \(Int(secs) % 60)s avg"
+        }()
+
+        return HStack(spacing: 10) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 30, height: 30)
+                .background(palette.accentRed)
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(drop.name)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(palette.textPrimary)
+                    .lineLimit(1)
+                Text("Tables vanish in \(label) — open now")
+                    .font(.system(size: 11))
+                    .foregroundColor(palette.textTertiary)
+            }
+
+            Spacer(minLength: 4)
+
+            if let url = (drop.resyUrl ?? drop.slots.first?.resyUrl).flatMap(URL.init) {
+                Button {
+                    UIApplication.shared.open(url)
+                } label: {
+                    Text("Go")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(palette.accentRed)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(palette.accentRed.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(palette.accentRed.opacity(0.25), lineWidth: 1)
+        )
     }
 
     // MARK: - Hot Zones
@@ -1080,12 +1188,25 @@ private struct VelocityFeedRow: View {
                     .foregroundColor(palette.textSecondary)
                 }
 
-                if rarityScore > 0 {
-                    HStack(spacing: 3) {
-                        Image(systemName: "bolt.fill").font(.system(size: 10, weight: .bold))
-                        Text("\(rarityScore)/100 Rarity").font(.system(size: 11, weight: .semibold))
+                HStack(spacing: 8) {
+                    // Rarity score from rolling metrics
+                    if rarityScore > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "bolt.fill").font(.system(size: 10, weight: .bold))
+                            Text("\(rarityScore)/100").font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(rarityScore >= 70 ? palette.accentRed : palette.textTertiary)
                     }
-                    .foregroundColor(rarityScore >= 70 ? palette.accentRed : palette.textTertiary)
+
+                    // Urgency: how fast tables historically vanish (from venue_metrics)
+                    if let dur = drop.avgDropDurationSeconds, dur < 120 {
+                        let label = dur < 60 ? "~\(Int(dur))s" : "~\(Int(dur / 60))m\(Int(dur) % 60 > 0 ? "\(Int(dur) % 60)s" : "")"
+                        HStack(spacing: 3) {
+                            Image(systemName: "timer").font(.system(size: 10, weight: .bold))
+                            Text("Vanishes in \(label)").font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(palette.accentRed)
+                    }
                 }
             }
 
@@ -1163,6 +1284,146 @@ private struct HotZoneCard: View {
         }
         .frame(width: 150, height: 96)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+// MARK: - Forecast Card
+
+private struct ForecastCard: View {
+    let venue: LikelyToOpenVenue
+    let isWatched: Bool
+    let onTapNotify: () -> Void
+
+    private let palette = FeedPalette.liveFeedLight
+    private let cardWidth: CGFloat = 200
+
+    private var imageURL: URL? {
+        guard let s = venue.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    /// Probability from real backend metrics (availability_rate_14d × 100 + trend boost).
+    private var pct: Int {
+        if let p = venue.probability { return p }
+        let r = venue.availabilityRate14d ?? 0
+        let t = max(0, venue.trendPct ?? 0)
+        return min(99, max(1, Int(round((r + min(0.08, t)) * 100))))
+    }
+
+    private var pctColor: Color {
+        if pct >= 80 { return palette.accentRed }
+        if pct >= 55 { return Color(red: 0.95, green: 0.55, blue: 0.10) }
+        return palette.textSecondary
+    }
+
+    private var trendIcon: String? {
+        guard let t = venue.trendPct else { return nil }
+        if t > 0.05  { return "arrow.up.right" }
+        if t < -0.05 { return "arrow.down.right" }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Image
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let url = imageURL {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let img): img.resizable().scaledToFill()
+                            default: Color(white: 0.86)
+                            }
+                        }
+                    } else {
+                        LinearGradient(
+                            colors: [Color(white: 0.78), Color(white: 0.68)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    }
+                }
+                .frame(width: cardWidth, height: 120)
+                .clipped()
+
+                // Probability badge
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("\(pct)%")
+                        .font(.system(size: 22, weight: .black))
+                        .foregroundColor(.white)
+                    Text("chance")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .tracking(0.3)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(pctColor)
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0, bottomLeadingRadius: 12,
+                        bottomTrailingRadius: 0, topTrailingRadius: 0
+                    )
+                )
+            }
+
+            // Info
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    Text(venue.name)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(palette.textPrimary)
+                        .lineLimit(1)
+                    if let icon = trendIcon {
+                        Image(systemName: icon)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(icon.contains("up") ? Color(red: 0.18, green: 0.76, blue: 0.42) : palette.textTertiary)
+                    }
+                }
+
+                // Data-driven reason (2 lines max)
+                if let reason = venue.reason, !reason.isEmpty {
+                    Text(reason)
+                        .font(.system(size: 10))
+                        .foregroundColor(palette.textTertiary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Days context from rolling metrics
+                if let days = venue.daysWithDrops {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar").font(.system(size: 10))
+                        Text("\(days)/14 days")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundColor(days <= 3 ? palette.accentRed : palette.textTertiary)
+                }
+
+                Button { onTapNotify() } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isWatched ? "checkmark" : "bell")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(isWatched ? "Watching" : "Notify Me")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(isWatched ? palette.textTertiary : palette.accentRed)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background((isWatched ? Color.gray : palette.accentRed).opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke((isWatched ? Color.gray : palette.accentRed).opacity(0.20), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(12)
+            .background(Color.white)
+        }
+        .frame(width: cardWidth)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.07), radius: 8, x: 0, y: 3)
     }
 }
 
