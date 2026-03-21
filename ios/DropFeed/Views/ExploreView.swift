@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Explore tab — discovery layout: hero highlight, likely-to-drop, hot areas, time tabs, two-column grid.
+/// Explore tab — discovery layout: date strip, likely-to-drop, hot areas, time tabs, two-column grid.
 struct ExploreView: View {
     @ObservedObject var vm: SearchViewModel
     @ObservedObject var savedVM: SavedViewModel
@@ -14,7 +14,6 @@ struct ExploreView: View {
     private let gridRowSpacing: CGFloat = 20
     /// Single card height: image + title/meta overlaid (no text outside the rounded rect).
     private let gridCardHeight: CGFloat = 248
-    private let heroCardHeight: CGFloat = 232
 
     var body: some View {
         ScrollView {
@@ -25,8 +24,6 @@ struct ExploreView: View {
                     if let err = vm.error {
                         errorBanner(err).padding(.top, 12)
                     }
-                    tonightHighlightsSection
-                        .padding(.top, 22)
                     likelyToDropCard
                         .padding(.top, 14)
                     hotAreasCard
@@ -86,17 +83,28 @@ struct ExploreView: View {
             vm.selectedDates = [opt.dateStr]
             Task { await vm.loadResults() }
         } label: {
-            VStack(spacing: 3) {
-                Text(opt.monthAbbrev)
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(0.35)
-                Text(opt.dayNum)
-                    .font(.system(size: 20, weight: .bold))
+            VStack(spacing: 0) {
+                VStack(spacing: 3) {
+                    Text(opt.monthAbbrev)
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.35)
+                    Text(opt.dayNum)
+                        .font(.system(size: 20, weight: .bold))
+                }
+                .foregroundColor(selected ? .white : SnagDesignSystem.exploreSecondaryLabel)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+
+                Rectangle()
+                    .fill(selected ? SnagDesignSystem.exploreCoralSolid : Color.clear)
+                    .frame(width: 36, height: 2)
+                    .padding(.top, 2)
             }
-            .foregroundColor(selected ? .white : SnagDesignSystem.exploreSecondaryLabel)
             .frame(width: 52, height: 60)
-            .background(selected ? SnagDesignSystem.exploreCoralSolid : Color(white: 0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(selected ? Color.clear : Color(white: 0.12))
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(selected ? Color.clear : Color(white: 0.28), lineWidth: 1)
@@ -129,158 +137,6 @@ struct ExploreView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SnagDesignSystem.exploreCoralSolid.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    // MARK: - Tonight's Highlights (hero)
-
-    private var tonightHighlightsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Tonight's Highlights")
-                    .font(.system(size: 22, weight: .bold, design: .serif))
-                    .foregroundColor(.white)
-                Spacer()
-                Text("LIVE DATA")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                    .tracking(0.8)
-            }
-
-            if vm.isLoading && vm.rankedResults.isEmpty {
-                ProgressView()
-                    .tint(SnagDesignSystem.exploreCoralSolid)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-            } else if let hero = highlightDrop {
-                heroCard(hero)
-            } else {
-                Text("No featured tables for this window yet.")
-                    .font(.system(size: 14))
-                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                    .padding(.vertical, 20)
-            }
-        }
-    }
-
-    private var highlightDrop: Drop? {
-        vm.rankedResults.first
-    }
-
-    private func heroCard(_ drop: Drop) -> some View {
-        let url = resyURL(for: drop)
-        return Button {
-            if let url { UIApplication.shared.open(url) }
-        } label: {
-            ZStack(alignment: .bottomLeading) {
-                heroImage(drop)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: heroCardHeight)
-                    .clipped()
-
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.35), .black.opacity(0.88)],
-                    startPoint: .center,
-                    endPoint: .bottom
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: heroCardHeight)
-                .allowsHitTesting(false)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        if heroShowBestTonight(drop) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "flame.fill")
-                                    .font(.system(size: 11))
-                                Text("BEST TONIGHT")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .tracking(0.4)
-                            }
-                            .foregroundColor(Color(red: 0.15, green: 0.12, blue: 0.11))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(SnagDesignSystem.exploreCoralSolid)
-                            .clipShape(Capsule())
-                        }
-                        Text(habitPillText(for: drop))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color(white: 0.22), in: Capsule())
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(drop.name)
-                        .font(.system(size: 22, weight: .bold, design: .serif))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-                        .shadow(color: .black.opacity(0.45), radius: 8, x: 0, y: 1)
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 12))
-                        Text(heroMetaLine(for: drop))
-                            .font(.system(size: 13))
-                    }
-                    .foregroundColor(Color.white.opacity(0.82))
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: heroCardHeight)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func heroImage(_ drop: Drop) -> some View {
-        if let s = drop.imageUrl, let u = URL(string: s) {
-            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
-                Color(white: 0.18)
-            }
-        } else {
-            Color(white: 0.18)
-        }
-    }
-
-    private func heroShowBestTonight(_ drop: Drop) -> Bool {
-        if drop.feedHot == true { return true }
-        if let s = drop.snagScore, s >= 85 { return true }
-        return false
-    }
-
-    private func habitPillText(for drop: Drop) -> String {
-        if let v = drop.velocityPrimaryLabel, !v.isEmpty, v.count <= 44 { return v }
-        if let s = drop.metricsSubtitle, !s.isEmpty, s.count <= 44 { return s }
-        if let h = drop.heroDescription, !h.isEmpty {
-            let t = h.trimmingCharacters(in: .whitespacesAndNewlines)
-            if t.count <= 44 { return t }
-            return String(t.prefix(41)) + "…"
-        }
-        return "Fresh availability"
-    }
-
-    private func heroMetaLine(for drop: Drop) -> String {
-        let table = tablePhrase
-        let time = formatFirstSlotTime(drop)
-        let area = (drop.neighborhood ?? drop.location ?? "NYC").trimmingCharacters(in: .whitespaces)
-        if time.isEmpty { return "\(table) • \(area)" }
-        return "\(table) • \(time) • \(area)"
-    }
-
-    private var tablePhrase: String {
-        switch vm.explorePartySegment {
-        case .two: return "Table for 2"
-        case .four: return "Table for 4"
-        case .anyParty: return "Table"
-        }
     }
 
     // MARK: - Likely to drop
@@ -430,7 +286,7 @@ struct ExploreView: View {
     @ViewBuilder
     private var gridSection: some View {
         let items = gridDrops
-        if items.isEmpty, vm.rankedResults.count > 1 {
+        if items.isEmpty, !vm.rankedResults.isEmpty {
             Text("No tables in this time band. Try the other tab or another day.")
                 .font(.system(size: 13))
                 .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
@@ -466,8 +322,7 @@ struct ExploreView: View {
     }
 
     private var gridDrops: [Drop] {
-        let heroId = highlightDrop?.id
-        var list = vm.rankedResults.filter { $0.id != heroId }
+        var list = vm.rankedResults
         list = list.filter { dropMatchesGridTab($0, tab: gridTimeTab) }
         if hypeSortReversed {
             list.reverse()
