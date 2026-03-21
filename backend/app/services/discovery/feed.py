@@ -97,27 +97,32 @@ def _consolidate_cards(
 ) -> list[dict]:
     """Group by venue name (normalized); one card per venue with slots[] and earliest detected_at."""
     by_name: dict[str, dict] = {}
+    def _make_card(key: str, date_str: str, payload: dict) -> dict:
+        return {
+            "id": f"consolidated-{key}",
+            "name": (payload.get("name") or "").strip() or key,
+            # venue_id is Resy's stable ID — kept so metrics can be matched by ID not just name
+            "venue_id": payload.get("venue_id"),
+            "venueKey": key,
+            "location": payload.get("neighborhood") or "NYC",
+            "date_str": date_str,
+            "slots": [],
+            "party_sizes_available": list(payload.get("party_sizes_available") or []),
+            "image_url": payload.get("image_url"),
+            "created_at": payload.get("detected_at"),
+            "detected_at": payload.get("detected_at"),
+            "resy_popularity_score": payload.get("resy_popularity_score"),
+            "rating_average": payload.get("rating_average"),
+            "rating_count": payload.get("rating_count"),
+            "market": payload.get("market") or "nyc",
+        }
+
     for item in just_opened_flat:
         key, date_str, time_str, resy_url, payload = item
         name = (payload.get("name") or "").strip() or key
         norm = _normalize_name(name) or key
         if norm not in by_name:
-            by_name[norm] = {
-                "id": f"consolidated-{norm}",
-                "name": name,
-                "venueKey": key,
-                "location": payload.get("neighborhood") or "NYC",
-                "date_str": date_str,
-                "slots": [],
-                "party_sizes_available": list(payload.get("party_sizes_available") or []),
-                "image_url": payload.get("image_url"),
-                "created_at": payload.get("detected_at"),
-                "detected_at": payload.get("detected_at"),
-                "resy_popularity_score": payload.get("resy_popularity_score"),
-                "rating_average": payload.get("rating_average"),
-                "rating_count": payload.get("rating_count"),
-                "market": payload.get("market") or "nyc",
-            }
+            by_name[norm] = _make_card(key, date_str, payload)
         card = by_name[norm]
         slot = {"date_str": date_str, "time": time_str, "resyUrl": resy_url}
         if not any(s.get("date_str") == date_str and s.get("time") == time_str for s in card["slots"]):
@@ -129,28 +134,16 @@ def _consolidate_cards(
         for ps in payload.get("party_sizes_available") or []:
             if ps not in card["party_sizes_available"]:
                 card["party_sizes_available"].append(ps)
+        # Carry venue_id from any slot that has it
+        if payload.get("venue_id") and not card.get("venue_id"):
+            card["venue_id"] = payload["venue_id"]
 
     for item in still_open_flat:
         key, date_str, time_str, resy_url, payload = item
         name = (payload.get("name") or "").strip() or key
         norm = _normalize_name(name) or key
         if norm not in by_name:
-            by_name[norm] = {
-                "id": f"consolidated-{norm}",
-                "name": name,
-                "venueKey": key,
-                "location": payload.get("neighborhood") or "NYC",
-                "date_str": date_str,
-                "slots": [],
-                "party_sizes_available": list(payload.get("party_sizes_available") or []),
-                "image_url": payload.get("image_url"),
-                "created_at": payload.get("detected_at"),
-                "detected_at": payload.get("detected_at"),
-                "resy_popularity_score": payload.get("resy_popularity_score"),
-                "rating_average": payload.get("rating_average"),
-                "rating_count": payload.get("rating_count"),
-                "market": payload.get("market") or "nyc",
-            }
+            by_name[norm] = _make_card(key, date_str, payload)
         card = by_name[norm]
         slot = {"date_str": date_str, "time": time_str, "resyUrl": resy_url}
         if not any(s.get("date_str") == date_str and s.get("time") == time_str for s in card["slots"]):
@@ -162,6 +155,8 @@ def _consolidate_cards(
         for ps in payload.get("party_sizes_available") or []:
             if ps not in card["party_sizes_available"]:
                 card["party_sizes_available"].append(ps)
+        if payload.get("venue_id") and not card.get("venue_id"):
+            card["venue_id"] = payload["venue_id"]
 
     # Sort slots by date then time; set resyUrl to first slot
     result = []

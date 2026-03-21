@@ -121,14 +121,14 @@ def rebuild_snapshot(db: Session) -> None:
         # Restrict to the latest as_of_date so we never mix stale rows from
         # an older computation window with current ones.
         from sqlalchemy import func as _sqlfunc
+        from collections import defaultdict
         latest_as_of = (
             db.query(_sqlfunc.max(VenueRollingMetrics.as_of_date))
             .scalar()
         )
-        rolling_query = (
-            db.query(VenueRollingMetrics)
-            .filter(VenueRollingMetrics.venue_name.isnot(None))
-        )
+        # Do NOT filter on venue_name — venues with no name but a valid venue_id
+        # are still matchable by ID and should not be silently dropped.
+        rolling_query = db.query(VenueRollingMetrics)
         if latest_as_of is not None:
             rolling_query = rolling_query.filter(
                 VenueRollingMetrics.as_of_date == latest_as_of
@@ -139,52 +139,79 @@ def rebuild_snapshot(db: Session) -> None:
             .limit(DISCOVERY_ROLLING_METRICS_LIMIT)
             .all()
         )
+
+        def _metrics_dict(rm: VenueRollingMetrics) -> dict:
+            return {
+                "rarity_score": rm.rarity_score,
+                "availability_rate_14d": rm.availability_rate_14d,
+                "days_with_drops": rm.days_with_drops,
+                "drop_frequency_per_day": rm.drop_frequency_per_day,
+                "trend_pct": rm.trend_pct,
+            }
+
+        # Primary index: venue_id (stable Resy ID — survives name changes)
+        rolling_by_id: dict[str, dict] = {}
+        # Fallback index: normalised venue name
         rolling_by_name: dict[str, dict] = {}
         for rm in rolling_rows:
-            key = (rm.venue_name or "").strip().lower()
-            if key and key not in rolling_by_name:
-                rolling_by_name[key] = {
-                    "rarity_score": rm.rarity_score,
-                    "availability_rate_14d": rm.availability_rate_14d,
-                    "days_with_drops": rm.days_with_drops,
-                    "drop_frequency_per_day": rm.drop_frequency_per_day,
-                    "trend_pct": rm.trend_pct,
-                }
+            vid = (rm.venue_id or "").strip()
+            if vid and vid not in rolling_by_id:
+                rolling_by_id[vid] = _metrics_dict(rm)
+            nm = (rm.venue_name or "").strip().lower()
+            if nm and nm not in rolling_by_name:
+                rolling_by_name[nm] = _metrics_dict(rm)
 
-        # Enrich with avg_drop_duration_seconds from VenueMetrics (recent 14 days)
+        # Enrich with avg_drop_duration_seconds from VenueMetrics (recent 14 days).
+        # Also build by venue_id so the speed signal can be matched by ID.
         try:
             start_date = today - timedelta(days=14)
             vm_rows = (
                 db.query(
+                    VenueMetrics.venue_id,
                     VenueMetrics.venue_name,
                     VenueMetrics.avg_drop_duration_seconds,
                 )
                 .filter(
                     VenueMetrics.window_date >= start_date,
-                    VenueMetrics.venue_name.isnot(None),
                     VenueMetrics.avg_drop_duration_seconds.isnot(None),
                 )
                 .all()
             )
-            # Average per venue (by name)
-            from collections import defaultdict
+            duration_by_id: dict[str, list[float]] = defaultdict(list)
             duration_by_name: dict[str, list[float]] = defaultdict(list)
             for row in vm_rows:
-                key = (row.venue_name or "").strip().lower()
-                if key and row.avg_drop_duration_seconds is not None:
-                    duration_by_name[key].append(row.avg_drop_duration_seconds)
-            for key, values in duration_by_name.items():
-                if key in rolling_by_name and values:
-                    rolling_by_name[key]["avg_drop_duration_seconds"] = sum(values) / len(values)
+                vid = (row.venue_id or "").strip()
+                nm = (row.venue_name or "").strip().lower()
+                val = row.avg_drop_duration_seconds
+                if val is not None:
+                    if vid:
+                        duration_by_id[vid].append(val)
+                    if nm:
+                        duration_by_name[nm].append(val)
+            for vid, values in duration_by_id.items():
+                if vid in rolling_by_id and values:
+                    rolling_by_id[vid]["avg_drop_duration_seconds"] = sum(values) / len(values)
+            for nm, values in duration_by_name.items():
+                if nm in rolling_by_name and values:
+                    rolling_by_name[nm]["avg_drop_duration_seconds"] = sum(values) / len(values)
         except Exception:
             pass  # non-fatal
+
+        def _lookup_metrics(venue_id: str | None, name: str | None) -> dict | None:
+            """Return rolling metrics dict: venue_id match first, name fallback."""
+            vid = (venue_id or "").strip()
+            if vid and vid in rolling_by_id:
+                return rolling_by_id[vid]
+            nm = (name or "").strip().lower()
+            if nm and nm in rolling_by_name:
+                return rolling_by_name[nm]
+            return None
 
         def _attach_metrics_to_days(days: list[dict]) -> None:
             """Attach rolling metrics to raw venue dicts (before build_feed)."""
             for day in days:
                 for v in day.get("venues") or []:
-                    nm = (v.get("name") or "").strip().lower()
-                    rm = rolling_by_name.get(nm)
+                    rm = _lookup_metrics(v.get("venue_id"), v.get("name"))
                     if rm:
                         v.update(rm)
 
@@ -214,8 +241,7 @@ def rebuild_snapshot(db: Session) -> None:
 
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:
-                nm = (c.get("name") or "").strip().lower()
-                rm = rolling_by_name.get(nm)
+                rm = _lookup_metrics(c.get("venue_id"), c.get("name"))
                 if rm:
                     c.update(rm)
 
