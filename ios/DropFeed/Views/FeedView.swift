@@ -1002,6 +1002,20 @@ private func feedFormatTime12h(_ t: String) -> String {
     return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
 }
 
+/// Hot hero CTA: show reservation window (first slot date + time) instead of generic “claim” copy.
+private func feedHeroBookingCTALabel(for drop: Drop) -> String {
+    let slot = drop.slots.first
+    let ds = slot?.dateStr ?? drop.dateStr
+    let datePart = friendlyDate(ds).map { $0.uppercased() }
+    let timeRaw = (slot?.time ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let timePart = feedFormatTime12h(timeRaw)
+    let hasTime = !timeRaw.isEmpty && timePart != "—"
+    if let d = datePart, hasTime { return "\(d) · \(timePart)" }
+    if let d = datePart { return d }
+    if hasTime { return timePart }
+    return "BOOK TABLE"
+}
+
 /// Live feed / TOP DROPS: ranked_board entries are current inventory; treat as bookable
 /// whenever we still have a Resy URL. ``explore_snag_available`` is tuned for Explore
 /// and can be false while the home feed card is still valid.
@@ -1338,16 +1352,24 @@ private struct MarketLeaderHeroCard: View {
                             Color.clear.frame(width: 1, height: 1)
                         }
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(feedShouldShowVanishCountdown(drop, requireExploreOpen: false) ? "VANISHES IN" : "TIME TO CLAIM")
-                                .font(.system(size: 9, weight: .heavy))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
-                                .tracking(0.6)
+                        HStack(spacing: 5) {
+                            Text(feedShouldShowVanishCountdown(drop, requireExploreOpen: false) ? "VANISHES" : "TIME TO CLAIM")
+                                .font(.system(size: 8, weight: .heavy))
+                                .foregroundColor(.white.opacity(0.88))
+                                .tracking(0.45)
                             Text(feedTimeToClaimDisplay(for: drop, requireExploreOpen: false))
-                                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                                .font(.system(size: 12, weight: .heavy, design: .rounded))
                                 .foregroundColor(.white)
                                 .monospacedDigit()
                         }
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .background(Color.black.opacity(0.48))
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
                     }
                     .padding(.top, 10)
                     .padding(.horizontal, 12)
@@ -1379,12 +1401,16 @@ private struct MarketLeaderHeroCard: View {
                         .frame(height: 2)
 
                         Button(action: executeClaim) {
-                            Text("EXECUTE CLAIM")
-                                .font(.system(size: 11, weight: .heavy))
+                            Text(feedHeroBookingCTALabel(for: drop))
+                                .font(.system(size: 12, weight: .heavy))
                                 .foregroundColor(bookable ? Color.white : Color(white: 0.55))
-                                .tracking(0.65)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.78)
+                                .tracking(0.35)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
+                                .padding(.horizontal, 6)
                                 .background(bookable ? SnagDesignSystem.coral : Color(white: 0.28))
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
