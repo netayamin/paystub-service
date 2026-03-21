@@ -293,12 +293,11 @@ struct Drop: Codable, Identifiable {
         self.exploreShowDot = exploreShowDot
     }
 
-    /// Prefer server `explore_snag_available`; fall back to slots + Resy URL.
+    /// True when there is a non-empty Resy booking link; otherwise use server flag if present.
     var exploreCanSnag: Bool {
-        if let s = exploreSnagAvailable { return s }
-        guard !slots.isEmpty else { return false }
-        let u = resyUrl ?? slots.first?.resyUrl
-        return u != nil && !(u ?? "").isEmpty
+        let u = (resyUrl ?? slots.first?.resyUrl)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !u.isEmpty { return true }
+        return exploreSnagAvailable ?? false
     }
     
     /// "Trending" when trend_pct > 0, "Cooling" when < 0, nil otherwise

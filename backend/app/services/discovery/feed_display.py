@@ -456,9 +456,12 @@ def explore_card_status_tag(card: dict, now: datetime) -> str | None:
 
 
 def explore_snag_available(card: dict) -> bool:
-    slots = card.get("slots") or []
-    if not isinstance(slots, list) or len(slots) == 0:
-        return False
+    """True when the card still carries a bookable Resy link (top-level or any slot).
+
+    Do not require a non-empty ``slots`` list: some clients or edge shapes may set
+    ``resyUrl`` / ``resy_url`` without mirroring every slot; the live board should
+    still count as snagable whenever a URL exists.
+    """
     return _card_resy_url(card) is not None
 
 

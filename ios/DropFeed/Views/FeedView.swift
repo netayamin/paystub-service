@@ -173,6 +173,19 @@ struct FeedView: View {
         return Array(vm.drops.dropFirst().prefix(20))
     }
 
+    /// Re-sorted each refresh so higher-signal + fresher drops surface first (list “moves” as the API updates).
+    private var mockLiveNowDropsOrdered: [Drop] {
+        mockLiveNowDrops.sorted { a, b in
+            let sa = a.snagScore ?? 0
+            let sb = b.snagScore ?? 0
+            if sa != sb { return sa > sb }
+            if a.secondsSinceDetected != b.secondsSinceDetected {
+                return a.secondsSinceDetected < b.secondsSinceDetected
+            }
+            return a.id < b.id
+        }
+    }
+
     private var mockCarouselCardWidth: CGFloat {
         min(UIScreen.main.bounds.width * 0.62, 240)
     }
@@ -317,13 +330,14 @@ struct FeedView: View {
                     .padding(.horizontal, 16)
 
                     VStack(spacing: 12) {
-                        ForEach(mockLiveNowDrops, id: \.id) { drop in
+                        ForEach(mockLiveNowDropsOrdered, id: \.id) { drop in
                             MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
                     .padding(.bottom, 32)
+                    .animation(.easeInOut(duration: 0.32), value: vm.lastRefreshed)
                 }
             }
         }
@@ -910,11 +924,13 @@ private func feedFormatTime12h(_ t: String) -> String {
     return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
 }
 
+/// Live feed / TOP DROPS: ranked_board entries are current inventory; treat as bookable
+/// whenever we still have a Resy URL. ``explore_snag_available`` is tuned for Explore
+/// and can be false while the home feed card is still valid.
 private func feedDropIsBookable(_ drop: Drop) -> Bool {
-    if let avail = drop.exploreSnagAvailable { return avail }
-    let url = drop.slots.first?.resyUrl ?? drop.resyUrl
-    guard let u = url, !u.isEmpty else { return false }
-    return true
+    let u = (drop.resyUrl ?? drop.slots.first?.resyUrl)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return !u.isEmpty
 }
 
 private func feedGoneLabel(_ drop: Drop) -> String {
