@@ -1275,8 +1275,6 @@ private struct MarketLeaderHeroCard: View {
         return URL(string: s)
     }
 
-    private var bookable: Bool { feedDropIsBookable(drop) }
-
     private var neighborhoodCaps: String {
         (drop.neighborhood ?? drop.location ?? "NYC").uppercased()
     }
@@ -1399,7 +1397,7 @@ private struct MarketLeaderHeroCard: View {
                         Button(action: executeClaim) {
                             Text(feedHeroBookingCTALabel(for: drop))
                                 .font(.system(size: 12, weight: .heavy))
-                                .foregroundColor(bookable ? Color.white : Color(white: 0.55))
+                                .foregroundColor(.white)
                                 .multilineTextAlignment(.center)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.78)
@@ -1407,11 +1405,10 @@ private struct MarketLeaderHeroCard: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .padding(.horizontal, 6)
-                                .background(bookable ? SnagDesignSystem.coral : Color(white: 0.28))
+                                .background(SnagDesignSystem.coral)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                         .buttonStyle(.plain)
-                        .disabled(!bookable)
                     }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
@@ -1428,7 +1425,6 @@ private struct MarketLeaderHeroCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .opacity(bookable ? 1 : 0.88)
     }
 }
 
