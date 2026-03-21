@@ -1,17 +1,5 @@
 import SwiftUI
 
-private enum SignalStreamFilter: CaseIterable, Hashable {
-    case all, drops, events
-
-    var label: String {
-        switch self {
-        case .all: return "ALL"
-        case .drops: return "DROPS"
-        case .events: return "EVENTS"
-        }
-    }
-}
-
 struct FeedView: View {
     @ObservedObject var feedVM: FeedViewModel
     @ObservedObject var savedVM: SavedViewModel
@@ -26,8 +14,7 @@ struct FeedView: View {
     private let partySizeOptions = [2, 3, 4, 5, 6]
 
     @State private var showFilterSheet = false
-    @State private var signalStreamFilter: SignalStreamFilter = .all
-    @State private var marketLeaderCarouselIndex: Int = 0
+    @State private var liveGlanceCarouselIndex: Int = 0
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
@@ -169,61 +156,81 @@ struct FeedView: View {
         .background(AppTheme.background)
     }
 
-    // MARK: - Reference layout (TOP DROPS + LIVE NOW mock)
+    // MARK: - Feed home (live glance → trending carousel → meal list → Explore)
 
-    /// Prefer backend `hot_right_now`; otherwise the full ranked live board (not trimmed to “below carousel”).
-    private var homeLiveDropsPool: [Drop] {
-        if let hot = vm.hotRightNow, !hot.isEmpty {
-            return hot
-        }
-        return vm.drops
+    private var trendingCardWidth: CGFloat {
+        min(UIScreen.main.bounds.width - 48, 340)
     }
 
-    /// Ranked by score and freshness, then rotated with `liveListShuffleToken` so the list shifts between polls.
-    private var homeLiveDropsOrdered: [Drop] {
-        let pool = homeLiveDropsPool
-        let sorted = pool.sorted { a, b in
-            let sa = a.snagScore ?? 0
-            let sb = b.snagScore ?? 0
-            if sa != sb { return sa > sb }
+    /// Freshest-first pool for the auto-advancing live glance carousel.
+    private var liveGlanceCarouselDrops: [Drop] {
+        let sorted = vm.drops.sorted { a, b in
             if a.secondsSinceDetected != b.secondsSinceDetected {
                 return a.secondsSinceDetected < b.secondsSinceDetected
             }
-            return a.id < b.id
+            return (a.snagScore ?? 0) > (b.snagScore ?? 0)
         }
-        guard sorted.count > 1 else { return sorted }
-        let n = sorted.count
-        let r = Int(vm.liveListShuffleToken % UInt64(n))
-        return Array(sorted[r...] + sorted[..<r])
+        return Array(sorted.prefix(14))
     }
 
-    /// Stream list after ALL / DROPS / EVENTS filter (client-side).
-    private var signalStreamDisplayedDrops: [Drop] {
-        let base = homeLiveDropsOrdered
-        switch signalStreamFilter {
-        case .all:
-            return base
-        case .drops:
-            return base.filter { feedDropIsBookable($0) }
-        case .events:
-            return base.filter {
-                $0.feedHot == true
-                    || $0.brandNewDrop == true
-                    || $0.feedsRareCarousel == true
-                    || ($0.snagScore ?? 0) >= 85
-                    || ($0.trendPct ?? 0) > 25
+    /// Trending / hot / rare venues from the live board.
+    private var trendingHotCarouselDrops: [Drop] {
+        var out: [Drop] = []
+        var seen = Set<String>()
+        let scored = vm.drops.sorted { ($0.snagScore ?? 0) > ($1.snagScore ?? 0) }
+        for d in scored {
+            guard !seen.contains(d.id) else { continue }
+            if d.feedHot == true
+                || (d.snagScore ?? 0) >= 78
+                || (d.trendPct ?? 0) > 12
+                || d.feedsRareCarousel == true
+            {
+                out.append(d)
+                seen.insert(d.id)
+            }
+            if out.count >= 10 { break }
+        }
+        if out.count < 3 {
+            for d in vm.topDrops where out.count < 10 && !seen.contains(d.id) {
+                out.append(d)
+                seen.insert(d.id)
             }
         }
+        return out
+    }
+
+    private var mealSectionTitle: String {
+        let h = Calendar.current.component(.hour, from: Date())
+        if h >= 6 && h < 11 { return "Brunch & morning" }
+        if h >= 11 && h < 15 { return "Lunch today" }
+        if h >= 15 && h < 17 { return "Golden hour picks" }
+        return "Tonight's restaurants"
+    }
+
+    private var mealWindowDrops: [Drop] {
+        let today = vm.todayDateStr
+        func mentionsToday(_ d: Drop) -> Bool {
+            if d.dateStr == today { return true }
+            return d.slots.contains { $0.dateStr == today }
+        }
+        var pool = vm.drops.filter(mentionsToday)
+        if pool.isEmpty { pool = vm.drops }
+        let sorted = pool.sorted { ($0.snagScore ?? 0) > ($1.snagScore ?? 0) }
+        return Array(sorted.prefix(8))
     }
 
     private var referenceFeedScroll: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    marketLeaderHeroSection
+                    liveUpdatesCarouselSection
                         .padding(.top, 12)
-                    mockLiveNowSection
+                    trendingHotCarouselSection
+                        .padding(.top, 26)
+                    mealWindowSection
                         .padding(.top, 28)
+                    viewAllExploreSection
+                        .padding(.top, 22)
                     mockJustMissedSection
                     mockPredictWillOpenSection
                     Color.clear.frame(height: vm.newDropsCount > 0 ? 96 : 28)
@@ -242,68 +249,149 @@ struct FeedView: View {
         .background(SnagDesignSystem.darkCanvas)
     }
 
-    /// Up to six featured venues for the market-leader carousel (falls back to #1 drop).
-    private var marketLeaderCarouselDrops: [Drop] {
-        let top = Array(vm.topDrops.prefix(6))
-        if !top.isEmpty { return top }
-        if let h = vm.heroCard { return [h] }
-        return []
+    private func feedSectionHeader(eyebrow: String, title: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(eyebrow.uppercased())
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                .tracking(0.85)
+            Text(title)
+                .font(.system(size: 22, weight: .bold, design: .serif))
+                .foregroundColor(.white)
+        }
     }
 
-    private var marketLeaderFocusedDrop: Drop? {
-        let arr = marketLeaderCarouselDrops
-        guard !arr.isEmpty else { return nil }
-        let i = min(max(0, marketLeaderCarouselIndex), arr.count - 1)
-        return arr[i]
-    }
-
-    private var marketLeaderHeroSection: some View {
+    private var liveUpdatesCarouselSection: some View {
         Group {
-            if let focused = marketLeaderFocusedDrop {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(marketLeaderLeftCaption(focused))
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.85)
-                        Spacer()
-                        Text(marketLeaderRightCaption(focused))
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.85)
-                    }
-                    .padding(.horizontal, 18)
-
-                    TabView(selection: $marketLeaderCarouselIndex) {
-                        ForEach(Array(marketLeaderCarouselDrops.enumerated()), id: \.element.id) { idx, drop in
-                            MarketLeaderHeroCard(drop: drop)
+            if liveGlanceCarouselDrops.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    feedSectionHeader(eyebrow: "Real-time feed", title: "Live updates")
+                        .padding(.horizontal, 18)
+                    TabView(selection: $liveGlanceCarouselIndex) {
+                        ForEach(Array(liveGlanceCarouselDrops.enumerated()), id: \.element.id) { idx, drop in
+                            LiveGlanceCard(drop: drop)
+                                .padding(.horizontal, 18)
                                 .tag(idx)
                         }
                     }
-                    .frame(height: 232)
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .padding(.horizontal, 18)
-                    .onChange(of: marketLeaderCarouselDrops.count) { _, newCount in
-                        if marketLeaderCarouselIndex >= newCount {
-                            marketLeaderCarouselIndex = max(0, newCount - 1)
+                    .frame(height: 124)
+                    .tabViewStyle(.page(indexDisplayMode: liveGlanceCarouselDrops.count > 1 ? .automatic : .never))
+                    .onChange(of: liveGlanceCarouselDrops.count) { _, newCount in
+                        if liveGlanceCarouselIndex >= newCount {
+                            liveGlanceCarouselIndex = max(0, newCount - 1)
                         }
                     }
-
-                    if marketLeaderCarouselDrops.count > 1 {
-                        HStack(spacing: 6) {
-                            ForEach(Array(marketLeaderCarouselDrops.enumerated()), id: \.element.id) { idx, _ in
-                                Circle()
-                                    .fill(idx == marketLeaderCarouselIndex ? Color.white : Color.white.opacity(0.28))
-                                    .frame(width: 6, height: 6)
-                            }
+                    .onReceive(Timer.publish(every: 3.2, tolerance: 0.2, on: .main, in: .common).autoconnect()) { _ in
+                        let n = liveGlanceCarouselDrops.count
+                        guard n > 1 else { return }
+                        withAnimation(.easeInOut(duration: 0.45)) {
+                            liveGlanceCarouselIndex = (liveGlanceCarouselIndex + 1) % n
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 6)
                     }
                 }
             }
         }
+    }
+
+    private var trendingHotCarouselSection: some View {
+        Group {
+            if trendingHotCarouselDrops.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    feedSectionHeader(eyebrow: "Trending now", title: "Hot & available")
+                        .padding(.horizontal, 18)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(trendingHotCarouselDrops, id: \.id) { drop in
+                                MarketLeaderHeroCard(drop: drop)
+                                    .frame(width: trendingCardWidth)
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                    }
+                }
+            }
+        }
+    }
+
+    private var mealWindowSection: some View {
+        Group {
+            if mealWindowDrops.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("FOR YOUR NEXT MEAL")
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                                .tracking(0.85)
+                            Text(mealSectionTitle)
+                                .font(.system(size: 22, weight: .bold, design: .serif))
+                                .foregroundColor(.white)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 8) {
+                            ForEach([2, 4], id: \.self) { size in
+                                Button {
+                                    mockFeedPartySizeTap(size)
+                                } label: {
+                                    Text("\(size)")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(vm.selectedPartySizes.contains(size) ? .white : SnagDesignSystem.darkTextMuted)
+                                        .frame(width: 34, height: 30)
+                                        .background(vm.selectedPartySizes.contains(size) ? Color(white: 0.22) : Color(white: 0.12))
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 18)
+
+                    VStack(spacing: 12) {
+                        ForEach(mealWindowDrops, id: \.id) { drop in
+                            MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .animation(.easeInOut(duration: 0.35), value: vm.lastRefreshed)
+                }
+            }
+        }
+    }
+
+    private var viewAllExploreSection: some View {
+        Button {
+            onOpenExplore?()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("View all in Explore")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("Full grid, dates & neighborhoods")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                }
+                Spacer()
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(SnagDesignSystem.salmonAccent)
+            }
+            .padding(16)
+            .background(Color(white: 0.14))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 18)
     }
 
     private var feedSyncingPill: some View {
@@ -321,121 +409,6 @@ struct FeedView: View {
         .background(SnagDesignSystem.salmonAccent)
         .clipShape(Capsule())
         .shadow(color: SnagDesignSystem.salmonAccent.opacity(0.45), radius: 12, y: 3)
-    }
-
-    private var mockLiveNowSection: some View {
-        Group {
-            if homeLiveDropsPool.isEmpty {
-                EmptyView()
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Signal stream")
-                            .font(.system(size: 22, weight: .bold, design: .serif))
-                            .foregroundColor(.white)
-
-                        HStack(alignment: .center, spacing: 10) {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    ForEach(SignalStreamFilter.allCases, id: \.self) { mode in
-                                        Button {
-                                            signalStreamFilter = mode
-                                        } label: {
-                                            Text(mode.label)
-                                                .font(.system(size: 10, weight: .heavy))
-                                                .foregroundColor(signalStreamFilter == mode ? .white : SnagDesignSystem.darkTextMuted)
-                                                .tracking(0.5)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 8)
-                                                .background(signalStreamFilter == mode ? Color(white: 0.26) : Color(white: 0.12))
-                                                .clipShape(Capsule())
-                                                .overlay(
-                                                    Capsule()
-                                                        .stroke(Color.white.opacity(signalStreamFilter == mode ? 0 : 0.12), lineWidth: 1)
-                                                )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                            HStack(spacing: 8) {
-                                ForEach([2, 4], id: \.self) { size in
-                                    Button {
-                                        mockFeedPartySizeTap(size)
-                                    } label: {
-                                        Text("\(size)")
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundColor(vm.selectedPartySizes.contains(size) ? .white : SnagDesignSystem.darkTextMuted)
-                                            .frame(width: 34, height: 30)
-                                            .background(vm.selectedPartySizes.contains(size) ? Color(white: 0.22) : Color(white: 0.12))
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-
-                    VStack(spacing: 12) {
-                        if signalStreamDisplayedDrops.isEmpty {
-                            signalStreamEmptyFilterPlaceholder
-                        } else {
-                            ForEach(signalStreamDisplayedDrops, id: \.id) { drop in
-                                MockLiveNowRow(drop: drop, preferredParty: mockPreferredParty(for: drop))
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 32)
-                    .animation(.easeInOut(duration: 0.4), value: vm.lastRefreshed)
-                    .animation(.easeInOut(duration: 0.45), value: vm.liveListShuffleToken)
-                    .animation(.easeInOut(duration: 0.25), value: signalStreamFilter)
-                }
-            }
-        }
-    }
-
-    private var signalStreamEmptyFilterPlaceholder: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(SnagDesignSystem.darkTextMuted.opacity(0.5))
-                .frame(width: 3)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("INCOMING SIGNAL")
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundColor(SnagDesignSystem.darkTextMuted)
-                    .tracking(0.6)
-                Text("Nothing in this channel right now — try ALL or DROPS.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(SnagDesignSystem.darkTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundColor(SnagDesignSystem.darkTextMuted)
-        }
-        .padding(14)
-        .background(Color(white: 0.14))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-        )
-    }
-
-    private func marketLeaderLeftCaption(_ drop: Drop) -> String {
-        if let s = drop.crownBadgeLabel, !s.isEmpty { return s.uppercased() }
-        return "MARKET LEADER"
-    }
-
-    private func marketLeaderRightCaption(_ drop: Drop) -> String {
-        if let s = drop.topOpportunityDemandLabel, !s.isEmpty { return s.uppercased() }
-        if let sc = drop.snagScore { return "\(sc)% DEMAND" }
-        if let rp = drop.rarityPoints { return "\(rp)% DEMAND" }
-        return "LIVE DEMAND"
     }
 
     private func mockPreferredParty(for drop: Drop) -> Int {
@@ -1069,7 +1042,93 @@ private func signalStreamRowTags(for drop: Drop, bookable: Bool) -> [MockFeedBad
     return Array(list.prefix(2))
 }
 
-// MARK: - Market leader hero + signal stream rows
+// MARK: - Live glance strip + market leader hero
+
+private func feedGlanceTopBadge(for drop: Drop) -> String {
+    if drop.brandNewDrop == true || drop.showNewBadge == true { return "JUST DROPPED" }
+    if let t = drop.exploreStatusTag, !t.isEmpty {
+        let u = t.uppercased()
+        return u.count <= 18 ? u : String(u.prefix(16)) + "…"
+    }
+    return "LIVE SIGNAL"
+}
+
+private func feedGlanceAgeLabel(for drop: Drop) -> String {
+    let s = drop.secondsSinceDetected
+    if s < 45 { return "just now" }
+    if s < 3600 { return "\(max(1, s / 60))m ago" }
+    return "\(s / 3600)h ago"
+}
+
+private func feedGlanceSeatPill(for drop: Drop) -> (text: String, emphasized: Bool) {
+    if drop.slots.count == 1 { return ("1 LEFT", true) }
+    let p = drop.partySizesAvailable.sorted()
+    if let a = p.first, let b = p.last, a != b { return ("\(a)–\(b) SEATS", false) }
+    if let a = p.first { return ("\(a) SEATS", false) }
+    return ("OPEN", false)
+}
+
+private struct LiveGlanceCard: View {
+    let drop: Drop
+
+    private var pill: (text: String, emphasized: Bool) { feedGlanceSeatPill(for: drop) }
+
+    private func openResy() {
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    var body: some View {
+        Button(action: openResy) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(feedGlanceTopBadge(for: drop))
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundColor(SnagDesignSystem.darkTextSecondary)
+                        .tracking(0.35)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(feedGlanceAgeLabel(for: drop))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                }
+                Text(drop.name.uppercased())
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .minimumScaleFactor(0.85)
+                HStack {
+                    Text(pill.text)
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(pill.emphasized ? SnagDesignSystem.salmonAccent : SnagDesignSystem.darkTextMuted)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(white: 0.18))
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(
+                                    pill.emphasized ? SnagDesignSystem.salmonAccent.opacity(0.45) : Color.white.opacity(0.1),
+                                    lineWidth: 1
+                                )
+                        )
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(white: 0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 private struct MarketLeaderHeroCard: View {
     let drop: Drop
