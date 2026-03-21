@@ -429,6 +429,46 @@ def rare_drop_detail_line(card: dict) -> str | None:
     return " · ".join(parts) if parts else None
 
 
+def _card_resy_url(card: dict) -> str | None:
+    u = card.get("resyUrl") or card.get("resy_url")
+    if isinstance(u, str) and u.strip():
+        return u.strip()
+    for s in card.get("slots") or []:
+        if not isinstance(s, dict):
+            continue
+        su = s.get("resyUrl") or s.get("resy_url")
+        if isinstance(su, str) and su.strip():
+            return su.strip()
+    return None
+
+
+def explore_card_status_tag(card: dict, now: datetime) -> str | None:
+    """Single uppercase line for Explore cards: JUST DROPPED, 1 LEFT, RARE — priority order."""
+    jd = seconds_since_detected(card, now)
+    slots = card.get("slots") or []
+    if jd is not None and jd < 600:
+        return "JUST DROPPED"
+    if isinstance(slots, list) and len(slots) == 1:
+        return "1 LEFT"
+    if card.get("feeds_rare_carousel") or _is_scarcity_rare(card) or _rarity_int(card) >= 70:
+        return "RARE"
+    return None
+
+
+def explore_snag_available(card: dict) -> bool:
+    slots = card.get("slots") or []
+    if not isinstance(slots, list) or len(slots) == 0:
+        return False
+    return _card_resy_url(card) is not None
+
+
+def explore_venue_pill(card: dict) -> str | None:
+    n = card.get("neighborhood")
+    if isinstance(n, str) and n.strip():
+        return n.strip().upper()
+    return None
+
+
 def forecast_metrics_compact_for_likely_item(item: dict) -> str | None:
     parts: list[str] = []
     dwd = item.get("days_with_drops")
@@ -540,3 +580,15 @@ def attach_feed_card_display_fields(cards: list[dict], now: datetime | None = No
             c["rarity_points"] = rp
         else:
             c.pop("rarity_points", None)
+        est = explore_card_status_tag(c, t)
+        if est:
+            c["explore_status_tag"] = est
+        else:
+            c.pop("explore_status_tag", None)
+        c["explore_snag_available"] = explore_snag_available(c)
+        evp = explore_venue_pill(c)
+        if evp:
+            c["explore_venue_pill"] = evp
+        else:
+            c.pop("explore_venue_pill", None)
+        c["explore_show_dot"] = bool(c.get("show_exclusive_badge") or c.get("brand_new_drop"))

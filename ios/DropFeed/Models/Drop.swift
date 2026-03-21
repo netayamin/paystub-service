@@ -93,6 +93,14 @@ struct Drop: Codable, Identifiable {
     let footnoteMetricsCompact: String?
     let trendHeadlineShort: String?
     let rarityPoints: Int?
+    /// Explore tab — server: `explore_status_tag` (e.g. RARE, JUST DROPPED, 1 LEFT).
+    let exploreStatusTag: String?
+    /// Explore tab — server: false → show TAKEN.
+    let exploreSnagAvailable: Bool?
+    /// Explore tab — secondary pill (e.g. neighborhood).
+    let exploreVenuePill: String?
+    /// Explore tab — red dot on thumbnail.
+    let exploreShowDot: Bool?
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -156,6 +164,10 @@ struct Drop: Codable, Identifiable {
         footnoteMetricsCompact = try c.decodeIfPresent(String.self, forKey: .footnoteMetricsCompact)
         trendHeadlineShort = try c.decodeIfPresent(String.self, forKey: .trendHeadlineShort)
         rarityPoints = Self.decodeFlexibleInt(c, forKey: .rarityPoints)
+        exploreStatusTag = try c.decodeIfPresent(String.self, forKey: .exploreStatusTag)
+        exploreSnagAvailable = try c.decodeIfPresent(Bool.self, forKey: .exploreSnagAvailable)
+        exploreVenuePill = try c.decodeIfPresent(String.self, forKey: .exploreVenuePill)
+        exploreShowDot = try c.decodeIfPresent(Bool.self, forKey: .exploreShowDot)
     }
 
     private static func decodeFlexibleInt(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Int? {
@@ -217,7 +229,11 @@ struct Drop: Codable, Identifiable {
         latestDropSubtitleMetrics: String? = nil,
         footnoteMetricsCompact: String? = nil,
         trendHeadlineShort: String? = nil,
-        rarityPoints: Int? = nil
+        rarityPoints: Int? = nil,
+        exploreStatusTag: String? = nil,
+        exploreSnagAvailable: Bool? = nil,
+        exploreVenuePill: String? = nil,
+        exploreShowDot: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -271,6 +287,18 @@ struct Drop: Codable, Identifiable {
         self.footnoteMetricsCompact = footnoteMetricsCompact
         self.trendHeadlineShort = trendHeadlineShort
         self.rarityPoints = rarityPoints
+        self.exploreStatusTag = exploreStatusTag
+        self.exploreSnagAvailable = exploreSnagAvailable
+        self.exploreVenuePill = exploreVenuePill
+        self.exploreShowDot = exploreShowDot
+    }
+
+    /// Prefer server `explore_snag_available`; fall back to slots + Resy URL.
+    var exploreCanSnag: Bool {
+        if let s = exploreSnagAvailable { return s }
+        guard !slots.isEmpty else { return false }
+        let u = resyUrl ?? slots.first?.resyUrl
+        return u != nil && !(u ?? "").isEmpty
     }
     
     /// "Trending" when trend_pct > 0, "Cooling" when < 0, nil otherwise
@@ -338,6 +366,10 @@ struct Drop: Codable, Identifiable {
         case footnoteMetricsCompact = "footnote_metrics_compact"
         case trendHeadlineShort = "trend_headline_short"
         case rarityPoints = "rarity_points"
+        case exploreStatusTag = "explore_status_tag"
+        case exploreSnagAvailable = "explore_snag_available"
+        case exploreVenuePill = "explore_venue_pill"
+        case exploreShowDot = "explore_show_dot"
     }
     
     // MARK: - Scarcity helpers

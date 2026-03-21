@@ -3,12 +3,12 @@ import SwiftUI
 // MARK: - Root container
 
 struct ContentView: View {
-    @StateObject private var feedVM   = FeedViewModel()
-    @StateObject private var savedVM  = SavedViewModel()
-    @StateObject private var premium  = PremiumManager()
-    @StateObject private var alertsVM = AlertsViewModel()
+    @StateObject private var feedVM    = FeedViewModel()
+    @StateObject private var savedVM   = SavedViewModel()
+    @StateObject private var premium   = PremiumManager()
+    @StateObject private var alertsVM  = AlertsViewModel()
+    @StateObject private var exploreVM = SearchViewModel()
     @State private var selectedTab = 0
-    @State private var showSearchSheet = false
 
     var body: some View {
         Group {
@@ -18,12 +18,12 @@ struct ContentView: View {
                     feedVM: feedVM,
                     savedVM: savedVM,
                     premium: premium,
-                    onOpenSearch: { showSearchSheet = true },
-                    onOpenAlerts: { selectedTab = 1 },
-                    alertBadgeCount: alertsVM.unreadCount
+                    onOpenSearch: { selectedTab = 1 },
+                    onOpenExplore: { selectedTab = 1 },
+                    alertBadgeCount: 0
                 )
             case 1:
-                AlertsView(alertsVM: alertsVM, savedVM: savedVM, premium: premium)
+                ExploreView(vm: exploreVM, savedVM: savedVM, alertsVM: alertsVM, premium: premium)
             default:
                 ProfilePlaceholderView()
             }
@@ -33,17 +33,6 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             CustomTabBar(selectedTab: $selectedTab, alertBadgeCount: alertsVM.unreadCount)
         }
-        .sheet(isPresented: $showSearchSheet) {
-            NavigationStack {
-                SearchView(savedVM: savedVM)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") { showSearchSheet = false }
-                                .fontWeight(.semibold)
-                        }
-                    }
-            }
-        }
         .task {
             await savedVM.loadAll()
             await premium.checkEntitlements()
@@ -51,7 +40,10 @@ struct ContentView: View {
     }
 
     private var tabBackground: Color {
-        selectedTab == 0 ? SnagDesignSystem.darkCanvas : SnagDesignSystem.pageCanvas
+        switch selectedTab {
+        case 0, 1: return SnagDesignSystem.darkCanvas
+        default: return SnagDesignSystem.pageCanvas
+        }
     }
 }
 

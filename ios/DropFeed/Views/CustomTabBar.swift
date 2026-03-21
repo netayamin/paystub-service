@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Bottom tab bar — dark dock, **FEED · ALERTS · PROFILE** (mockup). Search opens from the feed header sheet.
+/// Bottom tab bar — dark dock, **FEED · EXPLORE · PROFILE**. Alerts open from the Explore lightning FAB.
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     var alertBadgeCount: Int = 0
@@ -12,7 +12,7 @@ struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             tabButton(tag: 0, icon: "location.north.circle.fill", label: "FEED")
-            tabButton(tag: 1, icon: "bell.fill", label: "ALERTS", badge: alertBadgeCount)
+            tabButton(tag: 1, icon: "safari.fill", label: "EXPLORE", badge: alertBadgeCount)
             tabButton(tag: 2, icon: "person.fill", label: "PROFILE")
         }
         .padding(.horizontal, 8)
@@ -41,6 +41,10 @@ struct CustomTabBar: View {
         }
     }
 
+    private func tabAccent(for tag: Int) -> Color {
+        tag == 1 ? SnagDesignSystem.exploreRed : SnagDesignSystem.salmonAccent
+    }
+
     private func tabButton(tag: Int, icon: String, label: String, badge: Int = 0) -> some View {
         let on = selectedTab == tag
         return Button {
@@ -59,7 +63,7 @@ struct CustomTabBar: View {
                         Image(systemName: icon)
                             .font(.system(size: 20, weight: on ? .semibold : .regular))
                             .symbolRenderingMode(.hierarchical)
-                            .foregroundColor(on ? SnagDesignSystem.salmonAccent : SnagDesignSystem.darkTextMuted)
+                            .foregroundColor(on ? tabAccent(for: tag) : SnagDesignSystem.darkTextMuted)
                     }
                     .frame(width: iconWellSize + 8, height: iconWellSize + 4)
 
@@ -68,7 +72,7 @@ struct CustomTabBar: View {
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.white)
                             .padding(4)
-                            .background(SnagDesignSystem.salmonAccent)
+                            .background(SnagDesignSystem.exploreRed)
                             .clipShape(Circle())
                             .offset(x: 10, y: -6)
                     }
@@ -80,7 +84,7 @@ struct CustomTabBar: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
-                    .foregroundColor(on ? SnagDesignSystem.darkTextPrimary : SnagDesignSystem.darkTextMuted)
+                    .foregroundColor(on ? tabAccent(for: tag) : SnagDesignSystem.darkTextMuted)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())

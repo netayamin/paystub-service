@@ -80,4 +80,9 @@ enum SnagDesignSystem {
     static let activePillBackground = Color(red: 72 / 255, green: 26 / 255, blue: 30 / 255)
     static let tabBarDarkSurface = Color(red: 22 / 255, green: 22 / 255, blue: 24 / 255)
     static let tabBarDarkSelectedWell = Color(red: 40 / 255, green: 18 / 255, blue: 20 / 255)
+
+    /// Explore mock — salmon CTA / accents (~#FFA08C).
+    static let exploreCoral = Color(red: 255 / 255, green: 160 / 255, blue: 140 / 255)
+    /// Explore mock — brand red / active tab (~#FF4B3A).
+    static let exploreRed = Color(red: 255 / 255, green: 75 / 255, blue: 58 / 255)
 }

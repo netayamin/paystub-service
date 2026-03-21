@@ -25,6 +25,34 @@ enum MealPreset: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Explore tab presets
+
+enum ExploreDatePreset: String, CaseIterable, Identifiable {
+    case today, tomorrow, weekend
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .today: return "TODAY"
+        case .tomorrow: return "TOMORROW"
+        case .weekend: return "THIS WEEKEND"
+        }
+    }
+}
+
+enum ExplorePartySegment: Int, CaseIterable, Identifiable {
+    case two = 2
+    case four = 4
+    case anyParty = 0
+    var id: Int { rawValue }
+    var shortLabel: String {
+        switch self {
+        case .two: return "2"
+        case .four: return "4"
+        case .anyParty: return "Any"
+        }
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -35,6 +63,11 @@ final class SearchViewModel: ObservableObject {
     @Published var partySize: Int = 2                        // 1–8 stepper
     @Published var selectedMealPreset: MealPreset? = .dinner // nil = any time
     @Published var venueQuery: String = ""                   // quick-pick / free-text
+
+    /// When true, `loadResults` skips meal-preset time filtering and uses Explore party / date rules.
+    @Published var exploreTabActive: Bool = false
+    @Published var exploreDatePreset: ExploreDatePreset = .today
+    @Published var explorePartySegment: ExplorePartySegment = .two
 
     // MARK: - Navigation
     @Published var isSearchActive: Bool = false
@@ -113,6 +146,53 @@ final class SearchViewModel: ObservableObject {
         partySize >= 4 ? [4, 6, 8] : [partySize]
     }
 
+    /// Party sizes sent to `/just-opened`; `nil` means omit param (any party).
+    private var effectivePartySizesForAPI: [Int]? {
+        if exploreTabActive {
+            switch explorePartySegment {
+            case .two: return [2]
+            case .four: return [4, 6, 8]
+            case .anyParty: return nil
+            }
+        }
+        return partyAPIFilter
+    }
+
+    /// Applies `exploreDatePreset` to `selectedDates` (today / tomorrow / upcoming Sat–Sun).
+    func applyExploreDatesFromPreset() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        func fmt(_ d: Date) -> String {
+            let y = cal.component(.year, from: d)
+            let m = cal.component(.month, from: d)
+            let day = cal.component(.day, from: d)
+            return String(format: "%04d-%02d-%02d", y, m, day)
+        }
+        switch exploreDatePreset {
+        case .today:
+            selectedDates = [fmt(today)]
+        case .tomorrow:
+            if let t = cal.date(byAdding: .day, value: 1, to: today) { selectedDates = [fmt(t)] }
+        case .weekend:
+            let wd = cal.component(.weekday, from: today)
+            if wd == 7 {
+                if let sun = cal.date(byAdding: .day, value: 1, to: today) {
+                    selectedDates = Set([fmt(today), fmt(sun)])
+                }
+            } else if wd == 1 {
+                if let sat = cal.date(byAdding: .day, value: -1, to: today) {
+                    selectedDates = Set([fmt(sat), fmt(today)])
+                }
+            } else if let sat = cal.date(byAdding: .day, value: 7 - wd, to: today),
+                      let sun = cal.date(byAdding: .day, value: 1, to: sat) {
+                selectedDates = Set([fmt(sat), fmt(sun)])
+            }
+        }
+        if selectedDates.isEmpty {
+            selectedDates = [fmt(today)]
+        }
+    }
+
     // MARK: - Polling (same 20 s cadence as Feed tab)
 
     func startPolling() {
@@ -141,14 +221,14 @@ final class SearchViewModel: ObservableObject {
         do {
             let resp = try await service.fetchJustOpened(
                 dates:      selectedDates.isEmpty ? nil : Array(selectedDates),
-                partySizes: partyAPIFilter,
+                partySizes: effectivePartySizesForAPI,
                 timeAfter:  nil,
                 timeBefore: nil
             )
             var ranked = resp.rankedBoard ?? []
 
-            // Client-side time window filter (only when a meal preset is chosen)
-            if selectedMealPreset != nil {
+            // Client-side time window filter (Search sheet only; Explore uses accordion buckets)
+            if !exploreTabActive, selectedMealPreset != nil {
                 let eH = earliestHour, lH = latestHour
                 ranked = ranked.filter { drop in
                     guard !drop.slots.isEmpty else { return true }
@@ -194,5 +274,83 @@ final class SearchViewModel: ObservableObject {
             }
         }
         return e.localizedDescription
+    }
+
+    func exploreDrops(in bucket: ExploreTimeBucket) -> [Drop] {
+        rankedResults.filter { $0.exploreTimeBucket == bucket }
+    }
+}
+
+// MARK: - Explore time buckets (NYC clock for “ACTIVE” ribbon)
+
+enum ExploreTimeBucket: String, CaseIterable, Identifiable {
+    case morningBrunch
+    case evening
+    case lateNight
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .morningBrunch: return "Morning / Brunch"
+        case .evening: return "Evening"
+        case .lateNight: return "Late Night"
+        }
+    }
+
+    var timeRangeLabel: String {
+        switch self {
+        case .morningBrunch: return "9:00 - 12:00"
+        case .evening: return "17:30 - 21:30"
+        case .lateNight: return "22:00 - 2:00"
+        }
+    }
+
+    var headerIcon: String {
+        switch self {
+        case .morningBrunch: return "sun.max.fill"
+        case .evening: return "moon.fill"
+        case .lateNight: return "moon.stars.fill"
+        }
+    }
+
+    static func bucket(forHour h: Int) -> ExploreTimeBucket {
+        if h >= 9 && h < 12 { return .morningBrunch }
+        if h >= 22 || h < 9 { return .lateNight }
+        return .evening
+    }
+
+    /// Whether current Eastern Time falls in this bucket’s “live” window (Explore header ACTIVE pill).
+    static func isActiveNow(_ bucket: ExploreTimeBucket, now: Date = Date()) -> Bool {
+        var cal = Calendar.current
+        guard let tz = TimeZone(identifier: "America/New_York") else { return false }
+        cal.timeZone = tz
+        let h = cal.component(.hour, from: now)
+        let m = cal.component(.minute, from: now)
+        let mins = h * 60 + m
+        switch bucket {
+        case .morningBrunch:
+            return (9 * 60)...(12 * 60) ~= mins
+        case .evening:
+            return (17 * 60 + 30)...(21 * 60 + 30) ~= mins
+        case .lateNight:
+            return mins >= 22 * 60 || mins < 9 * 60
+        }
+    }
+}
+
+extension Drop {
+    /// Bucket from earliest slot hour; defaults to evening when no time.
+    var exploreTimeBucket: ExploreTimeBucket {
+        let hours = slots.compactMap { Self.exploreHour(from: $0.time) }
+        if let h = hours.min() {
+            return ExploreTimeBucket.bucket(forHour: h)
+        }
+        return .evening
+    }
+
+    private static func exploreHour(from t: String?) -> Int? {
+        guard let t = t, !t.isEmpty else { return nil }
+        return t.split(separator: ":").first.flatMap { Int($0) }
     }
 }

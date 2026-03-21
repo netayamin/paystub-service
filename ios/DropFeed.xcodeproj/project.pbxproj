@@ -43,6 +43,7 @@
 		A2000019 /* PremiumPaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009 /* PremiumPaywallView.swift */; };
 		A200001A /* YouView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A /* YouView.swift */; };
 		A200001C /* SearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000C /* SearchViewModel.swift */; };
+		A200001D /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* ExploreView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -85,6 +86,7 @@
 		A2000009 /* PremiumPaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumPaywallView.swift; sourceTree = "<group>"; };
 		A200000A /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
 		A200000C /* SearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchViewModel.swift; sourceTree = "<group>"; };
+		A200001E /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -152,6 +154,7 @@
 				A1000049 /* ProfilePlaceholderView.swift */,
 				A100004B /* CustomTabBar.swift */,
 				A1000016 /* FeedView.swift */,
+				A200001E /* ExploreView.swift */,
 				A2000007 /* SavedView.swift */,
 				A2000008 /* AlertsView.swift */,
 				A2000009 /* PremiumPaywallView.swift */,
@@ -300,6 +303,7 @@
 				A2000019 /* PremiumPaywallView.swift in Sources */,
 				A200001A /* YouView.swift in Sources */,
 				A200001C /* SearchViewModel.swift in Sources */,
+				A200001D /* ExploreView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
