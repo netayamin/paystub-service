@@ -18,10 +18,12 @@ struct ExploreView: View {
     private let gridCardHeight: CGFloat = 248
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                exploreDateStrip
-                    .padding(.top, 8)
+        // Date pager sits OUTSIDE the vertical ScrollView so horizontal swipes are not
+        // stolen by the parent scroll view (TabView + ScrollView gesture conflict).
+        VStack(alignment: .leading, spacing: 0) {
+            exploreDateStrip
+                .padding(.top, 8)
+            ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if let err = vm.error {
                         errorBanner(err).padding(.top, 12)
@@ -76,12 +78,13 @@ struct ExploreView: View {
                             Text(exploreSwipeDateTitle(for: opt))
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(SnagDesignSystem.exploreCoralSolid)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                                 .tag(idx)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 44)
+                    .frame(minHeight: 52)
                     .frame(maxWidth: .infinity)
 
                     exploreDatePageDots
