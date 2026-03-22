@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Explore tab — discovery layout: date strip, likely-to-drop, hot areas, time tabs, two-column grid.
+/// Explore tab — discovery layout: swipeable date header, likely-to-drop, hot areas, time tabs, two-column grid.
 struct ExploreView: View {
     @ObservedObject var vm: SearchViewModel
     @ObservedObject var savedVM: SavedViewModel
@@ -8,6 +8,8 @@ struct ExploreView: View {
 
     @State private var gridTimeTab: ExploreGridTimeTab = .evening
     @State private var hypeSortReversed = false
+    /// Page index aligned with `SearchViewModel.dateOptions` (next 14 days).
+    @State private var exploreDatePageIndex: Int = 0
 
     /// Fixed grid cell geometry so every card matches; spacing is gap between cells.
     private let gridColumnSpacing: CGFloat = 14
@@ -44,25 +46,60 @@ struct ExploreView: View {
             vm.selectedMealPreset = nil
             vm.isSearchActive = true
             normalizeExploreSelectedDateIfNeeded()
+            syncExploreDatePageWithSelection()
             vm.startPolling()
         }
         .onDisappear {
             vm.exploreTabActive = false
             vm.stopPolling()
         }
+        .onChange(of: exploreDatePageIndex) { _, newIdx in
+            exploreApplyPageIndex(newIdx)
+        }
+        .onChange(of: vm.selectedDates) { _, _ in
+            syncExploreDatePageWithSelection()
+        }
     }
 
-    // MARK: - Date strip
+    // MARK: - Swipeable date header
 
-    /// Single-day selection from the next 14 days (`SearchViewModel.dateOptions`).
     private var exploreDateStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(vm.dateOptions, id: \.dateStr) { opt in
-                    exploreDateChip(opt)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                if vm.dateOptions.isEmpty {
+                    Text("Select a day")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(SnagDesignSystem.exploreCoralSolid)
+                } else {
+                    TabView(selection: $exploreDatePageIndex) {
+                        ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
+                            Text(exploreSwipeDateTitle(for: opt))
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(SnagDesignSystem.exploreCoralSolid)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .tag(idx)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: 44)
+                    .frame(maxWidth: .infinity)
+
+                    exploreDatePageDots
                 }
             }
-            .padding(.vertical, 10)
+            .padding(.horizontal, 18)
+
+            HStack {
+                Text("LIVE NOW")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(SnagDesignSystem.exploreCoralSolid.opacity(0.95))
+                    .tracking(0.55)
+                Spacer()
+                Text("• REAL-TIME")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                    .tracking(0.35)
+            }
             .padding(.horizontal, 18)
         }
         .padding(.top, 4)
@@ -77,40 +114,61 @@ struct ExploreView: View {
         .shadow(color: Color.black.opacity(0.55), radius: 16, x: 0, y: 10)
     }
 
-    private func exploreDateChip(_ opt: (dateStr: String, monthAbbrev: String, dayNum: String)) -> some View {
-        let selected = vm.selectedDates == Set([opt.dateStr])
-        return Button {
-            vm.selectedDates = [opt.dateStr]
-            Task { await vm.loadResults() }
-        } label: {
-            VStack(spacing: 0) {
-                VStack(spacing: 3) {
-                    Text(opt.monthAbbrev)
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(0.35)
-                    Text(opt.dayNum)
-                        .font(.system(size: 20, weight: .bold))
+    private var exploreDatePageDots: some View {
+        let n = vm.dateOptions.count
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(0..<n, id: \.self) { i in
+                    Circle()
+                        .fill(i == exploreDatePageIndex ? SnagDesignSystem.exploreCoralSolid : Color.white.opacity(0.22))
+                        .frame(width: i == exploreDatePageIndex ? 7 : 5, height: i == exploreDatePageIndex ? 7 : 5)
                 }
-                .foregroundColor(selected ? .white : SnagDesignSystem.exploreSecondaryLabel)
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-
-                Rectangle()
-                    .fill(selected ? SnagDesignSystem.exploreCoralSolid : Color.clear)
-                    .frame(width: 36, height: 2)
-                    .padding(.top, 2)
             }
-            .frame(width: 52, height: 60)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(selected ? Color.clear : Color(white: 0.12))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(selected ? Color.clear : Color(white: 0.28), lineWidth: 1)
-            )
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: 96)
+    }
+
+    /// e.g. "TODAY • OCT 24" or "WED • NOV 02"
+    private func exploreSwipeDateTitle(for opt: (dateStr: String, monthAbbrev: String, dayNum: String)) -> String {
+        let cal = Calendar.current
+        let parts = opt.dateStr.split(separator: "-")
+        guard parts.count == 3,
+              let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else {
+            return "\(opt.monthAbbrev) \(opt.dayNum)"
+        }
+        var c = DateComponents()
+        c.year = y
+        c.month = mo
+        c.day = d
+        guard let date = cal.date(from: c) else { return "\(opt.monthAbbrev) \(opt.dayNum)" }
+        let prefix: String
+        if cal.isDateInToday(date) {
+            prefix = "TODAY"
+        } else if cal.isDateInTomorrow(date) {
+            prefix = "TOMORROW"
+        } else {
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "EEE"
+            prefix = df.string(from: date).uppercased()
+        }
+        return "\(prefix) • \(opt.monthAbbrev) \(opt.dayNum)"
+    }
+
+    private func syncExploreDatePageWithSelection() {
+        guard let sel = vm.selectedDates.first,
+              let idx = vm.dateOptions.firstIndex(where: { $0.dateStr == sel }) else { return }
+        if idx != exploreDatePageIndex {
+            exploreDatePageIndex = idx
+        }
+    }
+
+    private func exploreApplyPageIndex(_ idx: Int) {
+        guard vm.dateOptions.indices.contains(idx) else { return }
+        let ds = vm.dateOptions[idx].dateStr
+        if vm.selectedDates == Set([ds]) { return }
+        vm.selectedDates = [ds]
+        Task { await vm.loadResults() }
     }
 
     /// Keep one day selected and inside the strip’s range (e.g. after midnight or legacy multi-day state).
