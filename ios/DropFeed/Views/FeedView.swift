@@ -1,13 +1,14 @@
 import SwiftUI
 
 private enum QuietStreamEntry {
-    case live(Drop)
+    /// Home stream: primary rows always offer **BOOK** when a Resy URL exists (Explore’s `explore_snag_available` is ignored there).
+    case live(Drop, isPrimaryTier: Bool)
     case missed(JustMissedVenue)
 
     /// Stable list identity when the row set rotates (`liveListShuffleToken`).
     var streamRowIdentity: String {
         switch self {
-        case .live(let d): return "live-\(d.id)"
+        case .live(let d, let primary): return primary ? "live-p-\(d.id)" : "live-t-\(d.id)"
         case .missed(let v): return "missed-\(v.id)"
         }
     }
@@ -375,8 +376,8 @@ struct FeedView: View {
         return vm.drops.filter { seen.insert($0.id).inserted }
     }
 
-    /// Live stream: **up to 3 bookable** rows (rotating when the pool is larger) + **1–2 booked / just-missed** rows.
-    /// Depends on `liveListShuffleToken` (6s) and `lastRefreshed` so the strip refreshes between API polls.
+    /// Live stream: **3 primary** rows from Resy-bookable drops (Explore “taken” can still appear here with a real **BOOK** CTA) + **1–2** true taken rows (`explore_snag_available == false` or missed).
+    /// Depends on `liveListShuffleToken` and `lastRefreshed`.
     private var quietCuratorStreamEntries: [QuietStreamEntry] {
         _ = vm.liveListShuffleToken
         _ = vm.lastRefreshed
@@ -384,53 +385,78 @@ struct FeedView: View {
         let pool = quietCuratorStreamPool
         guard !pool.isEmpty else { return [] }
 
-        let availableDrops = pool
-            .filter { feedMealRowIsAvailable($0) }
-            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
-        let bookedLiveDrops = pool
-            .filter { !feedMealRowIsAvailable($0) }
+        let bookable = pool
+            .filter { feedDropIsBookable($0) }
             .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
 
-        let availTarget = 3
-        let pickedAvailable: [Drop] = {
-            guard !availableDrops.isEmpty else { return [] }
-            if availableDrops.count <= availTarget { return availableDrops }
-            let window = availableDrops.count - availTarget
-            let start = Int(vm.liveListShuffleToken % UInt64(window + 1))
-            return Array(availableDrops[start ..< (start + availTarget)])
+        // Partition by Explore flag. `nil` is treated as open (API omitted field).
+        let exploreOpen = bookable.filter { $0.exploreSnagAvailable != false }
+        let exploreTaken = bookable.filter { $0.exploreSnagAvailable == false }
+
+        let primaryTarget = 3
+        let primaryTriple: [Drop] = {
+            guard !bookable.isEmpty else { return [] }
+            if exploreOpen.count >= primaryTarget {
+                if exploreOpen.count == primaryTarget { return exploreOpen }
+                let window = exploreOpen.count - primaryTarget
+                let start = Int(vm.liveListShuffleToken % UInt64(window + 1))
+                return Array(exploreOpen[start ..< (start + primaryTarget)])
+            }
+            var out = exploreOpen
+            let need = primaryTarget - out.count
+            if need > 0 {
+                let used = Set(out.map(\.id))
+                let fill = exploreTaken.filter { !used.contains($0.id) }
+                if !fill.isEmpty {
+                    if fill.count <= need {
+                        out.append(contentsOf: fill)
+                    } else {
+                        let w = fill.count - need
+                        let s = Int(vm.liveListShuffleToken % UInt64(w + 1))
+                        out.append(contentsOf: fill[s ..< (s + need)])
+                    }
+                }
+            }
+            if out.count < primaryTarget {
+                let used = Set(out.map(\.id))
+                for d in bookable where !used.contains(d.id) {
+                    out.append(d)
+                    if out.count >= primaryTarget { break }
+                }
+            }
+            return Array(out.prefix(primaryTarget))
         }()
 
-        let availIds = Set(pickedAvailable.map(\.id))
-        let bookedCandidates = bookedLiveDrops.filter { !availIds.contains($0.id) }
+        let primaryIds = Set(primaryTriple.map(\.id))
 
         var bookedEntries: [QuietStreamEntry] = []
         if let m = vm.justMissed.first {
             bookedEntries.append(.missed(m))
         }
-
-        let bookedLiveSlots = max(0, 2 - bookedEntries.count)
-        if bookedLiveSlots > 0, !bookedCandidates.isEmpty {
-            if bookedCandidates.count <= bookedLiveSlots {
-                bookedEntries.append(contentsOf: bookedCandidates.map { .live($0) })
-            } else {
-                let n = bookedLiveSlots
-                let window = bookedCandidates.count - n
-                // Different phase than the open triple so booked rows don’t lock-step with available.
-                let start = Int((vm.liveListShuffleToken >> 1) % UInt64(window + 1))
-                bookedEntries.append(contentsOf: bookedCandidates[start ..< (start + n)].map { .live($0) })
+        let takenSlots = max(0, 2 - bookedEntries.count)
+        if takenSlots > 0 {
+            let takenOnly = exploreTaken.filter { !primaryIds.contains($0.id) }
+            if !takenOnly.isEmpty {
+                if takenOnly.count <= takenSlots {
+                    bookedEntries.append(contentsOf: takenOnly.map { .live($0, isPrimaryTier: false) })
+                } else {
+                    let w = takenOnly.count - takenSlots
+                    let s = Int((vm.liveListShuffleToken >> 1) % UInt64(w + 1))
+                    bookedEntries.append(contentsOf: takenOnly[s ..< (s + takenSlots)].map { .live($0, isPrimaryTier: false) })
+                }
             }
         }
 
         var out: [QuietStreamEntry] = []
-        out.append(contentsOf: pickedAvailable.map { .live($0) })
+        out.append(contentsOf: primaryTriple.map { .live($0, isPrimaryTier: true) })
 
         if out.isEmpty {
-            let fallback = Array(bookedCandidates.prefix(3))
-            if !fallback.isEmpty {
-                return fallback.map { .live($0) }
+            let raw = Array(pool.prefix(primaryTarget))
+            if !raw.isEmpty {
+                return raw.map { .live($0, isPrimaryTier: true) }
             }
             if let m = vm.justMissed.first { return [.missed(m)] }
-            return Array(pool.prefix(3).map { .live($0) })
+            return []
         }
 
         out.append(contentsOf: bookedEntries)
@@ -528,7 +554,9 @@ struct FeedView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     QuietCuratorLiveStreamDividerHeader(
                         hasBookableLive: entries.contains {
-                            if case .live(let d) = $0 { return feedMealRowIsAvailable(d) }
+                            if case .live(let d, let primary) = $0 {
+                                return primary && feedDropIsBookable(d)
+                            }
                             return false
                         }
                     )
@@ -536,13 +564,16 @@ struct FeedView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(entries.enumerated()), id: \.element.streamRowIdentity) { idx, entry in
                             switch entry {
-                            case .live(let drop):
+                            case .live(let drop, let isPrimaryTier):
                                 let party = mockPreferredParty(for: drop)
                                 QuietCuratorLiveStreamRow(
                                     drop: drop,
                                     preferredParty: party,
-                                    available: feedMealRowIsAvailable(drop),
-                                    waitMinutesLabel: quietCuratorWaitMinutesLabel(drop),
+                                    available: isPrimaryTier ? feedDropIsBookable(drop) : feedMealRowIsAvailable(drop),
+                                    waitMinutesLabel: quietCuratorWaitMinutesLabel(
+                                        drop,
+                                        requireExploreOpenForVanish: !isPrimaryTier
+                                    ),
                                     seatingLabel: quietCuratorSeatingLabel(drop, party: party)
                                 )
                                 .staggeredAppear(index: idx, delayPerItem: 0.03)
@@ -630,8 +661,8 @@ struct FeedView: View {
         UIApplication.shared.open(url)
     }
 
-    private func quietCuratorWaitMinutesLabel(_ drop: Drop) -> String {
-        if feedShouldShowVanishCountdown(drop, requireExploreOpen: true) {
+    private func quietCuratorWaitMinutesLabel(_ drop: Drop, requireExploreOpenForVanish: Bool = true) -> String {
+        if feedShouldShowVanishCountdown(drop, requireExploreOpen: requireExploreOpenForVanish) {
             let r = feedVanishSecondsRemaining(for: drop)
             let m = max(1, r / 60)
             return "\(m)m"
