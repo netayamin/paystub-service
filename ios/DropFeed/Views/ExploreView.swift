@@ -31,9 +31,11 @@ struct ExploreView: View {
                         .padding(.top, 14)
                     Color.clear.frame(height: 88)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 18)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(CreamEditorialTheme.canvas.ignoresSafeArea())
         .onAppear {
             vm.exploreTabActive = true
@@ -61,7 +63,7 @@ struct ExploreView: View {
     // MARK: - Top bar
 
     private var exploreTopBar: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 8) {
             Button {
                 showExploreMenu = true
             } label: {
@@ -72,27 +74,35 @@ struct ExploreView: View {
             .buttonStyle(.plain)
 
             Text("EXPLORE")
-                .font(.system(size: 18, weight: .heavy))
+                .font(.system(size: 17, weight: .heavy))
                 .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.6)
+                .tracking(0.5)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .layoutPriority(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 Text(exploreMarketLabel)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .tracking(0.4)
-                Circle()
-                    .fill(Color(red: 52 / 255, green: 199 / 255, blue: 147 / 255))
-                    .frame(width: 6, height: 6)
-                Text("SYSTEM ONLINE")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
                     .tracking(0.35)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                Circle()
+                    .fill(Color(red: 52 / 255, green: 199 / 255, blue: 147 / 255))
+                    .frame(width: 5, height: 5)
+                Text("ONLINE")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .tracking(0.3)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(exploreMarketLabel), system online")
+            .frame(minWidth: 0)
+            .layoutPriority(-1)
 
             Button {
                 showFilterSheet = true
@@ -103,9 +113,10 @@ struct ExploreView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 8)
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
         .padding(.bottom, 6)
+        .frame(maxWidth: .infinity)
     }
 
     private var exploreMarketLabel: String {
@@ -118,27 +129,39 @@ struct ExploreView: View {
 
     private var exploreAvailabilitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Availability")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(CreamEditorialTheme.textPrimary)
-                Spacer()
+                    .lineLimit(1)
+                Spacer(minLength: 8)
                 Text(exploreSelectedMonthYearUppercased)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .tracking(0.5)
+                    .tracking(0.4)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.trailing)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 16)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
-                        exploreDateChip(index: idx, opt: opt)
+            // Horizontal ScrollView can report very wide ideal size; pin width so the tab does not overflow horizontally.
+            GeometryReader { geo in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
+                            exploreDateChip(index: idx, opt: opt)
+                        }
                     }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 18)
+                .frame(width: geo.size.width, alignment: .leading)
             }
+            .frame(height: 64)
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
         .padding(.bottom, 4)
     }
 
@@ -232,24 +255,32 @@ struct ExploreView: View {
     // MARK: - Live inventory
 
     private var liveInventoryHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("LIVE INVENTORY")
                 .font(.system(size: 11, weight: .heavy))
                 .foregroundColor(CreamEditorialTheme.textPrimary)
                 .tracking(0.85)
-            Spacer()
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Spacer(minLength: 8)
             Text(exploreMarketLabel == "NYC" ? "NEW YORK" : exploreMarketLabel)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(CreamEditorialTheme.textTertiary)
                 .tracking(0.45)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(minWidth: 0, alignment: .trailing)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.circle.fill")
             Text(message)
                 .font(.system(size: 13))
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundColor(CreamEditorialTheme.burgundy)
         .padding(12)
@@ -286,8 +317,10 @@ struct ExploreView: View {
                                 .frame(maxWidth: .infinity)
                         }
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -339,9 +372,11 @@ struct ExploreView: View {
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                             .minimumScaleFactor(0.85)
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "arrow.up.right")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(CreamEditorialTheme.textSecondary)
+                            .layoutPriority(1)
                     }
 
                     Text(exploreCuisineLine(drop))
@@ -349,8 +384,10 @@ struct ExploreView: View {
                         .foregroundColor(CreamEditorialTheme.textTertiary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.88)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    HStack(spacing: 6) {
+                    HStack(alignment: .center, spacing: 6) {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(CreamEditorialTheme.burgundy)
@@ -359,7 +396,9 @@ struct ExploreView: View {
                             .foregroundColor(CreamEditorialTheme.burgundy)
                             .tracking(0.25)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.8)
+                            .minimumScaleFactor(0.75)
+                            .multilineTextAlignment(.leading)
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 10)
@@ -371,13 +410,14 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(CreamEditorialTheme.cardWhite)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(CreamEditorialTheme.cardWhite)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
             )
-            .shadow(color: CreamEditorialTheme.cardShadow, radius: 8, x: 0, y: 3)
+            .shadow(color: CreamEditorialTheme.cardShadow, radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }

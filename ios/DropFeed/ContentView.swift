@@ -46,7 +46,7 @@ struct ContentView: View {
     private var tabBackground: Color {
         switch selectedTab {
         case 0: return Color(red: 247 / 255, green: 247 / 255, blue: 247 / 255)
-        case 1: return SnagDesignSystem.darkCanvas
+        case 1: return CreamEditorialTheme.canvas
         default: return SnagDesignSystem.pageCanvas
         }
     }
