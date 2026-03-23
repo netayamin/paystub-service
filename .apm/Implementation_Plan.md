@@ -1,6 +1,6 @@
 # paystub-service – APM Implementation Plan
 **Memory Strategy:** Dynamic-MD
-**Last Modification:** Amended by Setup Agent: product roadmap (experience phases A–D) and mapping to technical phases.
+**Last Modification:** Amended by Setup Agent: differentiation commitment, fragile positioning, and home copy/IA guidance.
 **Project Overview:** Evolve **Snag** (DropFeed) as a **drop-first** product: it does **not** compete on search, filters, or “browse what’s available” convenience like typical aggregators. The premise is that the **best** places are **already fully booked**; Snag **tracks unavailability**, then surfaces a venue **only when** something **briefly** becomes possible that **was not** possible before. That transition is the **value signal**—if it appears in Snag, it is not because it was easy to find; it is because it **was not gettable** before. Delivery is organized in **product experience phases A→D** (below): **A** nails the core home loop (**ranked** best opportunities, **not** a raw dump—**speed, clarity, trust**); **B–D** add personalization, intelligence, and **optional** power features **without** replacing that loop. Technically this requires a **credible “was fully booked, then opened”** model, a **14-day** horizon, rich **telemetry**, and **push**, with **Postgres first**, then FastAPI, ranking, and iOS. Success: **correctness** (no false positives), **tests passing**, solid implementation.
 
 ## Product principles (Snag vs search / convenience aggregators)
@@ -10,13 +10,32 @@
 - **Primary surface:** The home experience is a **ranked set of the best opportunities** across the **next 14 days**, not a neutral list of “results” or everything available. Implementation and APIs should reinforce **opportunity ranking** and **eligibility truth**, not generic catalog browsing as the hero loop.
 - **Canonical journey:** User **opens the app → immediately sees the best opportunities → recognizes value → acts**. Follows, alerts, predictions, and optional search/autopilot **support** that loop; they do **not** replace it.
 
+## Full differentiation: commit in behavior, not only UI
+
+Snag is **only** meaningfully different if the team **commits fully**: the gap is **not** skin-deep. Other reservation products are built around **search and availability**—the **user leads** (date, time, party size), then **browses** what can be booked. Snag **inverts** that: the screen is **not** “what you can book if you look,” it is **what was not bookable and just became bookable**—a **scarcity filter already applied**. Everything shown has **passed** a worth-attention bar; the user should **not** need to search for value on the main path.
+
+**Differentiation is fragile.** If the **primary** experience accumulates **filtering, browsing, or “explore”** patterns, the product **drifts** back toward the same category. **Ranking** must keep the **best** rare openings at the **top**; **behavior and prioritization** must stay aligned with **one idea:** **previously unavailable → briefly possible now.**
+
+Communicate that idea through **structure and wording**, not noisy decoration:
+
+### Home hierarchy: teach once, reinforce with “Opened”
+
+- **Main section title (highest leverage):** Avoid generic booking labels such as **“Available Tables”** or **“Live Radar”**—they read like **availability browsers**. Prefer language that implies **change** and **transition**, e.g. **“Just Opened”** or **“Now Open”**, so users interpret the list as **things that were not accessible before**.
+- **One subtle subtitle under the title (single teaching moment):** A short line is enough to anchor the mental model—e.g. **“Previously fully booked tables that just became available.”** Do **not** repeat this essay on every row.
+- **Row-level copy:** **“Opened 12s ago”** (or similar) is **high signal**; the word **opened** already implies **closed/unavailable before**. Optional light reinforcement (e.g. **“Opened 12s ago · was booked”**) only if needed—**avoid** slapping **“RARE”**, **“FULLY BOOKED BEFORE”**, or equivalent **on every card**; that **clutters** and **cheapens** clarity.
+- **Onboarding / first run:** One explicit sentence is enough—e.g. **“We track restaurants that are fully booked and show you when a table opens.”** After that, the UI should feel **obvious** without repeated explanation.
+
+**Implementation agents:** treat this block as **Product phase A** requirements for **home** and **push-adjacent copy**; backend field names and payloads should not force generic “available inventory” framing in client strings.
+
 ## Product roadmap: experience phases (A → D)
 
 These are **product** sequencing priorities (not the same numbering as technical phases below). **Do not** ship B–D at the expense of A.
 
 ### Phase A — Core product (priority: speed, clarity, trust)
 
+- **Fragile differentiation:** Ship home as **scarcity-ranked openings**, not a **configure-then-browse** reservation surface; resist **main-path** filters and exploratory chrome that make users feel they must **search** to trust the list.
 - **Home is not a raw feed:** A **ranked** set of the **best** opportunities across the **next 14 days**, **high signal**, **immediate** feel.
+- **Copy/IA:** Follow **“Home hierarchy: teach once…”** above for section title, subtitle, rows, and onboarding.
 - **Real time:** New drops should show up **live** (or near-live) with **obvious urgency** (e.g. copy/chip-like indicators such as **“opened seconds ago”**—driven by accurate server timestamps).
 - **Frictionless action:** **One tap to book** (deep link / continue into the booking surface); **no** mandatory extra steps on the happy path.
 - **Minimal decision support only:** Small number of **high-trust** signals—e.g. how fast a table **usually** disappears and a **demand** proxy—enough to decide fast, not analytics noise.
@@ -169,6 +188,7 @@ These are **product** sequencing priorities (not the same numbering as technical
 - Contract should reflect **one ranked opportunity stream** for the primary experience (Snag home), not an aggregator-style “query then browse” API as the core metaphor.
 - Support **Product phase A** **freshness:** precise **`opened_at` (or equivalent)** for client-relative urgency (“seconds ago”), and a practical **real-time or near-real-time** update story (efficient polling with cursors, push-triggered refresh, or streaming—choose what fits the stack without over-engineering).
 - Payloads should carry the **small set** of **minimal signals** agreed for phase A (e.g. typical disappearance speed, demand proxy)—no dashboard sprawl.
+- Any **server-origin strings** surfaced in clients should **not** default to generic **“available”** catalog language; align naming with **“opened” / transition** semantics where applicable.
 - **Depends on: Task 3.3 Output by Agent_Ranking_Intelligence**
 
 ### Task 4.2 – Push notification eligibility – Agent_Backend_Services
@@ -177,6 +197,7 @@ These are **product** sequencing priorities (not the same numbering as technical
 **Guidance:**
 - Reuse shared helper predicates from ranking layer if possible to avoid drift (**Depends on: Task 3.2 Output by Agent_Ranking_Intelligence**).
 - For **Product phase A**, pushes may be **simpler** than Phase B “smart” policies; still avoid **generic noise**—tie to real new eligible opportunities. (Phase 7 refines **meaning-aware** alerting.)
+- Notification **title/body** copy should imply **something just opened / became possible**, not **“here are available tables”** browse framing—consistent with **“Home hierarchy…”** above.
 - **Depends on: Task 4.1 Output**
 
 ---
@@ -191,11 +212,14 @@ These are **product** sequencing priorities (not the same numbering as technical
 - **Depends on: Task 4.1 Output by Agent_Backend_Services**
 
 ### Task 5.2 – Feed UI and copy – Agent_iOS
-**Objective:** Present the **home** experience as **ranked best opportunities** over the **14-day** window: **immediate**, **high signal**, **not a raw feed**. User **reacts** to what became possible; copy and hierarchy communicate **was not gettable → now briefly is**.
+**Objective:** Present the **home** experience as **ranked best opportunities** over the **14-day** window: **immediate**, **high signal**, **not a raw feed**. User **reacts** to what became possible; **structure and wording** (not badge spam) teach **“just opened”** once and reinforce lightly—see **“Full differentiation…”** and **“Home hierarchy…”** above.
 **Output:** Updated `FeedView` (and related views) reflecting new fields; UX consistent with existing design language and Snag principles above.
 **Guidance:**
 - Avoid treating the home surface like **search results** or **filter-first**; **prioritization is implicit** in ranking (background), aligned with backend order and signals.
-- **Urgency:** Show **freshness** from server timestamps (e.g. **“opened seconds ago”** patterns) so value feels **live**.
+- **Section title + subtitle:** Replace generic booking headings (e.g. **“Available Tables”**, **“Live Radar”**) with **transition-implying** titles (e.g. **“Just Opened”** / **“Now Open”**) and **one** short explanatory subtitle (e.g. **“Previously fully booked tables that just became available”**). This is the **primary** place to teach the mental model.
+- **Rows:** Prefer **“Opened {time} ago”**; the word **opened** carries **was unavailable before**. Avoid **repeating** the full thesis on every card; **avoid** loud per-row badges (**RARE**, **FULLY BOOKED BEFORE**, etc.) unless product explicitly revisits—default is **calm** and **high trust**.
+- **Onboarding:** At most **one** clear sentence anchoring the model (e.g. fully booked → we show when a table opens); then rely on the header + **Opened** language.
+- **Urgency:** Show **freshness** from server timestamps so value feels **live**; align phrasing with **opened** semantics.
 - **Frictionless action:** Primary path is **one tap to book** (deep link / handoff into booking)—**no** extra mandatory steps on the happy path.
 - **Minimal signals:** Surface only the agreed **small** set (e.g. typical time-to-take, demand) to support fast decisions—no clutter.
 - **Real-time feel:** Coordinate with Task 4.1’s refresh strategy so **new** eligible drops appear **quickly** without draining battery (polling interval, push nudge, or both).
@@ -319,4 +343,4 @@ These are **product** sequencing priorities (not the same numbering as technical
 **Technical phases:** 9 (Phases 1–6 = **Product A** core; 7–9 = **Product B–D**).  
 **Cross-agent dependencies:** Multiple explicit `Depends on: Task X.Y … by Agent_*` links above (feed/ranking/services/iOS boundary).
 
-**Context synthesis anchors embedded:** schema-first sequencing; full-stack scope; false-positive “fully booked” as primary correctness risk; ship when tests and quality are good; **Snag ≠ search/convenience aggregator**; **ranked 14-day home**, **reactive** loop; **product phases A→D** with **B–D supporting, not replacing**, A; **optional** search/autopilot only in Phase 9.
+**Context synthesis anchors embedded:** schema-first sequencing; full-stack scope; false-positive “fully booked” as primary correctness risk; ship when tests and quality are good; **Snag ≠ search/convenience aggregator**; **ranked 14-day home**, **reactive** loop; **fragile differentiation**—**behavior** and **prioritization** must match **scarcity-ranked openings**, not main-path browse/filter; **home copy/IA**: **teach once** (title + one subtitle), reinforce with **“Opened”**, **no** noisy per-row badges by default; **product phases A→D** with **B–D supporting, not replacing**, A; **optional** search/autopilot only in Phase 9.
