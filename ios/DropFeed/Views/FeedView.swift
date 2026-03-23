@@ -489,28 +489,71 @@ struct FeedView: View {
         return out
     }
 
+    /// ~**4:5** portrait tiles; multi mode fits **~two cards + peek** (reference dimensions).
+    private func quietCuratorHottestCarouselTileSize(trackWidth: CGFloat, dropCount: Int) -> (w: CGFloat, h: CGFloat) {
+        let side: CGFloat = 18
+        let gap: CGFloat = 12
+        let peek: CGFloat = 14
+        let inner = max(1, trackWidth) - 2 * side
+        let aspect: CGFloat = 5.0 / 4.0
+        if dropCount <= 1 {
+            let w = min(max(168, inner * 0.58), inner - peek)
+            return (w, w * aspect)
+        }
+        let w = max(132, (inner - gap - peek) / 2)
+        return (w, w * aspect)
+    }
+
+    private func quietCuratorHottestCarouselCardChrome<V: View>(_ content: V) -> some View {
+        let r: CGFloat = 10
+        return content
+            .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: r, style: .continuous)
+                    .stroke(Color.black.opacity(0.1), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
+    }
+
     @ViewBuilder
     private func quietCuratorHottestCarousel(drops: [Drop]) -> some View {
-        let peek: CGFloat = 28
         let gap: CGFloat = 12
         let side: CGFloat = 18
+        let outerH = quietCuratorHottestCarouselTileSize(
+            trackWidth: UIScreen.main.bounds.width,
+            dropCount: drops.count
+        ).h
 
-        if drops.count == 1, let only = drops.first {
-            QuietCuratorHeroCard(drop: only)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, side)
-        } else {
-            // Horizontal ScrollView proposes unbounded width; pin card width to the *visible* track
-            // (not UIScreen) and avoid hero `maxWidth: .infinity` fighting layout — prevents overlap.
-            GeometryReader { geo in
-                let trackW = max(1, geo.size.width)
-                let multiCardWidth = max(160, trackW - side - peek)
+        GeometryReader { geo in
+            let trackW = max(1, geo.size.width)
+            let sz = quietCuratorHottestCarouselTileSize(trackWidth: trackW, dropCount: drops.count)
+
+            if drops.count == 1, let only = drops.first {
+                HStack {
+                    Spacer(minLength: 0)
+                    quietCuratorHottestCarouselCardChrome(
+                        QuietCuratorHeroCard(
+                            drop: only,
+                            layoutHeight: sz.h,
+                            useSharpRectangleBorder: false
+                        )
+                        .frame(width: sz.w, height: sz.h)
+                    )
+                    Spacer(minLength: 0)
+                }
+                .frame(width: trackW, height: sz.h, alignment: .top)
+            } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: gap) {
                         ForEach(drops, id: \.id) { drop in
-                            QuietCuratorHeroCard(drop: drop)
-                                .frame(width: multiCardWidth, height: QuietCuratorHeroCard.heroH, alignment: .top)
-                                .clipped()
+                            quietCuratorHottestCarouselCardChrome(
+                                QuietCuratorHeroCard(
+                                    drop: drop,
+                                    layoutHeight: sz.h,
+                                    useSharpRectangleBorder: false
+                                )
+                                .frame(width: sz.w, height: sz.h)
+                            )
                         }
                     }
                     .padding(.leading, side)
@@ -518,10 +561,11 @@ struct FeedView: View {
                     .scrollTargetLayout()
                 }
                 .scrollTargetBehavior(.viewAligned)
+                .frame(width: trackW, height: sz.h, alignment: .top)
             }
-            .frame(height: QuietCuratorHeroCard.heroH)
-            .frame(maxWidth: .infinity)
         }
+        .frame(height: outerH)
+        .frame(maxWidth: .infinity)
     }
 
     private var quietCuratorHottestHeader: some View {
@@ -1731,8 +1775,23 @@ private struct CuratorTopBar: View {
 
 private struct QuietCuratorHeroCard: View {
     let drop: Drop
-    /// Taller hero to match reference; carousel uses same height per card.
+    /// When set (carousel), drives card height and compact type; default tall hero for legacy layouts.
+    var layoutHeight: CGFloat?
+    /// Sharp 1pt `Rectangle` stroke; off when the carousel applies rounded chrome outside.
+    var useSharpRectangleBorder: Bool = true
+
+    /// Default height when `layoutHeight` is nil (single full-width hero elsewhere).
     fileprivate static let heroH: CGFloat = 372
+
+    private var effectiveHeight: CGFloat { layoutHeight ?? Self.heroH }
+
+    private var isCompactTile: Bool { (layoutHeight ?? .greatestFiniteMagnitude) < 280 }
+
+    private var venueTitleSize: CGFloat {
+        if isCompactTile { return 18 }
+        if effectiveHeight < 340 { return 22 }
+        return 28
+    }
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -1810,45 +1869,47 @@ private struct QuietCuratorHeroCard: View {
                     Spacer(minLength: 0)
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 14)
-                .padding(.horizontal, 14)
+                .padding(.top, isCompactTile ? 10 : 14)
+                .padding(.horizontal, isCompactTile ? 10 : 14)
 
                 Spacer(minLength: 0)
 
                 Text(neighborhoodCaps)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: isCompactTile ? 9 : 11, weight: .medium))
                     .foregroundColor(CreamEditorialTheme.heroNeighborhoodRed)
                     .tracking(0.55)
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, isCompactTile ? 10 : 14)
 
                 Text(drop.name.uppercased())
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: venueTitleSize, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .minimumScaleFactor(0.55)
                     .multilineTextAlignment(.leading)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, isCompactTile ? 10 : 14)
                     .padding(.top, 4)
                     .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
 
                 heroBottomChrome
-                    .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, isCompactTile ? 10 : 14)
+                    .padding(.top, isCompactTile ? 10 : 14)
+                    .padding(.bottom, isCompactTile ? 12 : 16)
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         // Bounded box + clip so overlays (ZStack) cannot paint outside the card — fixes carousel edge bleed.
-        .frame(maxWidth: .infinity, maxHeight: Self.heroH)
+        .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
         .clipped()
-        .overlay(
-            Rectangle()
-                .stroke(Color.black.opacity(0.08), lineWidth: 1)
-        )
+        .overlay {
+            if useSharpRectangleBorder {
+                Rectangle()
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            }
+        }
     }
 
     /// Pills + BOOK: reflow when the carousel page is narrow so nothing clips past the card.

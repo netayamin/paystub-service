@@ -3,8 +3,9 @@ import SwiftUI
 /// Quiet Curator first-load skeleton: cream canvas, **zero radius**, carousel peek, stream rows + tactical/footer blocks.
 struct FeedSkeletonView: View {
     private let side: CGFloat = 18
-    private let peek: CGFloat = 28
-    private let heroHeight: CGFloat = 372
+    private let gap: CGFloat = 12
+    /// Matches hottest carousel: two ~4:5 tiles + peek.
+    private let peek: CGFloat = 14
     private let streamRows = 6
 
     /// Muted grey-beige blocks on cream (reference “brutalist-chic” loading).
@@ -13,7 +14,11 @@ struct FeedSkeletonView: View {
 
     private var screenW: CGFloat { UIScreen.main.bounds.width }
 
-    private var heroMainWidth: CGFloat { screenW - side - peek }
+    private var heroInner: CGFloat { max(1, screenW - 2 * side) }
+
+    private var heroMainWidth: CGFloat { max(132, (heroInner - gap - peek) / 2) }
+
+    private var heroHeight: CGFloat { heroMainWidth * 5.0 / 4.0 }
 
     var body: some View {
         ScrollView {
@@ -83,17 +88,18 @@ struct FeedSkeletonView: View {
         .shimmer()
     }
 
-    /// Large hero block + thin vertical sliver (carousel cue).
+    /// Two-up ~4:5 tiles + sliver (matches live hottest carousel).
     private var heroCarouselSkeleton: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: gap) {
             Rectangle()
                 .fill(bone)
                 .frame(width: heroMainWidth, height: heroHeight)
             Rectangle()
                 .fill(boneMuted)
-                .frame(width: max(12, peek - 12), height: heroHeight)
+                .frame(width: max(12, peek - 4), height: heroHeight)
         }
         .padding(.leading, side)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .shimmer()
     }
 
