@@ -1025,6 +1025,12 @@ async def list_just_opened(
     With `mobile=1`, it is a capped, quality-filtered slice (see `feed_meta`).
 
     Pass `mobile=1` for a compact payload (~10x smaller, faster on iOS).
+
+    **Feed card fields (public):** Cards may include `eligibility_evidence`, `user_facing_opened_at`,
+    and `bucket_successful_poll_count` when present from the discovery pipeline (diff-truth for ranking).
+
+    **`debug=1`:** Bypasses snapshot; hits DB. Adds `_debug` bucket health and, on each feed card,
+    `_debug_rank` (eligibility tier, multiplier, home-feed qualification) for staging — not a stable contract.
     """
     try:
         is_debug = debug and str(debug).strip() in ("1", "true", "yes")
@@ -1195,6 +1201,27 @@ async def list_just_opened(
         sanitize_feed_cards_for_client(ranked_board)
         sanitize_feed_cards_for_client(top_opportunities)
         sanitize_feed_cards_for_client(hot_right_now)
+
+        if is_debug:
+            from app.services.discovery.eligibility import (
+                qualified_for_home_feed,
+                rank_strength_multiplier,
+            )
+
+            def _attach_rank_debug(cards: list[dict]) -> None:
+                for c in cards:
+                    ev = c.get("eligibility_evidence")
+                    polls = c.get("bucket_successful_poll_count")
+                    c["_debug_rank"] = {
+                        "eligibility_evidence": ev,
+                        "bucket_successful_poll_count": polls,
+                        "rank_strength_multiplier": rank_strength_multiplier(ev),
+                        "qualified_home_feed_if_jo_only": qualified_for_home_feed(ev, polls),
+                    }
+
+            _attach_rank_debug(ranked_board)
+            _attach_rank_debug(top_opportunities)
+            _attach_rank_debug(hot_right_now)
 
         payload = {
             "just_opened": just_opened,

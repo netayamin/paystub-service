@@ -1,8 +1,28 @@
 """
-Queue + re-enqueue: each bucket has its own cooldown. Tick every DISCOVERY_TICK_SECONDS;
-dispatch up to DISCOVERY_MAX_CONCURRENT_BUCKETS "ready" buckets. When a bucket finishes
-it re-enters the queue (next_run_after = now + cooldown). Bucket 1 can keep updating
-while bucket 27 is slow.
+Discovery bucket scheduler — **hot path** vs **daily sliding window**.
+
+**Tick job (every DISCOVERY_TICK_SECONDS):**
+- Picks up to `DISCOVERY_MAX_CONCURRENT_BUCKETS` buckets whose cooldown elapsed; runs
+  `_poll_one_bucket` (Resy fetch → `run_poll_for_bucket`: slot diff, `SlotAvailability`,
+  `DropEvent`, `AvailabilityState`, close aggregation, **drop_events prune on close**).
+- Every `DISCOVERY_PRUNE_EVERY_N_TICKS`: `prune_old_buckets`, `prune_old_slot_availability`,
+  `prune_old_availability_state` (same `today` as `window_start_date()`). Does **not** run
+  `prune_old_drop_events` here — that stays in the daily job to avoid large deletes on the hot path.
+- Snapshot rebuild is debounced (`_maybe_schedule_snapshot_rebuild`) so feed JSON stays fresh
+  without blocking polls.
+
+**Failure modes (operational):**
+- Single bucket commit failure: logged; bucket state may retry next cooldown.
+- Executor thread crash: in-flight set should still drain via callbacks; heartbeat reflects counts.
+- Stale snapshot: if rebuild fails, API may serve last good JSON until next successful rebuild.
+
+**Daily `run_sliding_window_job`:**
+- Rolling metrics, `prune_old_drop_events` (slot_date + age, all rows), projection prunes,
+  notifications, venue/metrics retention, `ensure_buckets`, baseline for the newest calendar day.
+  See `buckets.py` for retention semantics.
+
+Queue model: each bucket has its own cooldown; when a bucket finishes it re-enqueues with
+`next_run_after = now + cooldown` so fast buckets do not wait on slow ones.
 """
 import logging
 import threading

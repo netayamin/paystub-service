@@ -101,6 +101,12 @@ struct Drop: Codable, Identifiable {
     let exploreVenuePill: String?
     /// Explore tab — red dot on thumbnail.
     let exploreShowDot: Bool?
+    /// Diff-truth tier from backend (`drop_events` geometry); optional during rollout.
+    let eligibilityEvidence: String?
+    /// Canonical user-facing open instant (ISO8601); optional.
+    let userFacingOpenedAt: String?
+    /// Successful polls for the bucket; used with `eligibilityEvidence` for baseline trust.
+    let bucketSuccessfulPollCount: Int?
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -168,6 +174,9 @@ struct Drop: Codable, Identifiable {
         exploreSnagAvailable = try c.decodeIfPresent(Bool.self, forKey: .exploreSnagAvailable)
         exploreVenuePill = try c.decodeIfPresent(String.self, forKey: .exploreVenuePill)
         exploreShowDot = try c.decodeIfPresent(Bool.self, forKey: .exploreShowDot)
+        eligibilityEvidence = try c.decodeIfPresent(String.self, forKey: .eligibilityEvidence)
+        userFacingOpenedAt = try c.decodeIfPresent(String.self, forKey: .userFacingOpenedAt)
+        bucketSuccessfulPollCount = Self.decodeFlexibleInt(c, forKey: .bucketSuccessfulPollCount)
     }
 
     private static func decodeFlexibleInt(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Int? {
@@ -233,7 +242,10 @@ struct Drop: Codable, Identifiable {
         exploreStatusTag: String? = nil,
         exploreSnagAvailable: Bool? = nil,
         exploreVenuePill: String? = nil,
-        exploreShowDot: Bool? = nil
+        exploreShowDot: Bool? = nil,
+        eligibilityEvidence: String? = nil,
+        userFacingOpenedAt: String? = nil,
+        bucketSuccessfulPollCount: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -291,6 +303,9 @@ struct Drop: Codable, Identifiable {
         self.exploreSnagAvailable = exploreSnagAvailable
         self.exploreVenuePill = exploreVenuePill
         self.exploreShowDot = exploreShowDot
+        self.eligibilityEvidence = eligibilityEvidence
+        self.userFacingOpenedAt = userFacingOpenedAt
+        self.bucketSuccessfulPollCount = bucketSuccessfulPollCount
     }
 
     /// True when there is a non-empty Resy booking link; otherwise use server flag if present.
@@ -369,6 +384,9 @@ struct Drop: Codable, Identifiable {
         case exploreSnagAvailable = "explore_snag_available"
         case exploreVenuePill = "explore_venue_pill"
         case exploreShowDot = "explore_show_dot"
+        case eligibilityEvidence = "eligibility_evidence"
+        case userFacingOpenedAt = "user_facing_opened_at"
+        case bucketSuccessfulPollCount = "bucket_successful_poll_count"
     }
     
     // MARK: - Scarcity helpers
@@ -688,7 +706,10 @@ struct JustOpenedResponse: Codable {
                     daysWithDrops: (venue["days_with_drops"] as? NSNumber)?.intValue,
                     dropFrequencyPerDay: venue["drop_frequency_per_day"] as? Double,
                     isHotspot: (venue["is_hotspot"] as? NSNumber)?.boolValue ?? (venue["is_hotspot"] as? Bool),
-                    neighborhood: venue["neighborhood"] as? String
+                    neighborhood: venue["neighborhood"] as? String,
+                    eligibilityEvidence: venue["eligibility_evidence"] as? String,
+                    userFacingOpenedAt: venue["user_facing_opened_at"] as? String,
+                    bucketSuccessfulPollCount: (venue["bucket_successful_poll_count"] as? NSNumber)?.intValue
                 )
                 result.append(drop)
             }

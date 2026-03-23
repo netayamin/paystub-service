@@ -210,3 +210,16 @@ To prevent index bloat and query latency from unbounded growth:
 ### 8.5 **Partitioning (future)**
 
 For very large `drop_events` or `user_notifications`, consider **partition by day (or week) on `created_at`/`opened_at`**. Cleanup then becomes **DROP PARTITION** for old dates (O(1), no vacuum pain). Not required at current scale; add when single-table deletes become slow.
+
+---
+
+## 9. Snag ship checklist (Task 6.2)
+
+Repeat after deploy or before announcing a release:
+
+1. **`alembic upgrade head`** on production Postgres (migrations applied).
+2. **Discovery tick + daily sliding window** running (scheduler jobs healthy; heartbeat endpoints OK).
+3. **`poetry run python scripts/check_discovery_invariants.py`** — exit 0 (or fix data before traffic).
+4. **Feed smoke:** `GET /chat/watches/just-opened?mobile=1` returns non-error JSON; `ranked_board` ordered and non-empty when Resy has data.
+5. **Push smoke (optional):** device token registered; new diff-eligible drop triggers notification in watch window.
+6. **`VACUUM ANALYZE drop_events`** after large retention deletes (optional ops follow-up).
