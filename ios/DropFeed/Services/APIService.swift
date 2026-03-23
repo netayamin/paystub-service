@@ -200,6 +200,62 @@ final class APIService {
         request.httpBody = try? JSONEncoder().encode(body)
         let _ = try? await session.data(for: request)
     }
+
+    // MARK: - Auth (phone / OTP / profile)
+
+    func requestAuthCode(phoneE164: String) async throws {
+        guard let url = URL(string: "\(baseURL)/chat/auth/request-code") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        struct Body: Encodable { let phone_e164: String }
+        request.httpBody = try JSONEncoder().encode(Body(phone_e164: phoneE164))
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
+        guard (200...299).contains(http.statusCode) else {
+            throw APIError.serverMessage(Self.parseErrorDetail(data) ?? "Could not send code")
+        }
+    }
+
+    func verifyAuthCode(phoneE164: String, code: String) async throws -> String {
+        guard let url = URL(string: "\(baseURL)/chat/auth/verify-code") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        struct Body: Encodable { let phone_e164: String; let code: String }
+        request.httpBody = try JSONEncoder().encode(Body(phone_e164: phoneE164, code: code))
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
+        guard (200...299).contains(http.statusCode) else {
+            throw APIError.serverMessage(Self.parseErrorDetail(data) ?? "Invalid code")
+        }
+        struct Resp: Decodable { let access_token: String }
+        return try decoder.decode(Resp.self, from: data).access_token
+    }
+
+    func completeAuthProfile(accessToken: String, firstName: String, lastName: String, email: String) async throws {
+        guard let url = URL(string: "\(baseURL)/chat/auth/complete-profile") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        struct Body: Encodable {
+            let first_name: String
+            let last_name: String
+            let email: String
+        }
+        request.httpBody = try JSONEncoder().encode(Body(first_name: firstName, last_name: lastName, email: email))
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
+        guard (200...299).contains(http.statusCode) else {
+            throw APIError.serverMessage(Self.parseErrorDetail(data) ?? "Could not save profile")
+        }
+    }
+
+    private static func parseErrorDetail(_ data: Data) -> String? {
+        struct E: Decodable { let detail: String? }
+        return (try? JSONDecoder().decode(E.self, from: data))?.detail
+    }
 }
 
 struct NewDropsResponse: Codable {
@@ -240,12 +296,14 @@ enum APIError: Error, LocalizedError {
     case invalidURL
     case httpError
     case decodeError(Error)
-    
+    case serverMessage(String)
+
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "Invalid URL"
         case .httpError: return "Couldn't reach backend. Is it running? Same WiFi?"
         case .decodeError(let e): return "Parse error: \(e.localizedDescription)"
+        case .serverMessage(let s): return s
         }
     }
 }

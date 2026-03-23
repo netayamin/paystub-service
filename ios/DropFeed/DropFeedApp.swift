@@ -4,12 +4,20 @@ import UserNotifications
 @main
 struct DropFeedApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var authSession = AuthSessionManager()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .preferredColorScheme(.light)
-                .task { await requestPushPermissionAndRegister() }
+            Group {
+                if authSession.isSignedIn {
+                    ContentView()
+                } else {
+                    LoginFlowView()
+                }
+            }
+            .environmentObject(authSession)
+            .preferredColorScheme(.light)
+            .task { await requestPushPermissionAndRegister() }
         }
     }
 

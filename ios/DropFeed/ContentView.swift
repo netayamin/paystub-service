@@ -955,4 +955,5 @@ private struct SearchResultCard: View {
 
 #Preview {
     ContentView()
+        .environmentObject(AuthSessionManager())
 }
