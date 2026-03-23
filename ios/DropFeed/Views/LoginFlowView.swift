@@ -1,5 +1,13 @@
 import SwiftUI
 
+#if DEBUG
+/// Skip FastAPI `/chat/auth/*` while the backend isn’t wired; Release builds always use the real API.
+private enum LoginFlowMock {
+    static let enabled = true
+    static let accessToken = "mock-snag-access-token"
+}
+#endif
+
 /// Phone → SMS code → name & email, then enters the main app.
 struct LoginFlowView: View {
     @EnvironmentObject private var auth: AuthSessionManager
@@ -36,6 +44,16 @@ struct LoginFlowView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
+                            #if DEBUG
+                            if LoginFlowMock.enabled {
+                                Text("Dev build: mock login (no server). Any 6-digit code works.")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(SnagDesignSystem.exploreCoralSolid.opacity(0.95))
+                                    .padding(.horizontal, 22)
+                                    .padding(.top, 18)
+                                    .padding(.bottom, 4)
+                            }
+                            #endif
                             headerBlock
                                 .padding(.horizontal, 22)
                                 .padding(.top, 22)
@@ -333,6 +351,13 @@ struct LoginFlowView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        #if DEBUG
+        if LoginFlowMock.enabled {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            step = .code
+            return
+        }
+        #endif
         do {
             try await api.requestAuthCode(phoneE164: e164)
             step = .code
@@ -346,6 +371,14 @@ struct LoginFlowView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        #if DEBUG
+        if LoginFlowMock.enabled {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            auth.setPendingVerification(phone: e164, token: LoginFlowMock.accessToken)
+            step = .profile
+            return
+        }
+        #endif
         do {
             let token = try await api.verifyAuthCode(phoneE164: e164, code: code)
             auth.setPendingVerification(phone: e164, token: token)
@@ -364,20 +397,24 @@ struct LoginFlowView: View {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        let f = firstName.trimmingCharacters(in: .whitespaces)
+        let l = lastName.trimmingCharacters(in: .whitespaces)
+        let em = email.trimmingCharacters(in: .whitespaces)
+        #if DEBUG
+        if LoginFlowMock.enabled {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            auth.completeSignIn(phone: pair.phone, token: pair.token, first: f, last: l, email: em)
+            return
+        }
+        #endif
         do {
             try await api.completeAuthProfile(
                 accessToken: pair.token,
-                firstName: firstName.trimmingCharacters(in: .whitespaces),
-                lastName: lastName.trimmingCharacters(in: .whitespaces),
-                email: email.trimmingCharacters(in: .whitespaces)
+                firstName: f,
+                lastName: l,
+                email: em
             )
-            auth.completeSignIn(
-                phone: pair.phone,
-                token: pair.token,
-                first: firstName,
-                last: lastName,
-                email: email
-            )
+            auth.completeSignIn(phone: pair.phone, token: pair.token, first: f, last: l, email: em)
         } catch {
             errorMessage = error.localizedDescription
         }
