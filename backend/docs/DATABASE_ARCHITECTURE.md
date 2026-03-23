@@ -56,30 +56,77 @@ flowchart TD
 
 ---
 
-## 2. Scalability pressure points and cavities
+## 2. Scalability — current architecture (where it strains)
 
-**Pressure points** are where load or data volume bites first. **Cavities** are intentional limits, missing layers, or product/tech gaps you should know about.
+Focused on **how the system is built**: process layout, database shape, read/write paths, and what breaks when you scale **instances** or **markets**. (Not product copy or UX philosophy.)
 
-### Tied to the UX flow
+### 2.1 Deployment shape (vertical coupling)
 
-| Area | Scalability risk | Cavity / gap |
-|------|------------------|--------------|
-| **Home / feed read** | Large `slot_availability` + `drop_events` scans; loading many `payload_json` rows into memory for just-opened / still-open paths | Caps exist but some code paths historically had **no or high limits** — see `SCALABILITY_AND_MAINTENANCE.md` §1. Stale `feed_cache` if snapshot rebuild lags → user sees slightly old ordering. |
-| **Background polling** | **Resy rate limits** and wall-clock: more markets × more buckets = more HTTP. Thread pool and cooldown help but **provider is single-vendor** today. | No second provider in the hot path; outage or throttle affects everyone. |
-| **Postgres writes** | Bursty upserts per bucket per tick; prunes/compaction are **batched** but daily job can still run heavy DELETEs | Needs **VACUUM** / monitoring after big retention jobs; partition-by-date is future-only. |
-| **Push** | Linear scan of recent `drop_events` × filter by watch list; capped per run | **Single default `recipient_id`** in places — not multi-user auth-ready; token table grows with devices (bounded by real installs). |
-| **Saved / follows** | Small per-user surface | Watch matching is **name-normalized**, not a hard FK to `venues.venue_id` — renames / ambiguity edge cases. |
-| **Identity** | Low DB cost | **`X-Recipient-Id` / default** — no full account model; multi-device merge and privacy are future work. |
+Typical setup: **FastAPI + scheduled jobs + discovery thread pool in the same process**, one **Postgres**, outbound **HTTPS to Resy**.
 
-### Product / architecture cavities (by design or not yet built)
+```mermaid
+flowchart LR
+  subgraph process [One backend process]
+    API[HTTP API]
+    SCH[Scheduler tick + daily job]
+    DISC[Thread pool: bucket polls]
+  end
+  PG[(Postgres)]
+  RESY[Resy API]
 
-- **No in-app booking** — handoff to Resy; Snag does not hold inventory.
-- **No global search on the home path** — by principle (Product A); scale of search index is avoided on purpose.
-- **Eligibility / “fully booked before”** depends on **scan coverage and history** — weak or partial polls create **false positives or misses** (correctness risk, not just scale).
-- **“Still open” truth** is **eventually consistent** with Resy; user can tap and find slot gone — product should keep copy honest (“often goes fast”).
-- **Multi-market** exists in schema but **ops complexity** (keys, hotspots, notify lists) grows with each market.
+  API --> PG
+  SCH --> PG
+  DISC --> PG
+  DISC --> RESY
+```
 
-For file/line-level notes and suggested mitigations, keep **`backend/docs/SCALABILITY_AND_MAINTENANCE.md`** as the detailed list.
+| Architectural limit | What happens as you grow |
+|---------------------|---------------------------|
+| **API and discovery share the process** | Poll CPU and DB writes compete with request latency; long **prune / compaction** jobs can stall or slow HTTP unless you isolate workers or run maintenance off-peak. |
+| **Single active poller assumption** | Running **two app instances** with both schedulers enabled **doubles Resy traffic** and risks **write races** on the same `bucket_id` rows. You need **one leader**, a **dedicated poller service**, or **distributed locks** beyond what the repo ships by default. |
+| **One Postgres primary** | Feed reads and poll writes share the same DB; there is **no app-level read-replica** path today. |
+| **Synchronous Resy in poll threads** | Throughput is capped by **RTT × pagination** per bucket; slow provider → threads busy → fewer buckets completed per wall-clock (cooldown spreads load but does not add capacity). |
+
+---
+
+### 2.2 Database model (logical keys, fat rows, growth)
+
+| Design choice | Scalability implication |
+|---------------|-------------------------|
+| **String keys (`bucket_id`, `slot_id`) with few SQL `FOREIGN KEY`s** | Referential integrity is **application-enforced**. Orphans/duplicates need **jobs** (prune, compact); the DB will not cascade deletes for you if a code path regresses. |
+| **Large JSON in `discovery_buckets`** (`baseline_*` / `prev_*` slot id arrays) | Wide rows × 28 buckets → **parse/serialize cost** and **WAL** on every poll update if arrays are huge. |
+| **`payload_json` on `slot_availability` / `drop_events`** | Feed builders can **load many large texts** into memory; limits on queries are mandatory — see `SCALABILITY_AND_MAINTENANCE.md` §1. |
+| **`feed_cache` single-row blob** | Simple read path, but **coarse invalidation** and risk of **multi-MB** JSON if upstream lists are uncapped. |
+| **`venues` append-only today** | Table grows with every venue ever seen; fine until very large — then **vacuum**, backups, and occasional full scans get costlier. |
+| **Retention via batched `DELETE`** | Without **partitioning**, big purges need **`VACUUM ANALYZE`**; indexes can bloat until autovacuum catches up. Natural evolution: **time partitions** + `DROP PARTITION`. |
+
+---
+
+### 2.3 Read path (feed / just-opened)
+
+Home data is still **assembled in Python** from several tables (and optionally `feed_cache`), not a per-user materialized view. **Hot patterns** are time windows and `bucket_id IN (...)` over `drop_events` / `slot_availability`; correct **indexes + hard limits** define worst-case latency.
+
+---
+
+### 2.4 Write path (poll loop)
+
+Each bucket completion does **bursty upserts** and a **commit**. More markets linearly increase **write QPS** and **WAL**. Heavy contention on a few hot rows is unlikely (keys are spread by bucket/slot), but **autovacuum** on churned tables matters.
+
+---
+
+### 2.5 Connection pool × API workers
+
+Pool settings are **per process**. **Multiple Uvicorn workers** multiply DB connections; small RDS tiers hit **`max_connections`** unless you add **PgBouncer** (or lower per-worker pool size).
+
+---
+
+### 2.6 Push pipeline
+
+Scans **recent `drop_events`** with caps — acceptable now. At much higher event volume, an **outbox** or **partial index** on unsent rows avoids widening full scans.
+
+---
+
+**Concrete mitigations already in code** (limits, batched prunes, `ensure_buckets` batching, etc.) are listed in **`backend/docs/SCALABILITY_AND_MAINTENANCE.md`**.
 
 ---
 
