@@ -175,8 +175,7 @@ private struct SpotScrollingColumn: View {
                 // One ForEach with flat indices so identities are never duplicated across the two
                 // duplicated strips (nested ForEach + id: \.offset reused 0..<n twice → reuse bugs).
                 ForEach(0..<(2 * tiles.count), id: \.self) { i in
-                    let tile = tiles[i % tiles.count]
-                    LoginSpotFeatureCard(tile: tile, width: width, tick: context.date)
+                    LoginSpotFeatureCard(tile: tiles[i % tiles.count], width: width, tick: context.date)
                 }
             }
             .offset(y: offset)
