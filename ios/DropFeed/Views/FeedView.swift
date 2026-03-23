@@ -355,25 +355,33 @@ struct FeedView: View {
         let peek: CGFloat = 28
         let gap: CGFloat = 12
         let side: CGFloat = 18
-        let screenW = UIScreen.main.bounds.width
-        let multiCardWidth = screenW - side - peek
 
         if drops.count == 1, let only = drops.first {
             QuietCuratorHeroCard(drop: only)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, side)
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: gap) {
-                    ForEach(drops, id: \.id) { drop in
-                        QuietCuratorHeroCard(drop: drop)
-                            .frame(width: multiCardWidth)
+            // Horizontal ScrollView proposes unbounded width; pin card width to the *visible* track
+            // (not UIScreen) and avoid hero `maxWidth: .infinity` fighting layout — prevents overlap.
+            GeometryReader { geo in
+                let trackW = max(1, geo.size.width)
+                let multiCardWidth = max(160, trackW - side - peek)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: gap) {
+                        ForEach(drops, id: \.id) { drop in
+                            QuietCuratorHeroCard(drop: drop)
+                                .frame(width: multiCardWidth, height: QuietCuratorHeroCard.heroH, alignment: .top)
+                                .clipped()
+                        }
                     }
+                    .padding(.leading, side)
+                    .padding(.trailing, side)
+                    .scrollTargetLayout()
                 }
-                .padding(.leading, side)
-                .padding(.trailing, side)
-                .scrollTargetLayout()
+                .scrollTargetBehavior(.viewAligned)
             }
-            .scrollTargetBehavior(.viewAligned)
+            .frame(height: QuietCuratorHeroCard.heroH)
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -1590,7 +1598,7 @@ private struct CuratorTopBar: View {
 private struct QuietCuratorHeroCard: View {
     let drop: Drop
     /// Taller hero to match reference; carousel uses same height per card.
-    private static let heroH: CGFloat = 372
+    fileprivate static let heroH: CGFloat = 372
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -1739,7 +1747,9 @@ private struct QuietCuratorHeroCard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .frame(height: Self.heroH)
         }
-        .frame(maxWidth: .infinity)
+        // Width comes from the parent (full width on single-hero, fixed width per carousel page).
+        // Avoid outer `maxWidth: .infinity` here — inside a horizontal `ScrollView` it competes for
+        // unbounded width and cards overlap.
         .frame(height: Self.heroH)
         .overlay(
             Rectangle()
