@@ -22,7 +22,7 @@ struct ExploreView: View {
         // stolen by the parent scroll view (TabView + ScrollView gesture conflict).
         VStack(alignment: .leading, spacing: 0) {
             exploreDateStrip
-                .padding(.top, 8)
+                .padding(.top, 4)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if let err = vm.error {
@@ -74,25 +74,28 @@ struct ExploreView: View {
     // MARK: - Swipeable date header
 
     private var exploreDateStrip: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 12) {
                 if vm.dateOptions.isEmpty {
                     Text("Select a day")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundColor(SnagDesignSystem.exploreCoralSolid)
                 } else {
                     TabView(selection: exploreDatePageSelection) {
                         ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
                             Text(exploreSwipeDateTitle(for: opt))
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(SnagDesignSystem.exploreCoralSolid)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.88)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                                 .tag(idx)
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(minHeight: 52)
+                    // One line of headline; avoid minHeight + maxHeight filling extra black space.
+                    .frame(height: 30)
                     .frame(maxWidth: .infinity)
 
                     exploreDatePageDots
@@ -102,19 +105,19 @@ struct ExploreView: View {
 
             HStack {
                 Text("LIVE NOW")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.system(size: 10, weight: .heavy))
                     .foregroundColor(SnagDesignSystem.exploreCoralSolid.opacity(0.95))
                     .tracking(0.55)
                 Spacer()
                 Text("• REAL-TIME")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
                     .tracking(0.35)
             }
             .padding(.horizontal, 18)
         }
-        .padding(.top, 4)
-        .padding(.bottom, 14)
+        .padding(.top, 2)
+        .padding(.bottom, 8)
         .background(SnagDesignSystem.exploreCanvas)
         .overlay(alignment: .bottom) {
             Rectangle()
