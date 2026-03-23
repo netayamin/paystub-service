@@ -226,6 +226,7 @@ def run_sliding_window_job() -> None:
     from app.services.discovery.buckets import (
         delete_closed_drop_events,
         prune_drop_events_without_open_slot,
+        prune_extra_drop_events_per_open_slot,
         prune_old_drop_events,
         prune_old_market_metrics,
         prune_old_slot_availability,
@@ -247,6 +248,7 @@ def run_sliding_window_job() -> None:
         prune_old_buckets(db, today)
         prune_old_drop_events(db, today)  # Scheduled: only daily, not every tick
         prune_drop_events_without_open_slot(db, batch_size=25_000, max_batches=200)
+        prune_extra_drop_events_per_open_slot(db, batch_size=15_000, max_batches=100)
         prune_old_slot_availability(db, today)
         prune_old_availability_state(db, today)
         prune_old_notifications(db)

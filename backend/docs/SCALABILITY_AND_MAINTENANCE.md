@@ -93,7 +93,9 @@ events = q.all()  # NO LIMIT — can load 50k+ rows and full payload_json
 
 **Retention:** (1) `slot_date` before calendar `today`; (2) `user_facing_opened_at` older than `DROP_EVENTS_RETENTION_DAYS` for **every** row.
 
-**Issue:** Unbounded growth usually means orphans (no open slot row) or the daily job not running — use orphan prune + confirm sliding window schedule.
+**Stacked rows (same open slot):** If Resy flickers or `prev_set` gaps re-add a slot to `added` after `NOTIFIED_DEDUPE_MINUTES`, the poll can insert **another** `drop_event` while `slot_availability` stayed open — many rows per `(bucket_id, slot_id)`. Poll now skips emit when an open projection row already has a `drop_event`; **prune_extra_drop_events_per_open_slot** (daily job + `POST .../admin/prune-duplicate-drop-events-open-slots`) keeps one latest row per live slot.
+
+**Issue:** Unbounded growth usually means orphans (no open slot row), duplicate stacking, or the daily job not running — use orphan + duplicate prunes and confirm sliding window schedule.
 
 ---
 

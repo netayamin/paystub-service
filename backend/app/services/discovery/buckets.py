@@ -23,7 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, text, tuple_
+from sqlalchemy import and_, func, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -576,7 +576,26 @@ def run_poll_for_bucket(
             DropEvent.user_facing_opened_at >= cutoff,
         ).distinct().all()
     }
-    drops_to_emit = drops_venue_zero - recently_notified
+    # One live DropEvent per (bucket, slot): TTL alone re-allows emits every NOTIFIED_DEDUPE_MINUTES when
+    # the slot keeps reappearing in `added` without a clean close (Resy flicker / prev gaps), stacking rows.
+    dup_open: set[str] = set()
+    if drops_venue_zero:
+        dup_open = {
+            row[0]
+            for row in db.query(DropEvent.slot_id)
+            .join(
+                SlotAvailability,
+                and_(
+                    SlotAvailability.bucket_id == DropEvent.bucket_id,
+                    SlotAvailability.slot_id == DropEvent.slot_id,
+                    SlotAvailability.state == "open",
+                ),
+            )
+            .filter(DropEvent.bucket_id == bid, DropEvent.slot_id.in_(list(drops_venue_zero)))
+            .distinct()
+            .all()
+        }
+    drops_to_emit = drops_venue_zero - recently_notified - dup_open
 
     # --- Projection: all added go to SlotAvailability (feed); only drops_venue_zero get a DropEvent (venue had 0 before) ---
     slot_rows = [
@@ -913,6 +932,54 @@ def prune_drop_events_without_open_slot(
             break
     if total:
         logger.info("prune_drop_events_without_open_slot removed %s orphan drop_event row(s)", total)
+    return total
+
+
+def prune_extra_drop_events_per_open_slot(
+    db: Session, batch_size: int = 10_000, max_batches: int | None = None
+) -> int:
+    """
+    For (bucket_id, slot_id) pairs that still have an **open** slot_availability row, keep only the
+    latest drop_event (by user_facing_opened_at, then id) and delete older duplicates.
+
+    Safe for feed/push: one canonical row per live slot; eligibility/payload should match the latest open.
+    """
+    total = 0
+    batches = 0
+    while True:
+        batches += 1
+        result = db.execute(
+            text(
+                """
+                WITH ranked AS (
+                    SELECT de.id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY de.bucket_id, de.slot_id
+                               ORDER BY de.user_facing_opened_at DESC, de.id DESC
+                           ) AS rn
+                    FROM drop_events de
+                    WHERE EXISTS (
+                        SELECT 1 FROM slot_availability sa
+                        WHERE sa.bucket_id = de.bucket_id
+                          AND sa.slot_id = de.slot_id
+                          AND sa.state = 'open'
+                    )
+                ),
+                doomed AS (SELECT id FROM ranked WHERE rn > 1 LIMIT :lim)
+                DELETE FROM drop_events WHERE id IN (SELECT id FROM doomed)
+                """
+            ),
+            {"lim": batch_size},
+        )
+        n = int(result.rowcount or 0)
+        total += n
+        db.commit()
+        if n < batch_size:
+            break
+        if max_batches is not None and batches >= max_batches:
+            break
+    if total:
+        logger.info("prune_extra_drop_events_per_open_slot removed %s duplicate row(s)", total)
     return total
 
 

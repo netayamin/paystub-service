@@ -58,6 +58,7 @@ from app.services.discovery.buckets import (
     prune_old_buckets,
     prune_old_drop_events,
     prune_drop_events_without_open_slot,
+    prune_extra_drop_events_per_open_slot,
     prune_old_market_metrics,
     prune_old_notifications,
     prune_old_slot_availability,
@@ -1396,6 +1397,31 @@ async def admin_delete_closed_events(db: Session = Depends(get_db)):
         return {"ok": True, "deleted": total, "message": f"Deleted {total} CLOSED drop_events."}
     except Exception as e:
         logger.exception("admin/delete-closed-events failed")
+        return {"ok": False, "error": str(e)}
+
+
+@router.post("/admin/prune-duplicate-drop-events-open-slots")
+async def admin_prune_duplicate_drop_events_open_slots(
+    db: Session = Depends(get_db),
+    batch_size: int = Query(10_000, ge=1_000, le=50_000),
+    max_batches: int | None = Query(
+        default=None,
+        description="Cap batches this call (omit to compact until one row per open slot).",
+    ),
+):
+    """
+    For each (bucket_id, slot_id) with an **open** slot_availability row, delete older drop_events so only
+    the latest (by opened time) remains. Use after diagnosing stacked rows from TTL + Resy flicker.
+    """
+    try:
+        total = prune_extra_drop_events_per_open_slot(db, batch_size=batch_size, max_batches=max_batches)
+        return {
+            "ok": True,
+            "deleted": total,
+            "message": f"Removed {total} duplicate drop_event row(s) for still-open slots.",
+        }
+    except Exception as e:
+        logger.exception("admin/prune-duplicate-drop-events-open-slots failed")
         return {"ok": False, "error": str(e)}
 
 
