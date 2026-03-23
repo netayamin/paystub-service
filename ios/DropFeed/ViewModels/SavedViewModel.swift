@@ -7,6 +7,10 @@ final class SavedViewModel: ObservableObject {
     @Published var hotlist: [String] = []
     @Published var searchText: String = ""
     @Published var isLoading = false
+    /// Normalized venue name → server follow status (last drop from `drop_events`).
+    @Published private(set) var followStatusByKey: [String: FollowStatusItem] = [:]
+    /// In-app notification history (from `/notifications` persistence on server).
+    @Published private(set) var followActivity: [FollowActivityItem] = []
     
     /// Map venue_name -> watch id for deletion
     private var watchIds: [String: Int] = [:]
@@ -46,6 +50,8 @@ final class SavedViewModel: ObservableObject {
         
         async let watchesTask = service.fetchWatches()
         async let hotlistTask = service.fetchHotlist()
+        async let followStatusTask = service.fetchFollowStatus()
+        async let activityTask = service.fetchFollowActivity(limit: 40)
         
         do {
             let resp = try await watchesTask
@@ -68,6 +74,54 @@ final class SavedViewModel: ObservableObject {
         } catch {
             // Keep existing
         }
+
+        do {
+            let st = try await followStatusTask
+            var m: [String: FollowStatusItem] = [:]
+            for f in st.follows {
+                m[f.venueName.lowercased()] = f
+            }
+            followStatusByKey = m
+        } catch {
+            followStatusByKey = [:]
+        }
+
+        do {
+            followActivity = try await activityTask.items
+        } catch {
+            followActivity = []
+        }
+    }
+
+    /// One-line hint under each venue in the notify grid.
+    func followSubtitle(forDisplayName name: String) -> String? {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let item = followStatusByKey[key] else { return nil }
+        if item.recentActivity {
+            if let s = Self.relativeOpenedSummary(iso: item.lastDropAt) {
+                return "Opened \(s)"
+            }
+            return "Opened recently"
+        }
+        if let s = Self.relativeOpenedSummary(iso: item.lastDropAt) {
+            return "Last opened \(s)"
+        }
+        return "No drops seen yet"
+    }
+
+    private static func relativeOpenedSummary(iso: String?) -> String? {
+        guard let raw = iso?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var d = f.date(from: raw)
+        if d == nil {
+            f.formatOptions = [.withInternetDateTime]
+            d = f.date(from: raw)
+        }
+        guard let date = d else { return nil }
+        let r = RelativeDateTimeFormatter()
+        r.unitsStyle = .abbreviated
+        return r.localizedString(for: date, relativeTo: Date())
     }
     
     func toggleWatch(_ name: String) {

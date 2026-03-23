@@ -7,14 +7,22 @@ Notify list = (hotlist ∪ user-added includes) − user exclusions (from notify
 """
 import json
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import func, tuple_
 
 from app.core.nyc_hotspots import is_hotspot, list_hotspots
 from app.db.session import SessionLocal
+
 from app.models.drop_event import DropEvent
 from app.models.notify_preference import NotifyPreference
 from app.models.push_token import PushToken
+from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.discovery.eligibility import push_notification_allowed
+from app.services.discovery.push_scoring import (
+    push_delivery_score,
+    should_use_rare_opening_title,
+)
 from app.services.discovery.venue_profile import normalize_http_url
 from app.services.push import send_push_for_new_drops
 
@@ -25,6 +33,30 @@ PUSH_WINDOW_MINUTES = 15
 
 # Recipient id (same as frontend default)
 PUSH_RECIPIENT_ID = "default"
+
+
+def _latest_rarity_by_venue_id(db, venue_ids: set[str]) -> dict[str, float]:
+    """Most recent venue_rolling_metrics row per venue_id (by as_of_date)."""
+    if not venue_ids:
+        return {}
+    agg = (
+        db.query(
+            VenueRollingMetrics.venue_id,
+            func.max(VenueRollingMetrics.as_of_date).label("mx"),
+        )
+        .filter(VenueRollingMetrics.venue_id.in_(venue_ids))
+        .group_by(VenueRollingMetrics.venue_id)
+        .all()
+    )
+    if not agg:
+        return {}
+    pairs = [(vid, mx) for vid, mx in agg]
+    rows = (
+        db.query(VenueRollingMetrics)
+        .filter(tuple_(VenueRollingMetrics.venue_id, VenueRollingMetrics.as_of_date).in_(pairs))
+        .all()
+    )
+    return {r.venue_id: float(r.rarity_score or 0.0) for r in rows}
 
 
 def _normalize_venue(name: str | None) -> str:
@@ -38,8 +70,9 @@ def run_push_for_new_drops_job() -> None:
     try:
         # Notify list = (hotlist ∪ includes) − excludes from notify_preferences
         watched_names = set()
+        explicit_includes: set[str] = set()
         try:
-            includes = {
+            explicit_includes = {
                 r.venue_name_normalized
                 for r in db.query(NotifyPreference).filter(
                     NotifyPreference.recipient_id == PUSH_RECIPIENT_ID,
@@ -55,10 +88,11 @@ def run_push_for_new_drops_job() -> None:
             }
             for name in list_hotspots():
                 watched_names.add(_normalize_venue(name))
-            watched_names |= includes
+            watched_names |= explicit_includes
             watched_names -= excludes
         except Exception as e:
             logger.warning("Push job: could not load notify preferences (using hotlist only): %s", e)
+            explicit_includes = set()
             for name in list_hotspots():
                 watched_names.add(_normalize_venue(name))
         if not watched_names:
@@ -85,6 +119,23 @@ def run_push_for_new_drops_job() -> None:
         ]
         if not unsent:
             return
+
+        vids = {r.venue_id for r in unsent if getattr(r, "venue_id", None)}
+        rarity_map = _latest_rarity_by_venue_id(db, vids)
+
+        def _score(r: DropEvent) -> float:
+            return push_delivery_score(
+                _normalize_venue(r.venue_name),
+                r.venue_name,
+                r.venue_id,
+                getattr(r, "eligibility_evidence", None),
+                explicit_includes=explicit_includes,
+                rarity_by_venue_id=rarity_map,
+                is_hotspot_fn=is_hotspot,
+            )
+
+        unsent.sort(key=lambda r: (-_score(r), r.user_facing_opened_at))
+
         now = datetime.now(timezone.utc)
         tokens = [r.device_token for r in db.query(PushToken).all()]
 
@@ -102,12 +153,22 @@ def run_push_for_new_drops_job() -> None:
                             resy_url = normalize_http_url(raw_u.strip())
                     except Exception:
                         pass
+                vn = _normalize_venue(row.venue_name)
+                highlight = should_use_rare_opening_title(
+                    vn,
+                    row.venue_name,
+                    row.venue_id,
+                    explicit_includes=explicit_includes,
+                    rarity_by_venue_id=rarity_map,
+                    is_hotspot_fn=is_hotspot,
+                )
                 n = send_push_for_new_drops(
                     device_tokens=tokens,
                     venue_name=row.venue_name or "A table",
                     slot_date=row.slot_date,
                     slot_time=row.slot_time,
                     resy_url=resy_url,
+                    highlight_rare=highlight,
                 )
                 sent_count += n
                 row.push_sent_at = now

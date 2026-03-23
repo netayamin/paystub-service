@@ -248,6 +248,34 @@ final class APIService {
         }
     }
     
+    func fetchFollowStatus(market: String = "nyc") async throws -> FollowStatusResponse {
+        var components = URLComponents(string: "\(baseURL)/chat/watches/follows/status")!
+        components.queryItems = [
+            URLQueryItem(name: "market", value: market),
+            URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
+        ]
+        guard let url = components.url else { throw APIError.invalidURL }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+        return try decoder.decode(FollowStatusResponse.self, from: data)
+    }
+
+    func fetchFollowActivity(limit: Int = 30) async throws -> FollowActivityResponse {
+        var components = URLComponents(string: "\(baseURL)/chat/watches/follows/activity")!
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
+        ]
+        guard let url = components.url else { throw APIError.invalidURL }
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+        return try decoder.decode(FollowActivityResponse.self, from: data)
+    }
+
     func fetchHotlist() async throws -> [String] {
         guard let url = URL(string: "\(baseURL)/chat/watches/hotlist") else {
             throw APIError.invalidURL

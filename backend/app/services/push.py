@@ -128,13 +128,15 @@ def send_push_for_new_drops(
     slot_time: str | None = None,
     bundle_id: str | None = None,
     resy_url: str | None = None,
+    *,
+    highlight_rare: bool = False,
 ) -> int:
     """
-    Send "New drop: {venue_name}" push to all given device tokens.
+    Send push to all given device tokens (default title "New drop").
     Optional resy_url is attached at the payload root for the app (open on tap).
     Returns count of successful sends.
     """
-    title = "New drop"
+    title = "Rare opening" if highlight_rare else "New drop"
     body = venue_name
     if slot_date or slot_time:
         parts = [p for p in (slot_date, slot_time) if p]

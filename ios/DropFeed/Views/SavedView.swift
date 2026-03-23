@@ -42,6 +42,8 @@ struct SavedView: View {
                 
                 // Notification grid
                 notifyGrid
+
+                activitySection
                 
                 // Excluded
                 if !savedVM.excludedVenues.isEmpty {
@@ -223,24 +225,32 @@ struct SavedView: View {
             } else {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                     ForEach(venues, id: \.name) { v in
-                        HStack(spacing: 6) {
-                            Text(v.name.capitalized)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(AppTheme.textPrimary)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Button {
-                                if v.isSaved {
-                                    savedVM.toggleWatch(v.name)
-                                } else {
-                                    savedVM.addExclude(v.name)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(v.name.capitalized)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(AppTheme.textPrimary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                                Button {
+                                    if v.isSaved {
+                                        savedVM.toggleWatch(v.name)
+                                    } else {
+                                        savedVM.addExclude(v.name)
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(AppTheme.textTertiary)
                                 }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(AppTheme.textTertiary)
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                            if let line = savedVM.followSubtitle(forDisplayName: v.name) {
+                                Text(line)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(AppTheme.textTertiary)
+                                    .lineLimit(2)
+                            }
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 10)
@@ -252,6 +262,60 @@ struct SavedView: View {
                         )
                     }
                 }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+    }
+
+    // MARK: - Activity (server-persisted in-app notifications)
+
+    private var activitySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recent activity")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(AppTheme.textPrimary)
+
+            if savedVM.followActivity.isEmpty {
+                Text("When the app records a drop alert, it appears here.")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppTheme.textTertiary)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(savedVM.followActivity) { item in
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.venueName ?? "Restaurant")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(AppTheme.textPrimary)
+                                    .lineLimit(2)
+                                if let ds = item.dateStr, !ds.isEmpty {
+                                    Text(ds)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(AppTheme.textTertiary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            if !item.read {
+                                Circle()
+                                    .fill(AppTheme.liveDot)
+                                    .frame(width: 7, height: 7)
+                                    .padding(.top, 4)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        Divider().background(AppTheme.border)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(AppTheme.surface)
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(AppTheme.border, lineWidth: 0.5)
+                )
             }
         }
         .padding(.horizontal, 16)

@@ -735,6 +735,58 @@ struct VenueWatchesResponse: Codable {
     let excluded: [VenueWatch]
 }
 
+// MARK: - Follows status & activity (Phase 7)
+
+struct FollowStatusResponse: Codable {
+    let recipientId: String?
+    let market: String?
+    let follows: [FollowStatusItem]
+
+    enum CodingKeys: String, CodingKey {
+        case recipientId = "recipient_id"
+        case market
+        case follows
+    }
+}
+
+struct FollowStatusItem: Codable, Hashable {
+    let watchId: Int?
+    let venueName: String
+    let fromSavedList: Bool
+    let lastDropAt: String?
+    let recentActivity: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case watchId = "watch_id"
+        case venueName = "venue_name"
+        case fromSavedList = "from_saved_list"
+        case lastDropAt = "last_drop_at"
+        case recentActivity = "recent_activity"
+    }
+}
+
+struct FollowActivityResponse: Codable {
+    let items: [FollowActivityItem]
+}
+
+struct FollowActivityItem: Codable, Identifiable {
+    let id: Int
+    let kind: String?
+    let createdAt: String?
+    let read: Bool
+    let venueName: String?
+    let dateStr: String?
+    let resyUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, read
+        case createdAt = "created_at"
+        case venueName = "venue_name"
+        case dateStr = "date_str"
+        case resyUrl = "resy_url"
+    }
+}
+
 struct HotlistResponse: Codable {
     let names: [String]
     let hotlist: [String]?

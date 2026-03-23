@@ -11,7 +11,7 @@ import sys
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -74,6 +74,7 @@ from app.services.discovery.feed import (
     snag_feed_meta,
 )
 from app.services.discovery.feed_display import attach_feed_card_display_fields
+from app.services.discovery.follow_activity import follow_activity_timeline, follow_status_for_recipient
 from app.services.discovery.likely_open_scoring import enrich_likely_open_item
 from app.services.discovery.snapshot_store import (
     get_snapshot,
@@ -775,6 +776,36 @@ async def remove_venue_exclude(request: Request, exclude_id: int, db: Session = 
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/watches/follows/status")
+async def follows_status(
+    request: Request,
+    db: Session = Depends(get_db),
+    recent_within_hours: float = Query(48, ge=1, le=168),
+    market: str = Query("nyc"),
+):
+    """
+    Per venue on the effective notify list (hotlist ∪ saved − excludes): last drop_events time
+    and whether that was within `recent_within_hours`. Uses X-Recipient-Id like venue-watches.
+    """
+    rid = _recipient_id(request)
+    return follow_status_for_recipient(
+        db, rid, recent_within_hours=float(recent_within_hours), market=market.strip().lower() or "nyc"
+    )
+
+
+@router.get("/watches/follows/activity")
+async def follows_activity(
+    request: Request,
+    db: Session = Depends(get_db),
+    limit: int = Query(40, ge=1, le=200),
+):
+    """
+    Lightweight activity timeline from persisted in-app notifications (type new_drop).
+    """
+    rid = _recipient_id(request)
+    return follow_activity_timeline(db, rid, limit=limit)
 
 
 @router.get("/watches/row-counts")
