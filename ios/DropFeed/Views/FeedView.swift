@@ -28,7 +28,8 @@ private func padQuietCuratorStreamEntries(_ entries: inout [QuietStreamEntry], p
         }
     }
     for d in pool where !used.contains(d.id) {
-        entries.append(QuietStreamEntry.live(d, isPrimaryTier: false))
+        // Preserve real bookability: drops with URLs (or server-available flag) stay primary.
+        entries.append(QuietStreamEntry.live(d, isPrimaryTier: feedDropIsBookable(d)))
         used.insert(d.id)
         if entries.count >= minimumRows { break }
     }
@@ -506,8 +507,8 @@ struct FeedView: View {
                 padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
                 return built
             }
-            // Board has venues but none bookable here — still show up to 5 rows (TAKEN / grey state).
-            return Array(pool.prefix(minQuietCuratorStreamRows)).map { QuietStreamEntry.live($0, isPrimaryTier: false) }
+            // Board has venues but none currently Resy-bookable — show up to 5 rows, preserving real tier per drop.
+            return Array(pool.prefix(minQuietCuratorStreamRows)).map { QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0)) }
         }
 
         // Mix: first OPEN row, then JUST MISSED, then remaining primaries + taken tail (matches reference strip).
@@ -546,18 +547,18 @@ struct FeedView: View {
         return out
     }
 
-    /// ~**4:5** portrait tiles; multi mode fits **~two cards + sliver peek** — wider than before for readability.
+    /// ~**4:5** portrait tiles; one large card + sliver peek of the next — snap-scroll hero style.
     private func quietCuratorHottestCarouselTileSize(trackWidth: CGFloat, dropCount: Int) -> (w: CGFloat, h: CGFloat) {
         let side: CGFloat = 14
-        let gap: CGFloat = 10
-        let peek: CGFloat = 4
+        let peek: CGFloat = 28
         let inner = max(1, trackWidth) - 2 * side
         let aspect: CGFloat = 5.0 / 4.0
         if dropCount <= 1 {
-            let w = min(max(232, inner * 0.84), inner - peek)
+            let w = min(max(280, inner * 0.96), inner)
             return (w, w * aspect)
         }
-        let w = max(178, (inner - gap - peek) / 2)
+        // One large hero card per page — peek exposes ~32 pt of the next card.
+        let w = max(260, inner - peek)
         return (w, w * aspect)
     }
 
@@ -670,7 +671,7 @@ struct FeedView: View {
                                 QuietCuratorLiveStreamRow(
                                     drop: drop,
                                     preferredParty: party,
-                                    available: isPrimaryTier ? feedDropIsBookable(drop) : feedMealRowIsAvailable(drop),
+                                    available: drop.exploreCanSnag,
                                     waitMinutesLabel: quietCuratorWaitMinutesLabel(
                                         drop,
                                         requireExploreOpenForVanish: !isPrimaryTier
