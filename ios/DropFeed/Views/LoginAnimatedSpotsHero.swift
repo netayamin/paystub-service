@@ -42,8 +42,16 @@ struct LoginAnimatedSpotsHero: View {
                 .padding(.top, 50)
 
                 VStack(spacing: 0) {
-                    brandRow
-                        .padding(.top, 12)
+                    VStack(alignment: .leading, spacing: 8) {
+                        brandRow
+                        Text("Always booked. Sometimes open.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.72))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 16)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 12)
                     Spacer()
                     fadeToSheet
                 }
