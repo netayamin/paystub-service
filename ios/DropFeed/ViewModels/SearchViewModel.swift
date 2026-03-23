@@ -258,7 +258,7 @@ final class SearchViewModel: ObservableObject {
             case .notConnectedToInternet, .networkConnectionLost:
                 return "You're offline. Check your connection and try again."
             case .timedOut:
-                return "Request timed out. Try again in a moment."
+                return "Request timed out — the server or tunnel (e.g. ngrok) may be slow or asleep. Try again, or confirm uvicorn is running and ngrok points at it."
             case .cannotFindHost, .cannotConnectToHost:
                 return "Can't reach the server. Try again later."
             default: break

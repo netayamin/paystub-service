@@ -50,7 +50,11 @@ final class APIService {
     
     init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
+        // Ngrok / dev tunnels and cold servers often exceed 15s; device feed polling uses this session.
+        config.timeoutIntervalForRequest = 45
+        config.timeoutIntervalForResource = 120
+        // Free ngrok can show an interstitial for browser-like clients; this header skips it for API calls.
+        config.httpAdditionalHeaders = ["ngrok-skip-browser-warning": "69420"]
         session = URLSession(configuration: config)
         decoder = JSONDecoder()
     }
@@ -68,7 +72,7 @@ final class APIService {
 
     private static func connectionHint(for error: URLError) -> String {
         switch error.code {
-        case .cannotConnectToHost, .cannotFindHost, .timedOut, .networkConnectionLost, .dnsLookupFailed:
+        case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .dnsLookupFailed:
             #if targetEnvironment(simulator)
             return """
             Can’t reach \(Self.sharedBaseURLDisplay) — nothing answered, or it’s not this API.
@@ -89,6 +93,13 @@ final class APIService {
             If Info.plist still has 127.0.0.1, this build ignores it and uses the deploy server instead.
             """
             #endif
+        case .timedOut:
+            return """
+            Request timed out (\(Self.sharedBaseURLDisplay)).
+
+            • If you use ngrok: the tunnel may be cold — try again; keep `make ngrok-ios` / uvicorn running.
+            • Rebuild the app after changing API_BASE_URL.
+            """
         case .notConnectedToInternet:
             return "No internet connection. Check Wi‑Fi or cellular."
         default:
