@@ -253,31 +253,16 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
         } else {
-            VStack(alignment: .leading, spacing: gridRowSpacing) {
-                ForEach(Array(pairedGridDrops(items).enumerated()), id: \.offset) { _, pair in
-                    HStack(alignment: .top, spacing: gridColumnSpacing) {
-                        ForEach(pair) { drop in
-                            exploreInventoryCell(drop)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                        }
-                        if pair.count == 1 {
-                            Color.clear
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+            let columns = [
+                GridItem(.flexible(), spacing: gridColumnSpacing, alignment: .top),
+                GridItem(.flexible(), spacing: gridColumnSpacing, alignment: .top),
+            ]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: gridRowSpacing) {
+                ForEach(items) { drop in
+                    exploreInventoryCell(drop)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func pairedGridDrops(_ items: [Drop]) -> [[Drop]] {
-        stride(from: 0, to: items.count, by: 2).map { i in
-            if i + 1 < items.count {
-                return [items[i], items[i + 1]]
-            }
-            return [items[i]]
         }
     }
 

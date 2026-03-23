@@ -101,7 +101,10 @@ enum ExploreCardFormatting {
 
 // MARK: - Card (reference: image + overlay copy, then title / arrow / line / pill)
 
-/// Live inventory tile — 1:1 photo, date + time + PAX on image; metadata + status pill below.
+/// Live inventory tile — square photo area, date + time + PAX on image; metadata + status pill below.
+///
+/// **Layout:** `Color.clear` + `aspectRatio` defines the square; the image lives in an `overlay` so a loaded
+/// `UIImage`’s pixel size cannot inflate the card (avoids full-screen blow-up in `ScrollView`).
 struct DSExploreInventoryCard: View {
     let drop: Drop
     var selectedDateStr: String?
@@ -131,61 +134,68 @@ struct DSExploreInventoryCard: View {
     }
 
     private var imageSection: some View {
-        ZStack(alignment: .bottomLeading) {
-            Group {
-                if let s = drop.imageUrl, let u = URL(string: s) {
-                    CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
-                        Color(white: 0.93)
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .overlay {
+                ZStack(alignment: .bottomLeading) {
+                    exploreImageLayer
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                        .clipped()
+
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.0), location: 0.2),
+                            .init(color: .black.opacity(0.25), location: 0.55),
+                            .init(color: .black.opacity(0.72), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .allowsHitTesting(false)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(ExploreCardFormatting.imageNightLabel(drop: drop, selectedDateStr: selectedDateStr))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white.opacity(0.95))
+                            .tracking(0.5)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(ExploreCardFormatting.slotTime12h(drop: drop))
+                                .font(.system(size: 26, weight: .bold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
+                                .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
+
+                            (Text(pax.number).fontWeight(.semibold) + Text(pax.suffix).fontWeight(.regular))
+                                .font(.system(size: 12))
+                                .foregroundColor(.white.opacity(0.92))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
                     }
-                } else {
-                    Color(white: 0.93)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 14)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 }
+                .clipped()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
+    }
 
-            LinearGradient(
-                stops: [
-                    .init(color: .black.opacity(0.0), location: 0.2),
-                    .init(color: .black.opacity(0.25), location: 0.55),
-                    .init(color: .black.opacity(0.72), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .allowsHitTesting(false)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(ExploreCardFormatting.imageNightLabel(drop: drop, selectedDateStr: selectedDateStr))
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.95))
-                    .tracking(0.5)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(ExploreCardFormatting.slotTime12h(drop: drop))
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
-                        .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
-
-                    (Text(pax.number).fontWeight(.semibold) + Text(pax.suffix).fontWeight(.regular))
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.92))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
+    @ViewBuilder
+    private var exploreImageLayer: some View {
+        if let s = drop.imageUrl, let u = URL(string: s) {
+            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
+                Color(white: 0.93)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 14)
-            .padding(.top, 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        } else {
+            Color(white: 0.93)
         }
-        .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .clipped()
     }
 
     private var infoSection: some View {
