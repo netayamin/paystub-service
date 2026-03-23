@@ -37,6 +37,7 @@
 		A1000199 /* DSLabeledRuleRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000198 /* DSLabeledRuleRow.swift */; };
 		A10001F1 /* DSExploreDateChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001F0 /* DSExploreDateChip.swift */; };
 		A10001F5 /* DSPremiumHeroCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001F4 /* DSPremiumHeroCard.swift */; };
+		A10001F7 /* DSExploreInventoryCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001F6 /* DSExploreInventoryCard.swift */; };
 		A100004C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004D /* AppDelegate.swift */; };
 		A100004E /* LocalNotificationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004F /* LocalNotificationHelper.swift */; };
 		A2000011 /* SavedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* SavedViewModel.swift */; };
@@ -89,6 +90,7 @@
 		A1000198 /* DSLabeledRuleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSLabeledRuleRow.swift; sourceTree = "<group>"; };
 		A10001F0 /* DSExploreDateChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSExploreDateChip.swift; sourceTree = "<group>"; };
 		A10001F4 /* DSPremiumHeroCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSPremiumHeroCard.swift; sourceTree = "<group>"; };
+		A10001F6 /* DSExploreInventoryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSExploreInventoryCard.swift; sourceTree = "<group>"; };
 		A100004D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A100004F /* LocalNotificationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationHelper.swift; sourceTree = "<group>"; };
 		A1000050 /* DropFeed.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DropFeed.entitlements; sourceTree = "<group>"; };
@@ -228,6 +230,7 @@
 				A1000198 /* DSLabeledRuleRow.swift */,
 				A10001F0 /* DSExploreDateChip.swift */,
 				A10001F4 /* DSPremiumHeroCard.swift */,
+				A10001F6 /* DSExploreInventoryCard.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -371,6 +374,7 @@
 				A1000199 /* DSLabeledRuleRow.swift in Sources */,
 				A10001F1 /* DSExploreDateChip.swift in Sources */,
 				A10001F5 /* DSPremiumHeroCard.swift in Sources */,
+				A10001F7 /* DSExploreInventoryCard.swift in Sources */,
 				A2000011 /* SavedViewModel.swift in Sources */,
 				A2000012 /* AlertsViewModel.swift in Sources */,
 				A2000013 /* PremiumManager.swift in Sources */,

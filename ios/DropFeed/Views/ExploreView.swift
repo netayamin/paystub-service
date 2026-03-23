@@ -13,7 +13,6 @@ struct ExploreView: View {
 
     private var gridColumnSpacing: CGFloat { DropFeedTokens.Layout.gridColumnSpacing }
     private var gridRowSpacing: CGFloat { DropFeedTokens.Layout.gridRowSpacing }
-    private var gridImageHeight: CGFloat { DropFeedTokens.Layout.exploreCardImageHeight }
     private var exploreCardCorner: CGFloat { DropFeedTokens.Layout.exploreCardCornerRadius }
 
     var body: some View {
@@ -283,233 +282,27 @@ struct ExploreView: View {
     }
 
     private func exploreInventoryCell(_ drop: Drop) -> some View {
-        let url = resyURL(for: drop)
-        return Button {
-            if let url { UIApplication.shared.open(url) }
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                // Image + bottom gradient labels (reference: TONIGHT / date row, then time + PAX).
-                ZStack(alignment: .bottomLeading) {
-                    gridThumb(drop)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: gridImageHeight)
-                        .clipped()
+        DSExploreInventoryCard(
+            drop: drop,
+            selectedDateStr: vm.selectedDates.sorted().first,
+            partySegment: vm.explorePartySegment,
+            cornerRadius: exploreCardCorner,
+            onTap: { exploreOpenBooking(for: drop) }
+        )
+    }
 
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.0), location: 0.35),
-                            .init(color: .black.opacity(0.55), location: 0.78),
-                            .init(color: .black.opacity(0.82), location: 1.0),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(maxWidth: .infinity)
-                    .frame(height: gridImageHeight)
-                    .allowsHitTesting(false)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(exploreImageNightLabel(for: drop))
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.92))
-                            .tracking(0.55)
-                            .textCase(.uppercase)
-
-                        HStack(alignment: .firstTextBaseline, spacing: 7) {
-                            Text(slotTimeOnly(drop))
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                            Text(explorePaxLabel(for: drop))
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(.white.opacity(0.88))
-                                .lineLimit(1)
-                        }
-                    }
-                    .padding(.horizontal, 11)
-                    .padding(.bottom, 12)
-                    .padding(.top, 8)
-                    .frame(maxWidth: .infinity, alignment: .bottomLeading)
-                }
-                .frame(height: gridImageHeight)
-                .clipped()
-
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(drop.name)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(CreamEditorialTheme.textPrimary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                            .minimumScaleFactor(0.85)
-                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(CreamEditorialTheme.textSecondary)
-                            .layoutPriority(1)
-                    }
-
-                    Text(exploreCuisineLine(drop))
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textSecondary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.88)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(alignment: .center, spacing: 6) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(CreamEditorialTheme.burgundy)
-                        Text(exploreInventoryStatusLine(drop))
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(CreamEditorialTheme.burgundy)
-                            .tracking(0.35)
-                            .textCase(.uppercase)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.72)
-                            .multilineTextAlignment(.leading)
-                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 9)
-                    .background(DropFeedTokens.Semantic.exploreInventoryPillFill)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color.black.opacity(0.1), lineWidth: 1)
-                    )
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(CreamEditorialTheme.cardWhite)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CreamEditorialTheme.cardWhite)
-            .clipShape(RoundedRectangle(cornerRadius: exploreCardCorner, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: exploreCardCorner, style: .continuous)
-                    .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+    private func exploreOpenBooking(for drop: Drop) {
+        guard let s = drop.effectiveResyBookingURL, let url = URL(string: s) else { return }
+        APIService.shared.trackBehaviorEvents(events: [
+            BehaviorTrackEvent(
+                eventType: "resy_opened",
+                venueId: drop.venueKey,
+                venueName: drop.name,
+                notificationId: nil,
+                market: drop.market
             )
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// "TONIGHT" when slot date matches selected explore day; else "FRI OCT 18" style.
-    private func exploreImageNightLabel(for drop: Drop) -> String {
-        let selected = vm.selectedDates.sorted().first
-        let slotDateOpt = drop.slots.first?.dateStr ?? drop.dateStr
-        guard let slotDate = slotDateOpt, !slotDate.isEmpty else { return "TONIGHT" }
-        if let selected, slotDate == selected { return "TONIGHT" }
-        return exploreFormatSlotHeaderDate(slotDate) ?? "TONIGHT"
-    }
-
-    private func exploreFormatSlotHeaderDate(_ dateStr: String) -> String? {
-        let parts = dateStr.split(separator: "-")
-        guard parts.count == 3,
-              let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return nil }
-        var c = DateComponents()
-        c.year = y
-        c.month = mo
-        c.day = d
-        guard let date = Calendar.current.date(from: c) else { return nil }
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.dateFormat = "EEE MMM d"
-        return df.string(from: date).uppercased()
-    }
-
-    private func explorePaxLabel(for drop: Drop) -> String {
-        switch vm.explorePartySegment {
-        case .two:
-            return "2 PAX"
-        case .four:
-            return "4 PAX"
-        case .anyParty:
-            if let p = drop.partySizesAvailable.sorted().first, p > 0 {
-                return "\(p) PAX"
-            }
-            return "2 PAX"
-        }
-    }
-
-    @ViewBuilder
-    private func gridThumb(_ drop: Drop) -> some View {
-        if let s = drop.imageUrl, let u = URL(string: s) {
-            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
-                Color(white: 0.93)
-            }
-        } else {
-            Color(white: 0.93)
-        }
-    }
-
-    private func exploreCuisineLine(_ drop: Drop) -> String {
-        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-            if !nb.isEmpty, s.count < 36 {
-                return "\(s) • \(nb)"
-            }
-            return s
-        }
-        if let line = drop.topOpportunitySubtitleLine?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !line.isEmpty, line.count < 42 {
-            if !nb.isEmpty { return "\(line) • \(nb)" }
-            return line
-        }
-        if !nb.isEmpty {
-            return "Prime tables • \(nb)"
-        }
-        if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
-            return "Tonight • \(loc)"
-        }
-        return "Tonight’s inventory"
-    }
-
-    private func exploreInventoryStatusLine(_ drop: Drop) -> String {
-        if let tag = drop.exploreStatusTag?.trimmingCharacters(in: .whitespacesAndNewlines), !tag.isEmpty {
-            return tag.uppercased()
-        }
-        if let sc = drop.feedScarcityLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !sc.isEmpty {
-            return sc.uppercased()
-        }
-        if let s = drop.snagScore {
-            return "\(min(99, max(1, s)))% OPENING CHANCE"
-        }
-        if drop.velocityUrgent == true || drop.speedTier == "fast" {
-            return "HIGH LIQUIDITY"
-        }
-        if let r = drop.rarityPoints, r > 0, r <= 12 {
-            return "\(r) TABLES LEFT"
-        }
-        if drop.exploreSnagAvailable != false, drop.effectiveResyBookingURL != nil {
-            return "INSTANT CONFIRM"
-        }
-        return "LIVE SLOT"
-    }
-
-    private func slotTimeOnly(_ drop: Drop) -> String {
-        let t = formatFirstSlotTime(drop)
-        if !t.isEmpty { return t }
-        return "Tonight"
-    }
-
-    private func formatFirstSlotTime(_ drop: Drop) -> String {
-        guard let t = drop.slots.first?.time, !t.isEmpty else { return "" }
-        let p = t.split(separator: ":")
-        guard let h = p.first.flatMap({ Int($0) }) else { return t }
-        let mm = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
-        let h12 = h % 12 == 0 ? 12 : h % 12
-        let ap = h < 12 ? "AM" : "PM"
-        if mm > 0 { return String(format: "%d:%02d %@", h12, mm, ap) }
-        return "\(h12) \(ap)"
-    }
-
-    private func resyURL(for drop: Drop) -> URL? {
-        let s = drop.resyUrl ?? drop.slots.first?.resyUrl ?? ""
-        return URL(string: s)
+        ])
+        UIApplication.shared.open(url)
     }
 
     // MARK: - Sheets

@@ -18,6 +18,8 @@
 | **`DSSectionTitleRow`** | Bold left title + grey uppercase trailing (e.g. Availability + month). |
 | **`DSLabeledRuleRow`** | Grey label + flex hairline + burgundy trailing (e.g. LIVE INVENTORY + city). |
 | **`DSExploreDateChip`** | Calendar strip: weekday over date, maroon when selected. |
+| **`DSExploreInventoryCard`** | Explore grid tile: 1:1 image, date + time + PAX overlay, title + ↗, cuisine line, bolt status pill. |
+| **`DSPremiumHeroCard`** | Dark premium hero (feed TOP OPPORTUNITY + Hottest carousel). |
 
 Prefix new shared primitives with **`DS`** and keep them **stateless** where possible (pass data + closures in).
 
