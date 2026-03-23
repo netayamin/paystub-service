@@ -1537,8 +1537,11 @@ private struct FeedPredictWillOpenSection: View {
     }
 
     private func predictSubtitle(_ venue: LikelyToOpenVenue) -> String {
+        if let h = venue.predictedDropHint, !h.isEmpty {
+            return h
+        }
         if let t = venue.predictedDropTime, !t.isEmpty {
-            return "Often drops: \(t)"
+            return t
         }
         if let d = venue.daysWithDrops {
             return "Tables \(d)× / 14d"
@@ -1871,6 +1874,9 @@ private struct InventoryPredictionRow: View {
     }
 
     private var dropEst: String {
+        if let h = venue.predictedDropHint, !h.isEmpty {
+            return h.uppercased()
+        }
         if let t = venue.predictedDropTime, !t.isEmpty {
             return t.uppercased()
         }

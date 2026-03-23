@@ -14,8 +14,11 @@ P(slot in the next hour). Copy is written as a prediction; the model is heuristi
 from __future__ import annotations
 
 import math
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
+from app.core.discovery_config import DISCOVERY_DATE_TIMEZONE
 from app.services.discovery.feed_display import forecast_metrics_compact_for_likely_item
 
 _FALLBACK_PREDICTED_TIMES = ("Evening", "Dinner", "Late Night", "Afternoon")
@@ -177,19 +180,70 @@ def reason_text(item: dict[str, Any]) -> str:
     )
 
 
-def _hour_to_label(hour: int | None) -> str:
-    """Map an hour (0-23) to a human-readable time-of-day label."""
-    if hour is None:
-        return "Evening"
-    if 5 <= hour < 12:
-        return "Morning"
-    if 12 <= hour < 15:
-        return "Afternoon"
-    if 15 <= hour < 18:
-        return "Late Afternoon"
-    if 18 <= hour < 21:
-        return "Evening"
-    return "Late Night"
+def _tz_suffix() -> str:
+    if "New_York" in DISCOVERY_DATE_TIMEZONE:
+        return "ET"
+    if "/" in DISCOVERY_DATE_TIMEZONE:
+        return DISCOVERY_DATE_TIMEZONE.rsplit("/", 1)[-1].replace("_", " ")
+    return ""
+
+
+def _format_clock_hour_12(hour: int) -> str:
+    h = int(hour) % 24
+    if h == 0:
+        return "12am"
+    if h < 12:
+        return f"{h}am"
+    if h == 12:
+        return "12pm"
+    return f"{h - 12}pm"
+
+
+def _typical_window_clock_label(modal_hour: int) -> str:
+    """e.g. 'Typically 6pm–7pm ET' from modal local hour."""
+    a = _format_clock_hour_12(modal_hour)
+    b = _format_clock_hour_12((modal_hour + 1) % 24)
+    suf = _tz_suffix()
+    if suf:
+        return f"Typically {a}–{b} {suf}"
+    return f"Typically {a}–{b}"
+
+
+def _next_modal_start_local(now_local: datetime, modal_h: int) -> datetime:
+    """Next calendar occurrence of `modal_h`:00 in the same TZ as `now_local`."""
+    c = now_local.replace(hour=int(modal_h) % 24, minute=0, second=0, microsecond=0)
+    if c > now_local:
+        return c
+    return c + timedelta(days=1)
+
+
+def _predicted_drop_hint(modal_hour: int | None, now_utc: datetime) -> str | None:
+    """Short relative timing copy (e.g. next hour / few hours), using discovery TZ."""
+    if modal_hour is None:
+        return None
+    try:
+        tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
+    except Exception:
+        tz = timezone.utc
+    now_local = now_utc.astimezone(tz)
+    mh = int(modal_hour) % 24
+    start_min = mh * 60
+    now_min = now_local.hour * 60 + now_local.minute
+    end_min = start_min + 120
+    if start_min <= now_min < min(end_min, 24 * 60):
+        return "In the usual window now — check often"
+
+    nxt = _next_modal_start_local(now_local, mh)
+    hrs = (nxt - now_local).total_seconds() / 3600.0
+    if hrs < 1.25:
+        return "Often within the next hour"
+    if hrs < 3.5:
+        return "Often within the next few hours"
+    if hrs < 12:
+        return f"Next usual wave in ~{max(1, int(round(hrs)))}h"
+    if hrs < 20:
+        return "Usually later today around the typical time"
+    return "Same clock time most days — worth a watch"
 
 
 def enrich_likely_open_item(item: dict[str, Any], index: int) -> None:
@@ -205,10 +259,25 @@ def enrich_likely_open_item(item: dict[str, Any], index: int) -> None:
     else:
         item.pop("forecast_metrics_compact", None)
     modal_hour = item.get("modal_drop_hour")
+    now_utc = datetime.now(timezone.utc)
     if modal_hour is not None:
-        item["predicted_drop_time"] = _hour_to_label(modal_hour)
+        try:
+            mh = int(modal_hour) % 24
+        except (TypeError, ValueError):
+            mh = None
+        if mh is not None:
+            item["predicted_drop_time"] = _typical_window_clock_label(mh)
+            hint = _predicted_drop_hint(mh, now_utc)
+            if hint:
+                item["predicted_drop_hint"] = hint
+            else:
+                item.pop("predicted_drop_hint", None)
+        else:
+            item["predicted_drop_time"] = _FALLBACK_PREDICTED_TIMES[index % len(_FALLBACK_PREDICTED_TIMES)]
+            item.pop("predicted_drop_hint", None)
     else:
         item["predicted_drop_time"] = _FALLBACK_PREDICTED_TIMES[index % len(_FALLBACK_PREDICTED_TIMES)]
+        item.pop("predicted_drop_hint", None)
     # Internal ranking only — don’t expose to clients
     item.pop("hours_since_last_drop", None)
     item.pop("modal_drop_hour", None)

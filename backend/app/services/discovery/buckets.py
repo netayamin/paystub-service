@@ -15,6 +15,7 @@ from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -49,7 +50,6 @@ def window_start_date() -> date:
     keep buckets for window_start through window_start+13 (14 days total).
     """
     try:
-        from zoneinfo import ZoneInfo
         tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
     except Exception:
         tz = None
@@ -271,6 +271,32 @@ def _build_slot_availability_row(
     }
 
 
+def _venue_profile_from_payload(payload: dict | None) -> tuple[str | None, str | None, str | None]:
+    """(image_url, neighborhood, resy_url) from Resy-style payload; truncated for DB."""
+    if not isinstance(payload, dict):
+        return None, None, None
+    neighborhood_val = None
+    loc = payload.get("location")
+    nh = payload.get("neighborhood") or (loc.get("neighborhood") if isinstance(loc, dict) else None)
+    if nh is not None:
+        neighborhood_val = str(nh)[:128] or None
+    image_url_val = None
+    img = payload.get("image_url")
+    if isinstance(img, str) and img.strip():
+        image_url_val = img.strip()[:512]
+    else:
+        images = payload.get("images")
+        if isinstance(images, dict):
+            for key in ("thumbnail", "small", "medium"):
+                u = images.get(key)
+                if isinstance(u, str) and u.strip():
+                    image_url_val = u.strip()[:512]
+                    break
+    raw_resy = payload.get("resy_url") or payload.get("resyUrl") or payload.get("book_url")
+    resy_url_val = str(raw_resy).strip()[:512] if isinstance(raw_resy, str) and raw_resy.strip() else None
+    return image_url_val, neighborhood_val, resy_url_val
+
+
 def _bootstrap_slot_availability(
     db: Session,
     bid: str,
@@ -319,20 +345,46 @@ def _bootstrap_slot_availability(
         ))
 
 
-def _upsert_venue(db: Session, venue_id: str | None, venue_name: str | None) -> None:
-    """Upsert venue for normalization; called when emitting DropEvent."""
+def _upsert_venue(
+    db: Session,
+    venue_id: str | None,
+    venue_name: str | None,
+    *,
+    payload: dict | None = None,
+    market: str | None = None,
+) -> None:
+    """Upsert venue profile when we see a live slot (image, neighborhood, Resy link)."""
     if not venue_id or not str(venue_id).strip():
         return
     vid = str(venue_id).strip()
     name = (venue_name or "").strip() or None
+    img, nbhd, resy = _venue_profile_from_payload(payload)
+    mkt = str(market).strip()[:32] if market and str(market).strip() else None
     row = db.query(Venue).filter(Venue.venue_id == vid).first()
     now = datetime.now(timezone.utc)
     if row:
         if name:
             row.venue_name = name
+        if img:
+            row.image_url = img
+        if nbhd:
+            row.neighborhood = nbhd
+        if resy:
+            row.resy_url = resy
+        if mkt:
+            row.market = mkt
         row.last_seen_at = now
     else:
-        db.add(Venue(venue_id=vid, venue_name=name))
+        db.add(
+            Venue(
+                venue_id=vid,
+                venue_name=name,
+                image_url=img,
+                neighborhood=nbhd,
+                resy_url=resy,
+                market=mkt,
+            )
+        )
 
 
 def run_baseline_for_bucket(
@@ -534,6 +586,14 @@ def run_poll_for_bucket(
             "price_range": price_range_val,
             "market": market,
         })
+
+    for sid in drops:
+        r = by_slot.get(sid)
+        if not r:
+            continue
+        pl = r.get("payload")
+        pl_dict = pl if isinstance(pl, dict) else None
+        _upsert_venue(db, r.get("venue_id"), r.get("venue_name"), payload=pl_dict, market=market)
 
     # Bulk insert SlotAvailability in batches (use excluded for conflict update so new row wins)
     for i in range(0, len(slot_rows), POLL_BATCH_SIZE):
@@ -978,11 +1038,15 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
 
     import json as _json
 
-    # Best-effort enrichment from recent drop events: neighborhood, image_url, modal drop hour
+    # Best-effort enrichment: recent DropEvents + persisted `venues` row (image/neighborhood cache)
     venue_ids = [r.venue_id for r in rows if r.venue_id]
     neighborhood_by_vid: dict[str, str] = {}
     image_url_by_vid: dict[str, str] = {}
     modal_hour_by_vid: dict[str, int] = {}
+    try:
+        metrics_tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
+    except Exception:
+        metrics_tz = timezone.utc
     if venue_ids:
         try:
             recent_events = (
@@ -994,14 +1058,15 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
                 .limit(len(venue_ids) * 8)
                 .all()
             )
-            # Collect hours per venue for modal computation
+            # Collect hours per venue for modal computation (local clock = discovery TZ, not UTC)
             hours_by_vid: dict[str, list[int]] = {}
             for vid, nbhd, payload_str, opened_at in recent_events:
                 if not vid:
                     continue
-                if nbhd and vid not in neighborhood_by_vid:
-                    neighborhood_by_vid[vid] = nbhd
-                if payload_str and vid not in image_url_by_vid:
+                vks = str(vid)
+                if nbhd and vks not in neighborhood_by_vid:
+                    neighborhood_by_vid[vks] = nbhd
+                if payload_str and vks not in image_url_by_vid:
                     try:
                         payload = _json.loads(payload_str)
                         img = (
@@ -1010,12 +1075,15 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
                             or payload.get("images", {}).get("small")
                         )
                         if img:
-                            image_url_by_vid[vid] = img
+                            image_url_by_vid[vks] = img
                     except (ValueError, AttributeError, TypeError):
                         pass
                 if opened_at is not None:
-                    hours_by_vid.setdefault(vid, []).append(opened_at.hour)
-            # Modal hour = most common hour of observed drops
+                    ot = opened_at
+                    if ot.tzinfo is None:
+                        ot = ot.replace(tzinfo=timezone.utc)
+                    hours_by_vid.setdefault(vks, []).append(ot.astimezone(metrics_tz).hour)
+            # Modal hour = most common local hour of observed drops
             for vid, hours in hours_by_vid.items():
                 from collections import Counter
                 counts = Counter(hours)
@@ -1023,27 +1091,38 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
         except Exception:
             pass
 
-    return [
-        {
-            "venue_id": r.venue_id,
-            "venue_name": r.venue_name or "",
-            "name": r.venue_name or "",          # iOS CodingKey expects "name"
-            "neighborhood": neighborhood_by_vid.get(r.venue_id or ""),
-            "image_url": image_url_by_vid.get(r.venue_id or ""),
-            "availability_rate_14d": r.availability_rate_14d,
-            "days_with_drops": r.days_with_drops,
-            "rarity_score": r.rarity_score,
-            "trend_pct": r.trend_pct,
-            "drop_frequency_per_day": r.drop_frequency_per_day,
-            "total_last_7d": r.total_last_7d,
-            "total_prev_7d": r.total_prev_7d,
-            "total_new_drops": r.total_new_drops,
-            # Internal until enrich_likely_open_item strips them
-            "hours_since_last_drop": _hours_for_row(r),
-            "modal_drop_hour": modal_hour_by_vid.get(r.venue_id or ""),
-        }
-        for r in rows
-    ]
+    venue_profile_by_id: dict[str, Venue] = {}
+    if venue_ids:
+        for vr in db.query(Venue).filter(Venue.venue_id.in_(venue_ids)).all():
+            venue_profile_by_id[str(vr.venue_id)] = vr
+
+    out: list[dict] = []
+    for r in rows:
+        vk = str(r.venue_id) if r.venue_id else ""
+        vp = venue_profile_by_id.get(vk)
+        nb = neighborhood_by_vid.get(vk) or (vp.neighborhood if vp and vp.neighborhood else None)
+        im = image_url_by_vid.get(vk) or (vp.image_url if vp and vp.image_url else None)
+        out.append(
+            {
+                "venue_id": r.venue_id,
+                "venue_name": r.venue_name or "",
+                "name": r.venue_name or "",  # iOS CodingKey expects "name"
+                "neighborhood": nb or "",
+                "image_url": im or "",
+                "availability_rate_14d": r.availability_rate_14d,
+                "days_with_drops": r.days_with_drops,
+                "rarity_score": r.rarity_score,
+                "trend_pct": r.trend_pct,
+                "drop_frequency_per_day": r.drop_frequency_per_day,
+                "total_last_7d": r.total_last_7d,
+                "total_prev_7d": r.total_prev_7d,
+                "total_new_drops": r.total_new_drops,
+                # Internal until enrich_likely_open_item strips them
+                "hours_since_last_drop": _hours_for_row(r),
+                "modal_drop_hour": modal_hour_by_vid.get(vk),
+            }
+        )
+    return out
 
 
 def _poll_one_bucket(bid: str, date_str: str, time_slot: str, market: str = "nyc") -> tuple[int, dict, str | None]:

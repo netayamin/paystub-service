@@ -10,5 +10,9 @@ class Venue(Base):
 
     venue_id = Column(String(64), primary_key=True)
     venue_name = Column(String(256), nullable=True)
+    image_url = Column(String(512), nullable=True)
+    neighborhood = Column(String(128), nullable=True)
+    resy_url = Column(String(512), nullable=True)
+    market = Column(String(32), nullable=True)
     first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
     last_seen_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

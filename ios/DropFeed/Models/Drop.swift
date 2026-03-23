@@ -416,7 +416,12 @@ struct Drop: Codable, Identifiable {
 // MARK: - Likely to Open venue
 
 struct LikelyToOpenVenue: Identifiable {
-    var id: String { name }
+    /// Stable id when backend sends `venue_id`; otherwise name (legacy).
+    var id: String {
+        if let v = venueId, !v.isEmpty { return v }
+        return name
+    }
+    let venueId: String?
     let name: String
     let imageUrl: String?
     let availabilityRate14d: Double?
@@ -425,7 +430,8 @@ struct LikelyToOpenVenue: Identifiable {
     let lastSeenDescription: String?
     let neighborhood: String?
     let confidence: String?         // "High", "Medium", "Low"
-    let predictedDropTime: String?  // "Evening", "Dinner", "Midnight"
+    let predictedDropTime: String?  // e.g. "Typically 6pm–7pm ET"
+    let predictedDropHint: String? // e.g. "Often within the next hour"
     let trendPct: Double?
     let probability: Int?           // 1–99 — computed from availability_rate_14d + trend
     let reason: String?             // data-driven explanation from backend metrics
@@ -434,6 +440,7 @@ struct LikelyToOpenVenue: Identifiable {
     /// Memberwise init — all fields except `name` default to nil.
     init(
         name: String,
+        venueId: String? = nil,
         imageUrl: String? = nil,
         availabilityRate14d: Double? = nil,
         daysWithDrops: Int? = nil,
@@ -442,11 +449,13 @@ struct LikelyToOpenVenue: Identifiable {
         neighborhood: String? = nil,
         confidence: String? = nil,
         predictedDropTime: String? = nil,
+        predictedDropHint: String? = nil,
         trendPct: Double? = nil,
         probability: Int? = nil,
         reason: String? = nil,
         forecastMetricsCompact: String? = nil
     ) {
+        self.venueId             = venueId
         self.name                = name
         self.imageUrl            = imageUrl
         self.availabilityRate14d = availabilityRate14d
@@ -456,6 +465,7 @@ struct LikelyToOpenVenue: Identifiable {
         self.neighborhood        = neighborhood
         self.confidence          = confidence
         self.predictedDropTime   = predictedDropTime
+        self.predictedDropHint   = predictedDropHint
         self.trendPct            = trendPct
         self.probability         = probability
         self.reason              = reason
@@ -465,6 +475,7 @@ struct LikelyToOpenVenue: Identifiable {
 
 extension LikelyToOpenVenue: Codable {
     private enum CodingKeys: String, CodingKey {
+        case venueId             = "venue_id"
         case name
         case venueName           = "venue_name"          // legacy backend key
         case imageUrl            = "image_url"
@@ -475,6 +486,7 @@ extension LikelyToOpenVenue: Codable {
         case neighborhood
         case confidence
         case predictedDropTime   = "predicted_drop_time"
+        case predictedDropHint   = "predicted_drop_hint"
         case trendPct            = "trend_pct"
         case probability
         case reason
@@ -483,6 +495,7 @@ extension LikelyToOpenVenue: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        venueId = try? c.decodeIfPresent(String.self, forKey: .venueId)
         // Accept both "name" (current) and "venue_name" (legacy) so we never silently drop a venue
         name = (try? c.decodeIfPresent(String.self, forKey: .name)).flatMap { $0.isEmpty ? nil : $0 }
             ?? (try? c.decodeIfPresent(String.self, forKey: .venueName)).flatMap { $0.isEmpty ? nil : $0 }
@@ -495,6 +508,7 @@ extension LikelyToOpenVenue: Codable {
         neighborhood        = try? c.decodeIfPresent(String.self, forKey: .neighborhood)
         confidence          = try? c.decodeIfPresent(String.self, forKey: .confidence)
         predictedDropTime   = try? c.decodeIfPresent(String.self, forKey: .predictedDropTime)
+        predictedDropHint   = try? c.decodeIfPresent(String.self, forKey: .predictedDropHint)
         trendPct            = try? c.decodeIfPresent(Double.self, forKey: .trendPct)
         probability         = try? c.decodeIfPresent(Int.self,    forKey: .probability)
         reason              = try? c.decodeIfPresent(String.self, forKey: .reason)
@@ -503,6 +517,7 @@ extension LikelyToOpenVenue: Codable {
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(venueId,             forKey: .venueId)
         try c.encode(name, forKey: .name)
         try c.encodeIfPresent(imageUrl,            forKey: .imageUrl)
         try c.encodeIfPresent(availabilityRate14d, forKey: .availabilityRate14d)
@@ -512,6 +527,7 @@ extension LikelyToOpenVenue: Codable {
         try c.encodeIfPresent(neighborhood,        forKey: .neighborhood)
         try c.encodeIfPresent(confidence,          forKey: .confidence)
         try c.encodeIfPresent(predictedDropTime,   forKey: .predictedDropTime)
+        try c.encodeIfPresent(predictedDropHint,   forKey: .predictedDropHint)
         try c.encodeIfPresent(trendPct,            forKey: .trendPct)
         try c.encodeIfPresent(probability,         forKey: .probability)
         try c.encodeIfPresent(reason,              forKey: .reason)
