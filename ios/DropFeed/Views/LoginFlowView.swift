@@ -10,6 +10,10 @@ struct LoginFlowView: View {
         case profile
     }
 
+    private enum LoginFocus: String, Hashable {
+        case phone, code, firstName, lastName, email
+    }
+
     @State private var step: Step = .phone
     @State private var phoneDigits = ""
     @State private var code = ""
@@ -18,62 +22,94 @@ struct LoginFlowView: View {
     @State private var email = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @FocusState private var focus: LoginFocus?
 
     private let api = APIService.shared
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Hero
-            LinearGradient(
-                colors: [
-                    Color(red: 0.12, green: 0.18, blue: 0.32),
-                    Color(red: 0.25, green: 0.35, blue: 0.52),
-                    Color(red: 0.45, green: 0.55, blue: 0.72),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-            .overlay(alignment: .top) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.white.opacity(0.35))
-                    .padding(.top, 56)
-            }
+        NavigationStack {
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.12, green: 0.18, blue: 0.32),
+                        Color(red: 0.25, green: 0.35, blue: 0.52),
+                        Color(red: 0.45, green: 0.55, blue: 0.72),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 120)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.white.opacity(0.35))
+                                .padding(.top, 52)
+                                .padding(.bottom, 28)
 
-                VStack(alignment: .leading, spacing: 0) {
-                    headerBlock
-                        .padding(.horizontal, 22)
-                        .padding(.top, 28)
-                        .padding(.bottom, 22)
+                            VStack(alignment: .leading, spacing: 0) {
+                                headerBlock
+                                    .padding(.horizontal, 22)
+                                    .padding(.top, 28)
+                                    .padding(.bottom, 22)
 
-                    Group {
-                        switch step {
-                        case .phone: phoneFields
-                        case .code: codeFields
-                        case .profile: profileFields
+                                Group {
+                                    switch step {
+                                    case .phone: phoneFields
+                                    case .code: codeFields
+                                    case .profile: profileFields
+                                    }
+                                }
+                                .padding(.horizontal, 22)
+                                .padding(.bottom, 32)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                UnevenRoundedRectangle(
+                                    topLeadingRadius: 28,
+                                    bottomLeadingRadius: 0,
+                                    bottomTrailingRadius: 0,
+                                    topTrailingRadius: 28,
+                                    style: .continuous
+                                )
+                                .fill(Color.white)
+                            )
+                            .shadow(color: .black.opacity(0.12), radius: 24, y: -4)
+                            .id("loginCard")
+
+                            Color.clear.frame(height: 120)
                         }
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.bottom, 28)
+                    .scrollDismissesKeyboard(.interactively)
+                    .scrollIndicators(.hidden)
+                    .onChange(of: focus) { _, new in
+                        guard let new else { return }
+                        let id = "anchor-\(new.rawValue)"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+                            withAnimation(.easeOut(duration: 0.32)) {
+                                proxy.scrollTo(id, anchor: UnitPoint(x: 0.5, y: 0.28))
+                            }
+                        }
+                    }
+                    .onChange(of: step) { _, _ in
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            withAnimation(.easeOut(duration: 0.28)) {
+                                proxy.scrollTo("loginCard", anchor: .top)
+                            }
+                        }
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 28,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 28,
-                        style: .continuous
-                    )
-                    .fill(Color.white)
-                )
-                .shadow(color: .black.opacity(0.12), radius: 24, y: -4)
             }
-            .ignoresSafeArea(edges: .bottom)
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focus = nil }
+                        .fontWeight(.semibold)
+                }
+            }
         }
         .onAppear {
             if auth.awaitingProfile, let pair = auth.pendingPhoneAndToken() {
@@ -121,7 +157,9 @@ struct LoginFlowView: View {
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
                     .font(.system(size: 16))
+                    .focused($focus, equals: .phone)
             }
+            .id("anchor-phone")
             if let err = errorMessage {
                 Text(err)
                     .font(.system(size: 13))
@@ -140,11 +178,13 @@ struct LoginFlowView: View {
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .font(.system(size: 18, weight: .semibold))
+                    .focused($focus, equals: .code)
                     .onChange(of: code) { _, new in
                         let filtered = new.filter { $0.isNumber }
                         code = String(filtered.prefix(6))
                     }
             }
+            .id("anchor-code")
             if let err = errorMessage {
                 Text(err)
                     .font(.system(size: 13))
@@ -178,19 +218,25 @@ struct LoginFlowView: View {
                 TextField("First name", text: $firstName)
                     .textContentType(.givenName)
                     .font(.system(size: 16))
+                    .focused($focus, equals: .firstName)
             }
+            .id("anchor-firstName")
             loginPillField(icon: "person.fill") {
                 TextField("Last name", text: $lastName)
                     .textContentType(.familyName)
                     .font(.system(size: 16))
+                    .focused($focus, equals: .lastName)
             }
+            .id("anchor-lastName")
             loginPillField(icon: "envelope.fill") {
                 TextField("Email", text: $email)
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .font(.system(size: 16))
+                    .focused($focus, equals: .email)
             }
+            .id("anchor-email")
             if let err = errorMessage {
                 Text(err)
                     .font(.system(size: 13))
