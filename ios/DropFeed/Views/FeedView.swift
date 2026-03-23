@@ -451,7 +451,8 @@ struct FeedView: View {
         out.append(contentsOf: primaryTriple.map { .live($0, isPrimaryTier: true) })
 
         if out.isEmpty {
-            let raw = Array(pool.prefix(primaryTarget))
+            // Do not treat undecoded/missing URLs as primary “BOOK” rows (was all TAKEN / BOOKED).
+            let raw = Array(pool.filter { feedDropIsBookable($0) }.prefix(primaryTarget))
             if !raw.isEmpty {
                 return raw.map { .live($0, isPrimaryTier: true) }
             }
@@ -689,7 +690,7 @@ struct FeedView: View {
             onOpenExplore?()
             return
         }
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        let urlStr = drop.effectiveResyBookingURL ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else {
             onOpenExplore?()
             return
@@ -1430,13 +1431,10 @@ private func feedHeroBookingCTALabel(for drop: Drop) -> String {
     return "BOOK TABLE"
 }
 
-/// Live feed / TOP DROPS: ranked_board entries are current inventory; treat as bookable
-/// whenever we still have a Resy URL. ``explore_snag_available`` is tuned for Explore
-/// and can be false while the home feed card is still valid.
+/// Live feed / TOP DROPS: bookable when any slot or top-level carries a Resy URL
+/// (aligned with backend `_card_resy_url` / `explore_snag_available`).
 private func feedDropIsBookable(_ drop: Drop) -> Bool {
-    let u = (drop.resyUrl ?? drop.slots.first?.resyUrl)?
-        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    return !u.isEmpty
+    drop.effectiveResyBookingURL != nil
 }
 
 /// Meal list + cards: respect Explore “taken” while still showing those rows in the mix.
@@ -1575,7 +1573,7 @@ private struct LiveGlanceCompactCard: View {
     private var pill: (text: String, emphasized: Bool) { feedGlanceSeatPill(for: drop) }
 
     private func openResy() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        let urlStr = drop.effectiveResyBookingURL ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         UIApplication.shared.open(url)
     }
@@ -1818,7 +1816,7 @@ private struct QuietCuratorHeroCard: View {
     }
 
     private func openResy() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        let urlStr = drop.effectiveResyBookingURL ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         APIService.shared.trackBehaviorEvents(events: [
             BehaviorTrackEvent(
@@ -2017,7 +2015,7 @@ private struct QuietCuratorLiveStreamRow: View {
     }
 
     private func openResy() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        let urlStr = drop.effectiveResyBookingURL ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         APIService.shared.trackBehaviorEvents(events: [
             BehaviorTrackEvent(
@@ -2407,7 +2405,7 @@ private struct MarketLeaderHeroCard: View {
     }
 
     private func executeClaim() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        let urlStr = drop.effectiveResyBookingURL ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         UIApplication.shared.open(url)
     }
@@ -2824,7 +2822,7 @@ private struct MockLiveNowRow: View {
     private let rowHeight: CGFloat = 122
 
     private func openResy() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        let urlStr = drop.effectiveResyBookingURL ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         UIApplication.shared.open(url)
     }
@@ -3160,7 +3158,7 @@ private struct CrownJewelCard: View {
     }
 
     private func book() {
-        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        let urlStr = drop.effectiveResyBookingURL ?? ""
         guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
         UIApplication.shared.open(url)
     }
@@ -3313,7 +3311,7 @@ private struct TopOpportunitySnagRow: View {
     }
 
     private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        guard let s = drop.effectiveResyBookingURL else { return nil }
         return URL(string: s)
     }
 
@@ -3440,7 +3438,7 @@ private struct LiveStreamRow: View {
     }
 
     private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        guard let s = drop.effectiveResyBookingURL else { return nil }
         return URL(string: s)
     }
 
@@ -3531,7 +3529,7 @@ private struct BarebonesDropRow: View {
     let onToggleWatch: (String) -> Void
 
     private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        guard let s = drop.effectiveResyBookingURL else { return nil }
         return URL(string: s)
     }
 
@@ -3663,7 +3661,7 @@ private struct RareDropCard: View {
     }
 
     private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        guard let s = drop.effectiveResyBookingURL else { return nil }
         return URL(string: s)
     }
 
@@ -3769,7 +3767,7 @@ private struct TrendingDropCard: View {
     }
 
     private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        guard let s = drop.effectiveResyBookingURL else { return nil }
         return URL(string: s)
     }
 
@@ -3870,7 +3868,7 @@ struct LatestDropRowView: View {
     }
 
     private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        guard let s = drop.effectiveResyBookingURL else { return nil }
         return URL(string: s)
     }
 
@@ -3977,7 +3975,7 @@ struct HotRightNowCard: View {
     let onToggleWatch: (String) -> Void
 
     private var resyUrl: URL? {
-        guard let s = drop.resyUrl ?? drop.slots.first?.resyUrl, !s.isEmpty else { return nil }
+        guard let s = drop.effectiveResyBookingURL else { return nil }
         return URL(string: s)
     }
 

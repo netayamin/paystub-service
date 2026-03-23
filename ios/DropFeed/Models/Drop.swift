@@ -1,5 +1,11 @@
 import Foundation
 
+/// Top-level JSON keys for Resy/book links not mapped on ``Drop/CodingKeys`` (keeps `Encodable` synthesis valid).
+private enum DropBookingURLAliasKeys: String, CodingKey {
+    case resy_url
+    case book_url
+}
+
 /// Single time slot (date + time + Resy URL). Decodes both "resyUrl" and "resy_url".
 struct DropSlot: Codable {
     let dateStr: String?
@@ -124,7 +130,11 @@ struct Drop: Codable, Identifiable {
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
         detectedAt = try c.decodeIfPresent(String.self, forKey: .detectedAt)
-        resyUrl = try c.decodeIfPresent(String.self, forKey: .resyUrl)
+        let resyCamel = try c.decodeIfPresent(String.self, forKey: .resyUrl)
+        let alt = try decoder.container(keyedBy: DropBookingURLAliasKeys.self)
+        let resySnake = try alt.decodeIfPresent(String.self, forKey: .resy_url)
+        let bookUrl = try alt.decodeIfPresent(String.self, forKey: .book_url)
+        resyUrl = Self.firstNonEmptyBookingURL(resyCamel, resySnake, bookUrl)
         feedHot = try c.decodeIfPresent(Bool.self, forKey: .feedHot)
         resyPopularityScore = try c.decodeIfPresent(Double.self, forKey: .resyPopularityScore)
         ratingAverage = try c.decodeIfPresent(Double.self, forKey: .ratingAverage)
@@ -313,11 +323,31 @@ struct Drop: Codable, Identifiable {
         self.bucketSuccessfulPollCount = bucketSuccessfulPollCount
     }
 
+    /// First non-empty Resy / book URL on the card or any slot (matches backend `_card_resy_url`).
+    var effectiveResyBookingURL: String? {
+        let tidy: (String?) -> String? = { raw in
+            let t = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return t.isEmpty ? nil : t
+        }
+        if let u = tidy(resyUrl) { return u }
+        for s in slots {
+            if let u = tidy(s.resyUrl) { return u }
+        }
+        return nil
+    }
+
     /// True when there is a non-empty Resy booking link; otherwise use server flag if present.
     var exploreCanSnag: Bool {
-        let u = (resyUrl ?? slots.first?.resyUrl)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !u.isEmpty { return true }
+        if effectiveResyBookingURL != nil { return true }
         return exploreSnagAvailable ?? false
+    }
+
+    private static func firstNonEmptyBookingURL(_ parts: String?...) -> String? {
+        for p in parts {
+            let t = p?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !t.isEmpty { return t }
+        }
+        return nil
     }
     
     /// "Trending" when trend_pct > 0, "Cooling" when < 0, nil otherwise
