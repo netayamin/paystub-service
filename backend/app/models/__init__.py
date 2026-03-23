@@ -10,6 +10,7 @@ from app.models.recent_missed_drop import RecentMissedDrop
 from app.models.slot_availability import SlotAvailability
 from app.models.venue import Venue
 from app.models.venue_metrics import VenueMetrics
+from app.models.user_notification import UserNotification
 from app.models.venue_rolling_metrics import VenueRollingMetrics
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "PushToken",
     "RecentMissedDrop",
     "SlotAvailability",
+    "UserNotification",
     "Venue",
     "VenueMetrics",
     "VenueRollingMetrics",

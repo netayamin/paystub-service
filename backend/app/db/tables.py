@@ -6,7 +6,7 @@ Use these names when writing raw SQL (e.g. TRUNCATE). Do not reference dropped t
   - chat_sessions, watch_list, venue_search_snapshots, booking_attempts, tool_call_logs,
     documents, paystub_insights (026).
 """
-# All tables that exist in the DB. Must match models and migrations 023–042.
+# All tables that exist in the DB. Must match models and migrations 023+.
 ALL_TABLE_NAMES = (
     "discovery_buckets",
     "drop_events",
@@ -21,6 +21,7 @@ ALL_TABLE_NAMES = (
     "venue_rolling_metrics",
     "push_tokens",
     "notify_preferences",
+    "user_notifications",
 )
 
 # Tables cleared when resetting discovery state (TRUNCATE). Order matters for FK if any.

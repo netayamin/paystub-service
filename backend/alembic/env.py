@@ -9,10 +9,17 @@ from alembic import context
 from app.config import settings
 from app.db.base import Base
 from app.db.tables import ALL_TABLE_NAMES
+from app.models.availability_session import AvailabilitySession  # noqa: F401
+from app.models.availability_state import AvailabilityState  # noqa: F401
 from app.models.discovery_bucket import DiscoveryBucket  # noqa: F401
 from app.models.drop_event import DropEvent  # noqa: F401
 from app.models.feed_cache import FeedCache  # noqa: F401
 from app.models.market_metrics import MarketMetrics  # noqa: F401
+from app.models.notify_preference import NotifyPreference  # noqa: F401
+from app.models.push_token import PushToken  # noqa: F401
+from app.models.recent_missed_drop import RecentMissedDrop  # noqa: F401
+from app.models.slot_availability import SlotAvailability  # noqa: F401
+from app.models.user_notification import UserNotification  # noqa: F401
 from app.models.venue import Venue  # noqa: F401
 from app.models.venue_metrics import VenueMetrics  # noqa: F401
 from app.models.venue_rolling_metrics import VenueRollingMetrics  # noqa: F401

@@ -1,5 +1,5 @@
 """Open drops only: slot became available and is still available. Metrics store aggregates; we remove rows when a slot closes."""
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -12,6 +12,7 @@ class DropEvent(Base):
     bucket_id = Column(String(40), nullable=False, index=True)
     slot_id = Column(String(64), nullable=False, index=True)
     opened_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    user_facing_opened_at = Column(DateTime(timezone=True), nullable=False)
     venue_id = Column(String(64), nullable=True)
     venue_name = Column(String(256), nullable=True)
     payload_json = Column(Text, nullable=True)  # full payload for rendering
@@ -27,3 +28,6 @@ class DropEvent(Base):
     price_range = Column(String(32), nullable=True)
     push_sent_at = Column(DateTime(timezone=True), nullable=True)
     market = Column(String(32), nullable=True, index=True)  # e.g. "nyc", "miami"
+    eligibility_evidence = Column(String(32), nullable=False, default="unknown")
+    prior_snapshot_included_slot = Column(Boolean, nullable=False, default=False)
+    prior_prev_slot_count = Column(Integer, nullable=False, default=0)
