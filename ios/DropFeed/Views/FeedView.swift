@@ -458,17 +458,17 @@ struct FeedView: View {
             let takenOnly = exploreTaken.filter { !primaryIds.contains($0.id) }
             if !takenOnly.isEmpty {
                 if takenOnly.count <= takenSlots {
-                    bookedEntries.append(contentsOf: takenOnly.map { .live($0, isPrimaryTier: false) })
+                    bookedEntries.append(contentsOf: takenOnly.map { QuietStreamEntry.live($0, isPrimaryTier: false) })
                 } else {
                     let w = takenOnly.count - takenSlots
                     let s = Int((vm.liveListShuffleToken >> 1) % UInt64(w + 1))
-                    bookedEntries.append(contentsOf: takenOnly[s ..< (s + takenSlots)].map { .live($0, isPrimaryTier: false) })
+                    bookedEntries.append(contentsOf: takenOnly[s ..< (s + takenSlots)].map { QuietStreamEntry.live($0, isPrimaryTier: false) })
                 }
             }
         }
 
         var out: [QuietStreamEntry] = []
-        out.append(contentsOf: primaryTriple.map { .live($0, isPrimaryTier: true) })
+        out.append(contentsOf: primaryTriple.map { QuietStreamEntry.live($0, isPrimaryTier: true) })
 
         if out.isEmpty {
             // Do not treat undecoded/missing URLs as primary “BOOK” rows (was all TAKEN / BOOKED).
