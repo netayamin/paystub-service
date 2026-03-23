@@ -15,9 +15,9 @@ struct HeroCardView: View {
             isWatched: isWatched,
             onToggleWatch: onToggleWatch
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.black.opacity(0.12), lineWidth: 1)
         )
     }

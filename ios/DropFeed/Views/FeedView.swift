@@ -563,7 +563,7 @@ struct FeedView: View {
     }
 
     private func quietCuratorHottestCarouselCardChrome<V: View>(_ content: V) -> some View {
-        let r: CGFloat = 10
+        let r: CGFloat = 16
         return content
             .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
             .overlay(

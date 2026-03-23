@@ -66,6 +66,9 @@ enum PremiumHeroFormatting {
 // MARK: - View
 
 /// Dark premium hero — TOP OPPORTUNITY + Hottest Drops carousel (reference layout).
+///
+/// **Layout:** Bounds come from `Color.clear.frame(height:)` + `overlay` so loaded `UIImage` sizes
+/// cannot inflate past the card (same pattern as ``DSExploreInventoryCard``).
 struct DSPremiumHeroCard: View {
     let drop: Drop
     /// Carousel / compact tiles pass height; main feed hero uses ``defaultHeroHeight``.
@@ -125,11 +128,39 @@ struct DSPremiumHeroCard: View {
         UIApplication.shared.open(url)
     }
 
-    /// Full-width TOP OPPORTUNITY hero only — carousel tiles omit this (wide text broke ZStack layout / clipping).
+    /// Full-width TOP OPPORTUNITY hero only — carousel tiles omit this.
     private var isCarouselTile: Bool { layoutHeight != nil }
 
     var body: some View {
-        let stack = ZStack(alignment: .bottom) {
+        let bounded = Color.clear
+            .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
+            .overlay {
+                heroLayers
+                    .frame(maxWidth: .infinity, maxHeight: effectiveHeight, alignment: .bottom)
+                    .clipped()
+            }
+            .clipped()
+
+        Group {
+            if let r = innerClipCornerRadius {
+                bounded.clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
+            } else {
+                bounded
+            }
+        }
+        .compositingGroup()
+        .overlay {
+            if useSharpRectangleBorder {
+                Rectangle()
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+            }
+        }
+    }
+
+    /// Image, gradient, labels — drawn inside a **fixed** overlay rect only.
+    private var heroLayers: some View {
+        ZStack(alignment: .bottom) {
+            // Background image (cannot affect outer layout — overlay proposes fixed size)
             Group {
                 if let url = imageURL {
                     CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
@@ -139,7 +170,7 @@ struct DSPremiumHeroCard: View {
                     gradientFallback
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .center)
             .clipped()
 
             LinearGradient(
@@ -155,7 +186,6 @@ struct DSPremiumHeroCard: View {
             .allowsHitTesting(false)
 
             if !isCarouselTile {
-                // Watermark (very subtle) — only on tall hero; carousel must stay strictly bounded.
                 Text("\(drop.name.uppercased()) · NYC")
                     .font(.system(size: isCompactTile ? 36 : 52, weight: .bold))
                     .foregroundColor(.white.opacity(0.05))
@@ -222,6 +252,7 @@ struct DSPremiumHeroCard: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.65)
 
+                            // Reference: light pill, burgundy/dark text, hairline border
                             Text(PremiumHeroFormatting.paxLabel(for: drop))
                                 .font(.system(size: isCompactTile ? 9 : 10, weight: .bold))
                                 .foregroundColor(DropFeedTokens.Semantic.premiumHeroBadgeFill)
@@ -229,27 +260,37 @@ struct DSPremiumHeroCard: View {
                                 .lineLimit(1)
                                 .padding(.horizontal, isCompactTile ? 8 : 10)
                                 .padding(.vertical, 5)
-                                .background(DropFeedTokens.Semantic.premiumHeroPaxFill)
+                                .background(Color.white.opacity(0.92))
                                 .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.black.opacity(0.22), lineWidth: 1)
+                                )
                         }
                         .layoutPriority(2)
                         .fixedSize(horizontal: true, vertical: false)
                     }
 
+                    // Frosted glass bar (reference) — keeps CTAs inside card bounds
                     HStack(spacing: isCompactTile ? 8 : 10) {
                         let canBook = drop.effectiveResyBookingURL != nil
                         Button(action: openResy) {
                             Text("SECURE SEAT")
                                 .font(.system(size: isCompactTile ? 11 : 13, weight: .bold))
                                 .tracking(0.45)
-                                .foregroundColor(canBook ? .black : .white.opacity(0.55))
+                                .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: isCompactTile ? 44 : 50)
-                                .background(canBook ? Color.white : Color.white.opacity(0.22))
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .background(frostedCTAFill)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .stroke(Color.white.opacity(canBook ? 0.4 : 0.2), lineWidth: 1)
+                                )
                         }
                         .buttonStyle(ScaleButtonStyle())
                         .disabled(!canBook)
+                        .opacity(canBook ? 1 : 0.55)
 
                         if let toggle = onToggleWatch {
                             Button {
@@ -259,44 +300,37 @@ struct DSPremiumHeroCard: View {
                                     .font(.system(size: isCompactTile ? 15 : 17, weight: .medium))
                                     .foregroundColor(.white)
                                     .frame(width: isCompactTile ? 44 : 52, height: isCompactTile ? 44 : 50)
-                                    .background(Color.black.opacity(0.35))
-                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    .background(frostedCTAFill)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .stroke(Color.white.opacity(0.45), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(Color.white.opacity(0.4), lineWidth: 1)
                                     )
                             }
                             .buttonStyle(.plain)
                         }
                     }
                     .padding(.top, isCompactTile ? 4 : 8)
+                    .padding(isCompactTile ? 10 : 12)
+                    .background {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.black.opacity(0.32))
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                        }
+                        .environment(\.colorScheme, .dark)
+                    }
                 }
                 .padding(.horizontal, isCompactTile ? 12 : 16)
                 .padding(.bottom, isCompactTile ? 12 : 16)
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
+    }
 
-        Group {
-            if let r = innerClipCornerRadius {
-                stack
-                    .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
-                    .clipped()
-                    .compositingGroup()
-                    .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
-            } else {
-                stack
-                    .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
-                    .clipped()
-                    .compositingGroup()
-            }
-        }
-        .overlay {
-            if useSharpRectangleBorder {
-                Rectangle()
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
-            }
-        }
+    private var frostedCTAFill: some ShapeStyle {
+        Color.white.opacity(0.18)
     }
 
     private var gradientFallback: some View {
@@ -336,6 +370,6 @@ struct DSPremiumHeroCard: View {
         )
         .frame(width: 280)
         .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
