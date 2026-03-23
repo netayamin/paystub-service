@@ -1,11 +1,17 @@
 import SwiftUI
 
+private enum QuietStreamEntry {
+    case live(Drop)
+    case missed(JustMissedVenue)
+}
+
 struct FeedView: View {
     @ObservedObject var feedVM: FeedViewModel
     @ObservedObject var savedVM: SavedViewModel
     @ObservedObject var premium: PremiumManager
     var onOpenSearch: (() -> Void)? = nil
     var onOpenExplore: (() -> Void)? = nil
+    var onOpenProfile: (() -> Void)? = nil
 
     private var vm: FeedViewModel { feedVM }
 
@@ -252,22 +258,25 @@ struct FeedView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    EditorialHomeStatusBar(lastRefreshed: vm.lastRefreshed, lastScanFallback: vm.lastScanText)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
-                        .padding(.bottom, 18)
+                    CuratorTopBar(
+                        lastRefreshed: vm.lastRefreshed,
+                        lastScanFallback: vm.lastScanText,
+                        onProfileTap: { onOpenProfile?() }
+                    )
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
+                    .padding(.bottom, 20)
 
-                    if let hero = editorialHeroDrop {
-                        EditorialFeaturedHeroCard(drop: hero)
+                    if let hero = editorialHeroDrop ?? vm.drops.first {
+                        quietCuratorHottestHeader
+                        QuietCuratorHeroCard(drop: hero)
                             .padding(.horizontal, 18)
-                        Color.clear.frame(height: 28)
+                        Color.clear.frame(height: 24)
                     }
 
-                    editorialHottestSection
-                    editorialStreamSection
-                    editorialExploreAllButton
-                    mockPredictWillOpenSectionCream
-                    mockJustMissedSectionCream
+                    quietCuratorLiveStreamSection
+                    quietCuratorExploreButton
+                    quietCuratorTacticalForecast
                     Color.clear.frame(height: vm.newDropsCount > 0 ? 96 : 28)
                 }
             }
@@ -291,137 +300,176 @@ struct FeedView: View {
         return liveGlanceCarouselDrops.first
     }
 
-    private var hottestEditorialDrops: [Drop] {
-        if !trendingHotCarouselDrops.isEmpty { return Array(trendingHotCarouselDrops.prefix(10)) }
-        return Array(vm.topDrops.prefix(8))
-    }
-
     private var editorialStreamDrops: [Drop] {
         let base = liveGlanceCarouselDrops.isEmpty ? vm.justDropped : liveGlanceCarouselDrops
         var seen = Set<String>()
         return base.filter { seen.insert($0.id).inserted }.prefix(18).map { $0 }
     }
 
-    private var editorialHottestSection: some View {
-        let drops = hottestEditorialDrops
+    private var quietCuratorStreamEntries: [QuietStreamEntry] {
+        let lives = Array(editorialStreamDrops.prefix(8))
+        let missed = Array(vm.justMissed.prefix(1))
+        var out: [QuietStreamEntry] = []
+        if let first = lives.first {
+            out.append(.live(first))
+        }
+        if let m = missed.first {
+            out.append(.missed(m))
+        }
+        for d in lives.dropFirst() {
+            out.append(.live(d))
+            if out.count >= 6 { break }
+        }
+        return out
+    }
+
+    private var quietCuratorHottestHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("HOTTEST DROPS")
+                .font(.system(size: 20, weight: .heavy))
+                .foregroundColor(CreamEditorialTheme.textPrimary)
+                .tracking(0.4)
+            Spacer()
+            Text("TOP 3 EXCLUSIVE")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(CreamEditorialTheme.textTertiary)
+                .tracking(0.85)
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 12)
+    }
+
+    private var quietCuratorLiveStreamSection: some View {
+        let entries = quietCuratorStreamEntries
         return Group {
-            if drops.isEmpty {
+            if entries.isEmpty {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Hottest Restaurants")
-                        .font(CreamEditorialTheme.titleSerif)
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
-                        .padding(.horizontal, 20)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 14) {
-                            ForEach(drops, id: \.id) { drop in
-                                EditorialHottestCard(drop: drop)
-                                    .frame(width: min(UIScreen.main.bounds.width - 56, 318))
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("LIVE STREAM")
+                            .font(.system(size: 20, weight: .heavy))
+                            .foregroundColor(CreamEditorialTheme.textPrimary)
+                            .tracking(0.4)
+                        Spacer()
+                        Text("ACTIVE NOW")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundColor(CreamEditorialTheme.streamRed)
+                            .tracking(0.7)
+                    }
+                    .padding(.horizontal, 18)
+
+                    VStack(spacing: 11) {
+                        ForEach(Array(entries.enumerated()), id: \.offset) { idx, entry in
+                            switch entry {
+                            case .live(let drop):
+                                let party = mockPreferredParty(for: drop)
+                                QuietCuratorLiveStreamRow(
+                                    drop: drop,
+                                    preferredParty: party,
+                                    available: feedMealRowIsAvailable(drop),
+                                    waitMinutesLabel: quietCuratorWaitMinutesLabel(drop),
+                                    seatingLabel: quietCuratorSeatingLabel(drop, party: party)
+                                )
+                                .padding(.horizontal, 18)
+                                .staggeredAppear(index: idx, delayPerItem: 0.03)
+                            case .missed(let venue):
+                                QuietCuratorMissedStreamRow(venue: venue)
+                                    .padding(.horizontal, 18)
+                                    .staggeredAppear(index: idx, delayPerItem: 0.03)
                             }
                         }
-                        .padding(.horizontal, 20)
                     }
                 }
-                .padding(.bottom, 26)
+                .padding(.bottom, 20)
             }
         }
     }
 
-    private var editorialStreamSection: some View {
-        let rows = editorialStreamDrops
-        return Group {
-            if rows.isEmpty {
-                EmptyView()
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("The Stream")
-                        .font(CreamEditorialTheme.titleSerif)
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
-                        .padding(.horizontal, 20)
-                    VStack(spacing: 12) {
-                        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, drop in
-                            let party = mockPreferredParty(for: drop)
-                            EditorialTheStreamRow(
-                                drop: drop,
-                                preferredParty: party,
-                                available: feedMealRowIsAvailable(drop),
-                                subline: feedMealMetricsLine(for: drop, preferredParty: party)
-                            )
-                            .padding(.horizontal, 20)
-                            .staggeredAppear(index: idx, delayPerItem: 0.03)
-                        }
-                    }
-                }
-                .padding(.bottom, 22)
-            }
-        }
-    }
-
-    private var editorialExploreAllButton: some View {
+    private var quietCuratorExploreButton: some View {
         Button {
             onOpenExplore?()
         } label: {
-            Text("EXPLORE ALL DESTINATIONS")
+            Text("EXPLORE ALL LIVE DROPS")
                 .font(.system(size: 12, weight: .heavy))
                 .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.65)
+                .tracking(0.55)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(CreamEditorialTheme.cardWhite)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(CreamEditorialTheme.textPrimary.opacity(0.88), lineWidth: 1.5)
+                        .stroke(CreamEditorialTheme.textPrimary, lineWidth: 1.2)
                 )
-                .shadow(color: CreamEditorialTheme.cardShadow, radius: 10, x: 0, y: 4)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 26)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 22)
     }
 
-    private var mockPredictWillOpenSectionCream: some View {
+    private var quietCuratorTacticalForecast: some View {
         Group {
             if vm.likelyToOpen.isEmpty {
                 EmptyView()
             } else {
-                FeedPredictWillOpenSection(
-                    venues: vm.likelyToOpen,
-                    premium: premium,
-                    onNotify: { savedVM.toggleWatch($0) },
-                    isWatched: { savedVM.isWatched($0) },
-                    editorialCream: true
+                QuietCuratorTacticalForecastPanel(
+                    venues: Array(vm.likelyToOpen.prefix(5)),
+                    ctaTitle: quietCuratorForecastCTATitle,
+                    onTapCTA: { quietCuratorOpenForecastCTA() }
                 )
-                .padding(.top, 8)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 20)
             }
         }
     }
 
-    private var mockJustMissedSectionCream: some View {
-        let items = vm.justMissed
-        return Group {
-            if items.isEmpty {
-                EmptyView()
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Just missed")
-                        .font(CreamEditorialTheme.titleSerif)
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
-                        .padding(.horizontal, 20)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(items) { venue in
-                                MockJustMissedCard(venue: venue, editorialCream: true)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                }
-                .padding(.top, 24)
-                .padding(.bottom, 8)
-            }
+    private var quietCuratorForecastCTATitle: String {
+        if let n = vm.drops.first?.name, !n.isEmpty {
+            return "NEW DROP AT \(n.uppercased())"
         }
+        return "NEW DROPS LIVE"
+    }
+
+    private func quietCuratorOpenForecastCTA() {
+        guard let drop = vm.drops.first else {
+            onOpenExplore?()
+            return
+        }
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else {
+            onOpenExplore?()
+            return
+        }
+        APIService.shared.trackBehaviorEvents(events: [
+            BehaviorTrackEvent(
+                eventType: "resy_opened",
+                venueId: drop.venueKey,
+                venueName: drop.name,
+                notificationId: nil,
+                market: drop.market
+            )
+        ])
+        UIApplication.shared.open(url)
+    }
+
+    private func quietCuratorWaitMinutesLabel(_ drop: Drop) -> String {
+        if feedShouldShowVanishCountdown(drop, requireExploreOpen: true) {
+            let r = feedVanishSecondsRemaining(for: drop)
+            let m = max(1, r / 60)
+            return "\(m)m"
+        }
+        let s = drop.secondsSinceDetected
+        if s < 120 { return "\(max(1, s))s" }
+        return "\(max(1, s / 60))m"
+    }
+
+    private func quietCuratorSeatingLabel(_ drop: Drop, party: Int) -> String {
+        let kind = drop.liveStreamVelocityBadge
+            ?? drop.exploreVenuePill
+            ?? drop.rowPrimaryMetric
+            ?? "Table"
+        return "\(kind) • \(party)ppl"
     }
 
     private func feedSectionHeader(eyebrow: String, title: String) -> some View {
@@ -1403,57 +1451,92 @@ private struct FeedClaimUrgencyBar: View {
 }
 
 /// Only the numeric claim clock ticks — avoids relayouting the whole hero every second in `ScrollView`.
-// MARK: - Cream editorial home (reference layout)
+// MARK: - Quiet Curator home (reference layout)
 
-private struct EditorialHomeStatusBar: View {
+private struct CuratorTopBar: View {
     let lastRefreshed: Date?
     let lastScanFallback: String
+    var onProfileTap: () -> Void
 
     var body: some View {
-        HStack(alignment: .center) {
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                Text(editorialUpdatedUppercased)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .tracking(0.95)
+        HStack(alignment: .center, spacing: 0) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(CreamEditorialTheme.textPrimary)
+                        .frame(width: 36, height: 36)
+                    Text("S")
+                        .font(.system(size: 17, weight: .heavy))
+                        .foregroundColor(.white)
+                }
+                Text("SNAG")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+                    .tracking(1.0)
             }
-            Spacer()
-            HStack(spacing: 6) {
+            Spacer(minLength: 12)
+            HStack(spacing: 8) {
                 Circle()
                     .fill(CreamEditorialTheme.liveDot)
-                    .frame(width: 7, height: 7)
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.streamRed.opacity(0.9))
+                    .frame(width: 6, height: 6)
                 Text("LIVE")
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .tracking(0.85)
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(CreamEditorialTheme.streamRed)
+                    .tracking(0.6)
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(updatedLabel)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(CreamEditorialTheme.textTertiary)
+                }
             }
+            Spacer(minLength: 12)
+            Button(action: onProfileTap) {
+                ZStack {
+                    Circle()
+                        .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+                        .background(Circle().fill(CreamEditorialTheme.cardWhite))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                }
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    private var editorialUpdatedUppercased: String {
-        guard let d = lastRefreshed else {
-            return "UPDATED —"
-        }
+    private var updatedLabel: String {
+        guard let d = lastRefreshed else { return "Updated —" }
         let s = Int(-d.timeIntervalSinceNow)
-        if s < 2 { return "UPDATED JUST NOW" }
-        if s < 60 { return "UPDATED \(s)S AGO" }
-        if s < 3600 { return "UPDATED \(s / 60)M AGO" }
+        if s < 2 { return "Updated just now" }
+        if s < 60 { return "Updated \(s)s ago" }
+        if s < 3600 { return "Updated \(s / 60)m ago" }
         let u = lastScanFallback.trimmingCharacters(in: .whitespacesAndNewlines)
-        return u.isEmpty ? "UPDATED" : "UPDATED \(u.uppercased())"
+        return u.isEmpty ? "Updated" : "Updated \(u)"
     }
 }
 
-/// Large hero — warm canvas, full-bleed image, serif title, white BOOK CTA (left mockup).
-private struct EditorialFeaturedHeroCard: View {
+private struct QuietCuratorHeroCard: View {
     let drop: Drop
-    private static let heroH: CGFloat = 292
+    private static let heroH: CGFloat = 312
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
         return URL(string: s)
+    }
+
+    private var showHighDemand: Bool {
+        drop.feedHot == true || (drop.snagScore ?? 0) >= 78 || (drop.trendPct ?? 0) > 12
+    }
+
+    private var neighborhoodCaps: String {
+        (drop.neighborhood ?? drop.location ?? "NEW YORK").uppercased()
+    }
+
+    private var heroTimePill: String {
+        let t = drop.slots.first?.time ?? ""
+        let formatted = feedFormatTime12h(t)
+        return formatted == "—" || formatted.isEmpty ? "EVENING" : formatted.uppercased()
     }
 
     private func openResy() {
@@ -1476,24 +1559,10 @@ private struct EditorialFeaturedHeroCard: View {
             Group {
                 if let url = imageURL {
                     CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
-                        LinearGradient(
-                            colors: [
-                                CreamEditorialTheme.canvas.opacity(0.35),
-                                Color(red: 0.85, green: 0.82, blue: 0.78)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                        Color(white: 0.22)
                     }
                 } else {
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.92, green: 0.9, blue: 0.86),
-                            Color(red: 0.78, green: 0.76, blue: 0.72)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    Color(white: 0.22)
                 }
             }
             .frame(height: Self.heroH)
@@ -1503,9 +1572,8 @@ private struct EditorialFeaturedHeroCard: View {
             LinearGradient(
                 stops: [
                     .init(color: .black.opacity(0.0), location: 0.0),
-                    .init(color: .black.opacity(0.0), location: 0.42),
-                    .init(color: .black.opacity(0.5), location: 0.72),
-                    .init(color: .black.opacity(0.78), location: 1.0)
+                    .init(color: .black.opacity(0.15), location: 0.35),
+                    .init(color: .black.opacity(0.72), location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -1513,178 +1581,90 @@ private struct EditorialFeaturedHeroCard: View {
             .frame(height: Self.heroH)
             .allowsHitTesting(false)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Spacer()
-                    HStack(spacing: -6) {
-                        ForEach(0..<3, id: \.self) { i in
-                            Circle()
-                                .strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5)
-                                .background(Circle().fill(Color(white: 0.88 - Double(i) * 0.04)))
-                                .frame(width: 26, height: 26)
-                        }
+                    if showHighDemand {
+                        Text("HIGH DEMAND")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(.white)
+                            .tracking(0.7)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(CreamEditorialTheme.burgundy)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
-                    Text("Booking now")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
-                        .padding(.leading, 8)
+                    Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
                 .padding(.top, 14)
-                .padding(.trailing, 14)
-                .frame(maxWidth: .infinity, alignment: .topTrailing)
+                .padding(.horizontal, 16)
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text((drop.neighborhood ?? drop.location ?? "NYC").uppercased())
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(0.6)
-                    }
-                    .foregroundColor(.white.opacity(0.88))
+                Text(neighborhoodCaps)
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundColor(CreamEditorialTheme.heroNeighborhoodRed)
+                    .tracking(0.9)
+                    .padding(.horizontal, 16)
 
-                    Text(drop.name)
-                        .font(CreamEditorialTheme.heroSerif)
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.75)
-                        .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+                Text(drop.name.uppercased())
+                    .font(.system(size: 26, weight: .heavy))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.72)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 2)
 
-                    if let line = drop.heroDescription?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty {
-                        Text(line)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(2)
-                    }
-
+                HStack(alignment: .center, spacing: 8) {
+                    Text("TONIGHT")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundColor(.white.opacity(0.92))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                    Text(heroTimePill)
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundColor(.white.opacity(0.92))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.55))
+                        .clipShape(Capsule())
+                    Spacer(minLength: 8)
                     Button(action: openResy) {
                         Text("BOOK")
                             .font(.system(size: 12, weight: .heavy))
                             .foregroundColor(CreamEditorialTheme.textPrimary)
-                            .tracking(0.8)
-                            .frame(width: 88, height: 40)
+                            .tracking(0.85)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 12)
                             .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 4)
-
-                    TimelineView(.periodic(from: .now, by: 1)) { _ in
-                        let s = drop.secondsSinceDetected
-                        let label = s < 90 ? "Opened \(max(1, s))s ago" : "Opened \(max(1, s / 60))m ago"
-                        HStack(spacing: 6) {
-                            Circle()
-                                .trim(from: 0, to: 0.72)
-                                .stroke(Color.white.opacity(0.85), lineWidth: 2)
-                                .frame(width: 14, height: 14)
-                                .rotationEffect(.degrees(-90))
-                            Text(label)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white.opacity(0.85))
-                        }
-                    }
-                    .padding(.top, 4)
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 18)
             }
             .frame(height: Self.heroH)
         }
         .frame(height: Self.heroH)
         .clipShape(RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadius, style: .continuous))
-        .shadow(color: CreamEditorialTheme.cardShadow, radius: 16, x: 0, y: 8)
-    }
-}
-
-private struct EditorialHottestCard: View {
-    let drop: Drop
-
-    private var imageURL: URL? {
-        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private var secondaryPill: String {
-        if let s = drop.snagScore {
-            return "Score \(s) · live"
-        }
-        if drop.feedHot == true {
-            return "Trending on feed"
-        }
-        return "On the board now"
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Group {
-                if let url = imageURL {
-                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
-                        CreamEditorialTheme.canvas
-                    }
-                } else {
-                    CreamEditorialTheme.canvas
-                }
-            }
-            .frame(width: 80, height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(drop.name)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                Text(drop.location ?? drop.neighborhood ?? "New York")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .lineLimit(1)
-                VStack(alignment: .leading, spacing: 6) {
-                    if drop.feedHot == true || (drop.snagScore ?? 0) >= 80 {
-                        HStack(spacing: 4) {
-                            Text("🔥")
-                            Text("High demand")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(CreamEditorialTheme.peachBadgeText)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(CreamEditorialTheme.peachBadgeFill)
-                        .clipShape(Capsule())
-                    }
-                    Text(secondaryPill)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(CreamEditorialTheme.peachBadgeText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(CreamEditorialTheme.peachBadgeFill.opacity(0.85))
-                        .clipShape(Capsule())
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .background(CreamEditorialTheme.cardWhite)
-        .clipShape(RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous)
-                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+            RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadius, style: .continuous)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
         )
-        .shadow(color: CreamEditorialTheme.cardShadow, radius: 12, x: 0, y: 6)
+        .shadow(color: CreamEditorialTheme.cardShadow, radius: 14, x: 0, y: 8)
     }
 }
 
-private struct EditorialTheStreamRow: View {
+private struct QuietCuratorLiveStreamRow: View {
     let drop: Drop
     let preferredParty: Int
     let available: Bool
-    let subline: String
+    let waitMinutesLabel: String
+    let seatingLabel: String
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -1706,87 +1686,261 @@ private struct EditorialTheStreamRow: View {
         UIApplication.shared.open(url)
     }
 
-    private var statusHeadline: String {
-        if !available {
-            let s = drop.secondsSinceDetected
-            if s < 3600 { return "BOOKED \(max(1, s))S AGO" }
-            return "BOOKED \(s / 60)M AGO"
-        }
-        if drop.secondsSinceDetected < 120 {
-            return "JUST OPENED"
-        }
-        let s = drop.secondsSinceDetected
-        if s < 3600 { return "OPENED \(s)S AGO" }
-        return "OPENED \(s / 60)M AGO"
+    private var statusPrimary: String {
+        if !available { return "BOOKED" }
+        if drop.secondsSinceDetected < 120 { return "JUST OPENED" }
+        return "OPENED"
     }
 
-    private var statusColor: Color {
-        if !available { return CreamEditorialTheme.textPrimary }
+    private var statusPrimaryColor: Color {
+        if !available { return CreamEditorialTheme.textSecondary }
         if drop.secondsSinceDetected < 120 { return CreamEditorialTheme.streamRed }
         return CreamEditorialTheme.textPrimary
     }
 
+    private var agoLabel: String {
+        let s = drop.secondsSinceDetected
+        if s < 90 { return "\(max(1, s))s ago" }
+        if s < 3600 { return "\(max(1, s / 60))m ago" }
+        return "\(s / 3600)h ago"
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             Group {
                 if let url = imageURL {
                     CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
-                        CreamEditorialTheme.canvas
+                        Color(white: 0.9)
                     }
                 } else {
-                    CreamEditorialTheme.canvas
+                    Color(white: 0.9)
                 }
             }
-            .frame(width: 54, height: 54)
-            .clipShape(Circle())
+            .frame(width: 62, height: 62)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(drop.name)
-                    .font(.system(size: 16, weight: .bold, design: .serif))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(drop.name.uppercased())
+                    .font(.system(size: 15, weight: .heavy))
                     .foregroundColor(CreamEditorialTheme.textPrimary)
                     .lineLimit(1)
-                Text(statusHeadline)
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundColor(statusColor)
-                    .lineLimit(1)
-                Text(subline)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.9)
+                    .minimumScaleFactor(0.85)
+                HStack(spacing: 6) {
+                    Text(statusPrimary)
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundColor(statusPrimaryColor)
+                    Text(agoLabel)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(CreamEditorialTheme.textTertiary)
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(red: 0.95, green: 0.78, blue: 0.2))
+                    Text(waitMinutesLabel)
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                    Text(seatingLabel)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(CreamEditorialTheme.textSecondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if available {
                 Button(action: openResy) {
-                    Text("Book")
-                        .font(.system(size: 12, weight: .heavy))
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(CreamEditorialTheme.cardWhite)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(CreamEditorialTheme.textPrimary.opacity(0.85), lineWidth: 1.2)
-                        )
+                    Text("BOOK")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(.white)
+                        .tracking(0.5)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                        .background(CreamEditorialTheme.textPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(.plain)
             } else {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                Text("TAKEN")
+                    .font(.system(size: 10, weight: .heavy))
                     .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .frame(width: 40, height: 40)
+                    .tracking(0.5)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(white: 0.93))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
-        .padding(14)
+        .padding(12)
         .background(CreamEditorialTheme.cardWhite)
         .clipShape(RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous)
                 .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
         )
-        .shadow(color: CreamEditorialTheme.cardShadow, radius: 8, x: 0, y: 4)
+    }
+}
+
+private struct QuietCuratorMissedStreamRow: View {
+    let venue: JustMissedVenue
+
+    private var imageURL: URL? {
+        guard let s = venue.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var agoLabel: String {
+        guard let iso = venue.goneAt, let d = Drop.parseISO(iso) else { return "just now" }
+        let sec = max(0, Int(-d.timeIntervalSinceNow))
+        if sec < 90 { return "\(max(1, sec))s ago" }
+        if sec < 3600 { return "\(max(1, sec / 60))m ago" }
+        return "\(sec / 3600)h ago"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Group {
+                if let url = imageURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                        Color(white: 0.88)
+                    }
+                } else {
+                    Color(white: 0.88)
+                }
+            }
+            .frame(width: 62, height: 62)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .grayscale(1.0)
+            .opacity(0.85)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(venue.name.uppercased())
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text("JUST MISSED")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundColor(CreamEditorialTheme.textTertiary)
+                    Text(agoLabel)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(CreamEditorialTheme.textTertiary)
+                }
+                Text("Sold out")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("TAKEN")
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundColor(CreamEditorialTheme.textTertiary)
+                .tracking(0.5)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color(white: 0.93))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .padding(12)
+        .background(CreamEditorialTheme.cardWhite)
+        .clipShape(RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous)
+                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+        )
+    }
+}
+
+private struct QuietCuratorTacticalForecastPanel: View {
+    let venues: [LikelyToOpenVenue]
+    let ctaTitle: String
+    var onTapCTA: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "scope")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                    Text("TACTICAL FORECAST")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .tracking(0.65)
+                }
+                .padding(.bottom, 16)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(venues.prefix(3)) { v in
+                        tacticalRow(v)
+                    }
+                }
+
+                Text("Forecast based on historical drop patterns and current cancellation velocity.")
+                    .font(.system(size: 10, weight: .regular))
+                    .italic()
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .padding(.top, 18)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(CreamEditorialTheme.tacticalPanelFill)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.black.opacity(0.05), lineWidth: 1)
+            )
+
+            Button(action: onTapCTA) {
+                Text(ctaTitle)
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: 200)
+                    .background(CreamEditorialTheme.burgundy)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(14)
+        }
+    }
+
+    private func tacticalRow(_ v: LikelyToOpenVenue) -> some View {
+        let p = v.probability ?? min(99, max(1, Int((v.availabilityRate14d ?? 0.45) * 100)))
+        let high = p >= 55
+        let label = high ? "HIGH CHANCE" : "MODERATE"
+        let fill: Color = high ? CreamEditorialTheme.burgundy : Color(white: 0.72)
+        let labelColor: Color = high ? CreamEditorialTheme.streamRed : CreamEditorialTheme.textSecondary
+        let progress = CGFloat(min(1, max(0.08, Double(p) / 100)))
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(v.name.uppercased())
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+                    .lineLimit(1)
+                Spacer()
+                Text(label)
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(labelColor)
+                    .tracking(0.4)
+            }
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(white: 0.88))
+                    Capsule()
+                        .fill(fill)
+                        .frame(width: max(8, g.size.width * progress))
+                }
+                .frame(maxHeight: .infinity)
+            }
+            .frame(height: 6)
+        }
     }
 }
 

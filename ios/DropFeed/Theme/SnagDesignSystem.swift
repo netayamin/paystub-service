@@ -96,24 +96,33 @@ enum SnagDesignSystem {
 // MARK: - Cream editorial home (light mockup: warm canvas + serif + soft cards)
 
 enum CreamEditorialTheme {
-    static let canvas = Color(red: 250 / 255, green: 248 / 255, blue: 244 / 255)
+    /// Quiet Curator–style canvas (~#F7F7F7).
+    static let canvas = Color(red: 247 / 255, green: 247 / 255, blue: 247 / 255)
     static let cardWhite = Color.white
-    static let textPrimary = Color(red: 18 / 255, green: 18 / 255, blue: 20 / 255)
+    static let textPrimary = Color.black
     static let textSecondary = Color(red: 100 / 255, green: 100 / 255, blue: 108 / 255)
     static let textTertiary = Color(red: 140 / 255, green: 140 / 255, blue: 148 / 255)
     static let hairline = Color.black.opacity(0.09)
     static let peachBadgeFill = Color(red: 255 / 255, green: 236 / 255, blue: 228 / 255)
     static let peachBadgeText = Color(red: 180 / 255, green: 72 / 255, blue: 48 / 255)
-    static let streamRed = Color(red: 200 / 255, green: 32 / 255, blue: 38 / 255)
-    static let liveDot = Color(red: 220 / 255, green: 48 / 255, blue: 52 / 255)
-    static let cardShadow = Color.black.opacity(0.07)
+    static let streamRed = Color(red: 178 / 255, green: 28 / 255, blue: 42 / 255)
+    static let liveDot = Color(red: 200 / 255, green: 32 / 255, blue: 48 / 255)
+    static let cardShadow = Color.black.opacity(0.06)
+    /// Deep burgundy — HIGH DEMAND, live labels, forecast bars.
+    static let burgundy = Color(red: 118 / 255, green: 26 / 255, blue: 34 / 255)
+    static let burgundyMuted = Color(red: 92 / 255, green: 22 / 255, blue: 30 / 255)
+    /// Tactical forecast panel fill.
+    static let tacticalPanelFill = Color(red: 238 / 255, green: 238 / 255, blue: 240 / 255)
+    static let heroNeighborhoodRed = Color(red: 200 / 255, green: 40 / 255, blue: 52 / 255)
 
     static var sectionSans: Font { .system(size: 11, weight: .bold) }
     static var titleSerif: Font { .system(size: 22, weight: .bold, design: .serif) }
     static var heroSerif: Font { .system(size: 26, weight: .bold, design: .serif) }
     static var bodySans: Font { .system(size: 14, weight: .semibold) }
     static var metaSans: Font { .system(size: 12, weight: .medium) }
+    /// All-caps display (mock: no serif on hero title).
+    static var heroDisplayCaps: Font { .system(size: 28, weight: .heavy) }
 
-    static let cardRadius: CGFloat = 20
-    static let cardRadiusSm: CGFloat = 16
+    static let cardRadius: CGFloat = 22
+    static let cardRadiusSm: CGFloat = 18
 }

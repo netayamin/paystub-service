@@ -19,7 +19,8 @@ struct ContentView: View {
                     savedVM: savedVM,
                     premium: premium,
                     onOpenSearch: { selectedTab = 1 },
-                    onOpenExplore: { selectedTab = 1 }
+                    onOpenExplore: { selectedTab = 1 },
+                    onOpenProfile: { selectedTab = 2 }
                 )
             case 1:
                 ExploreView(vm: exploreVM, savedVM: savedVM, premium: premium)

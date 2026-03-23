@@ -12,10 +12,65 @@ struct CustomTabBar: View {
     private let topCornerRadius: CGFloat = 28
 
     var body: some View {
+        Group {
+            if useLightChrome {
+                quietCuratorTabBar
+            } else {
+                darkDockTabBar
+            }
+        }
+    }
+
+    /// Flat off-white bar, thin top rule, three outline-style icons (reference UI).
+    private var quietCuratorTabBar: some View {
         HStack(spacing: 0) {
-            tabButton(tag: 0, icon: feedIcon, label: "FEED")
-            tabButton(tag: 1, icon: exploreIcon, label: "EXPLORE", badge: alertBadgeCount)
-            tabButton(tag: 2, icon: profileIcon, label: "PROFILE")
+            quietTabButton(tag: 0, systemName: "circle")
+            quietTabButton(tag: 1, systemName: "magnifyingglass", badge: alertBadgeCount)
+            quietTabButton(tag: 2, systemName: "person")
+        }
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity)
+        .background(CreamEditorialTheme.cardWhite)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
+        }
+        .background(CreamEditorialTheme.canvas.ignoresSafeArea(edges: .bottom))
+    }
+
+    private func quietTabButton(tag: Int, systemName: String, badge: Int = 0) -> some View {
+        let on = selectedTab == tag
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tag }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: systemName)
+                    .font(.system(size: 22, weight: on ? .semibold : .regular))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundColor(on ? CreamEditorialTheme.textPrimary : CreamEditorialTheme.textTertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                if badge > 0, tag == 1 {
+                    Text("\(min(badge, 99))")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(3)
+                        .background(SnagDesignSystem.exploreRed)
+                        .clipShape(Circle())
+                        .offset(x: 8, y: -4)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var darkDockTabBar: some View {
+        HStack(spacing: 0) {
+            tabButton(tag: 0, icon: "location.north.circle.fill", label: "FEED")
+            tabButton(tag: 1, icon: "safari.fill", label: "EXPLORE", badge: alertBadgeCount)
+            tabButton(tag: 2, icon: "person.fill", label: "PROFILE")
         }
         .padding(.horizontal, 8)
         .padding(.top, 10)
@@ -30,30 +85,17 @@ struct CustomTabBar: View {
                 topTrailingRadius: topCornerRadius,
                 style: .continuous
             )
-            .fill(useLightChrome ? CreamEditorialTheme.cardWhite : SnagDesignSystem.tabBarDarkSurface)
-            .shadow(color: useLightChrome ? CreamEditorialTheme.cardShadow : .clear, radius: 12, x: 0, y: -4)
+            .fill(SnagDesignSystem.tabBarDarkSurface)
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(useLightChrome ? CreamEditorialTheme.hairline : Color.white.opacity(0.06))
+                    .fill(Color.white.opacity(0.06))
                     .frame(height: 0.5)
             }
         }
         .background {
-            (useLightChrome ? CreamEditorialTheme.canvas : SnagDesignSystem.tabBarDarkSurface)
+            SnagDesignSystem.tabBarDarkSurface
                 .ignoresSafeArea(edges: .bottom)
         }
-    }
-
-    private var feedIcon: String {
-        useLightChrome ? "dot.radiowaves.left.and.right" : "location.north.circle.fill"
-    }
-
-    private var exploreIcon: String {
-        useLightChrome ? "safari" : "safari.fill"
-    }
-
-    private var profileIcon: String {
-        useLightChrome ? "person" : "person.fill"
     }
 
     private func tabAccent(for tag: Int) -> Color {
