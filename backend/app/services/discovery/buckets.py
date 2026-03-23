@@ -67,6 +67,7 @@ from app.models.user_notification import UserNotification
 from app.models.venue import Venue
 from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.discovery.likely_open_scoring import score_likely_open_rank
+from app.services.discovery.venue_profile import venue_profile_from_payload
 from app.services.aggregation import aggregate_closed_events_into_metrics
 from app.services.providers import get_provider
 
@@ -271,32 +272,6 @@ def _build_slot_availability_row(
     }
 
 
-def _venue_profile_from_payload(payload: dict | None) -> tuple[str | None, str | None, str | None]:
-    """(image_url, neighborhood, resy_url) from Resy-style payload; truncated for DB."""
-    if not isinstance(payload, dict):
-        return None, None, None
-    neighborhood_val = None
-    loc = payload.get("location")
-    nh = payload.get("neighborhood") or (loc.get("neighborhood") if isinstance(loc, dict) else None)
-    if nh is not None:
-        neighborhood_val = str(nh)[:128] or None
-    image_url_val = None
-    img = payload.get("image_url")
-    if isinstance(img, str) and img.strip():
-        image_url_val = img.strip()[:512]
-    else:
-        images = payload.get("images")
-        if isinstance(images, dict):
-            for key in ("thumbnail", "small", "medium"):
-                u = images.get(key)
-                if isinstance(u, str) and u.strip():
-                    image_url_val = u.strip()[:512]
-                    break
-    raw_resy = payload.get("resy_url") or payload.get("resyUrl") or payload.get("book_url")
-    resy_url_val = str(raw_resy).strip()[:512] if isinstance(raw_resy, str) and raw_resy.strip() else None
-    return image_url_val, neighborhood_val, resy_url_val
-
-
 def _bootstrap_slot_availability(
     db: Session,
     bid: str,
@@ -358,7 +333,7 @@ def _upsert_venue(
         return
     vid = str(venue_id).strip()
     name = (venue_name or "").strip() or None
-    img, nbhd, resy = _venue_profile_from_payload(payload)
+    img, nbhd, resy = venue_profile_from_payload(payload)
     mkt = str(market).strip()[:32] if market and str(market).strip() else None
     row = db.query(Venue).filter(Venue.venue_id == vid).first()
     now = datetime.now(timezone.utc)
