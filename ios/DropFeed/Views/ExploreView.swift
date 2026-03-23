@@ -32,10 +32,11 @@ struct ExploreView: View {
                     Color.clear.frame(height: 88)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 16)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
         .background(CreamEditorialTheme.canvas.ignoresSafeArea())
         .onAppear {
             vm.exploreTabActive = true
@@ -62,61 +63,58 @@ struct ExploreView: View {
 
     // MARK: - Top bar
 
+    /// Two rows: avoids one ultra-wide `HStack` inflating past the screen on Pro-size phones.
     private var exploreTopBar: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Button {
-                showExploreMenu = true
-            } label: {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 20, weight: .semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                Button {
+                    showExploreMenu = true
+                } label: {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                }
+                .buttonStyle(.plain)
+
+                Text("EXPLORE")
+                    .font(.system(size: 18, weight: .heavy))
                     .foregroundColor(CreamEditorialTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    showFilterSheet = true
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
-            Text("EXPLORE")
-                .font(.system(size: 17, weight: .heavy))
-                .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.5)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .layoutPriority(1)
-
-            Spacer(minLength: 4)
-
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Text(exploreMarketLabel)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .tracking(0.35)
                     .lineLimit(1)
                 Circle()
                     .fill(Color(red: 52 / 255, green: 199 / 255, blue: 147 / 255))
                     .frame(width: 5, height: 5)
-                Text("ONLINE")
+                Text("SYSTEM ONLINE")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .tracking(0.3)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+                Spacer(minLength: 0)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(exploreMarketLabel), system online")
-            .frame(minWidth: 0)
-            .layoutPriority(-1)
-
-            Button {
-                showFilterSheet = true
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)
-        .padding(.bottom, 6)
-        .frame(maxWidth: .infinity)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var exploreMarketLabel: String {
@@ -146,22 +144,20 @@ struct ExploreView: View {
             }
             .padding(.horizontal, 16)
 
-            // Horizontal ScrollView can report very wide ideal size; pin width so the tab does not overflow horizontally.
-            GeometryReader { geo in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {
-                        ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
-                            exploreDateChip(index: idx, opt: opt)
-                        }
+            // Do not wrap in `GeometryReader` — it can adopt the scroll content’s width and blow out the whole tab.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
+                        exploreDateChip(index: idx, opt: opt)
                     }
-                    .padding(.horizontal, 16)
                 }
-                .frame(width: geo.size.width, alignment: .leading)
+                .padding(.horizontal, 16)
             }
-            .frame(height: 64)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
+            .frame(height: 64, alignment: .center)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, 4)
     }
 

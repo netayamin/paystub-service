@@ -24,6 +24,8 @@ struct ContentView: View {
                 )
             case 1:
                 ExploreView(vm: exploreVM, savedVM: savedVM, premium: premium)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
             default:
                 ProfilePlaceholderView()
             }
