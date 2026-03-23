@@ -115,6 +115,19 @@ enum CreamEditorialTheme {
     static let tacticalPanelFill = Color(red: 238 / 255, green: 238 / 255, blue: 240 / 255)
     static let heroNeighborhoodRed = Color(red: 200 / 255, green: 40 / 255, blue: 52 / 255)
 
+    /// Brutalist QC — no rounded corners on feed chrome.
+    static let qcCornerRadius: CGFloat = 0
+    /// Dark tactical forecast card (reference UI).
+    static let tacticalDarkSurface = Color(red: 22 / 255, green: 22 / 255, blue: 24 / 255)
+    static let tacticalDarkDivider = Color.white.opacity(0.07)
+    static let tacticalDarkMeta = Color(red: 150 / 255, green: 150 / 255, blue: 158 / 255)
+    /// TAKEN / secondary chips.
+    static let takenFill = Color(red: 237 / 255, green: 237 / 255, blue: 240 / 255)
+    static let takenText = Color(red: 88 / 255, green: 88 / 255, blue: 94 / 255)
+    /// Ghost CTA on cream.
+    static let exploreMutedLabel = Color(red: 58 / 255, green: 58 / 255, blue: 62 / 255)
+    static let exploreHairline = Color(red: 200 / 255, green: 200 / 255, blue: 204 / 255)
+
     static var sectionSans: Font { .system(size: 11, weight: .bold) }
     static var titleSerif: Font { .system(size: 22, weight: .bold, design: .serif) }
     static var heroSerif: Font { .system(size: 26, weight: .bold, design: .serif) }

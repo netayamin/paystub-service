@@ -24,20 +24,20 @@ struct CustomTabBar: View {
     /// Flat off-white bar, thin top rule, three outline-style icons (reference UI).
     private var quietCuratorTabBar: some View {
         HStack(spacing: 0) {
-            quietTabButton(tag: 0, systemName: "scope")
+            quietTabButton(tag: 0, systemName: "dot.radiowaves.left.and.right")
             quietTabButton(tag: 1, systemName: "magnifyingglass", badge: alertBadgeCount)
             quietTabButton(tag: 2, systemName: "person")
         }
         .padding(.top, 14)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
-        .background(Color.white)
+        .background(CreamEditorialTheme.canvas)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(Color.black.opacity(0.08))
                 .frame(height: 0.5)
         }
-        .background(Color.white.ignoresSafeArea(edges: .bottom))
+        .background(CreamEditorialTheme.canvas.ignoresSafeArea(edges: .bottom))
     }
 
     private func quietTabButton(tag: Int, systemName: String, badge: Int = 0) -> some View {
@@ -56,9 +56,8 @@ struct CustomTabBar: View {
                     Text("\(min(badge, 99))")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundColor(.white)
-                        .padding(3)
+                        .frame(minWidth: 14, minHeight: 14)
                         .background(SnagDesignSystem.exploreRed)
-                        .clipShape(Circle())
                         .offset(x: 8, y: -4)
                 }
             }
