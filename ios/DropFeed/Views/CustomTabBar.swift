@@ -24,20 +24,20 @@ struct CustomTabBar: View {
     /// Flat off-white bar, thin top rule, three outline-style icons (reference UI).
     private var quietCuratorTabBar: some View {
         HStack(spacing: 0) {
-            quietTabButton(tag: 0, systemName: "circle")
+            quietTabButton(tag: 0, systemName: "scope")
             quietTabButton(tag: 1, systemName: "magnifyingglass", badge: alertBadgeCount)
             quietTabButton(tag: 2, systemName: "person")
         }
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
-        .background(CreamEditorialTheme.cardWhite)
+        .background(Color.white)
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
+                .fill(Color.black.opacity(0.08))
+                .frame(height: 0.5)
         }
-        .background(CreamEditorialTheme.canvas.ignoresSafeArea(edges: .bottom))
+        .background(Color.white.ignoresSafeArea(edges: .bottom))
     }
 
     private func quietTabButton(tag: Int, systemName: String, badge: Int = 0) -> some View {
@@ -49,9 +49,9 @@ struct CustomTabBar: View {
                 Image(systemName: systemName)
                     .font(.system(size: 22, weight: on ? .semibold : .regular))
                     .symbolRenderingMode(.monochrome)
-                    .foregroundColor(on ? CreamEditorialTheme.textPrimary : CreamEditorialTheme.textTertiary)
+                    .foregroundColor(on ? CreamEditorialTheme.textPrimary : Color(white: 0.72))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 2)
                 if badge > 0, tag == 1 {
                     Text("\(min(badge, 99))")
                         .font(.system(size: 8, weight: .bold))
