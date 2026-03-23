@@ -65,9 +65,19 @@ struct LoginFlowView: View {
                             topTrailingRadius: 28,
                             style: .continuous
                         )
-                        .fill(Color.white)
+                        .fill(Color.black)
                     }
-                    .shadow(color: .black.opacity(0.22), radius: 20, y: -8)
+                    .overlay(alignment: .top) {
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 28,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 28,
+                            style: .continuous
+                        )
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.45), radius: 24, y: -6)
                     .onChange(of: focus) { _, new in
                         guard let new else { return }
                         let id = "anchor-\(new.rawValue)"
@@ -105,13 +115,19 @@ struct LoginFlowView: View {
     }
 
     private var headerBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(stepTitle)
                 .font(.system(size: 28, weight: .bold))
-                .foregroundColor(.black)
+                .foregroundColor(.white)
+            if step == .phone {
+                Text("Always booked. Sometimes open.")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.exploreCoralSolid)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text(stepSubtitle)
                 .font(.system(size: 15))
-                .foregroundColor(Color(white: 0.45))
+                .foregroundColor(Color.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -138,10 +154,16 @@ struct LoginFlowView: View {
     private var phoneFields: some View {
         VStack(alignment: .leading, spacing: 16) {
             loginPillField(icon: "phone.fill") {
-                TextField("Mobile number", text: $phoneDigits)
+                TextField(
+                    "",
+                    text: $phoneDigits,
+                    prompt: Text("Mobile number").foregroundColor(.white.opacity(0.42))
+                )
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
                     .font(.system(size: 16))
+                    .foregroundColor(.white)
+                    .tint(SnagDesignSystem.exploreCoralSolid)
                     .focused($focus, equals: .phone)
             }
             .id("anchor-phone")
@@ -159,10 +181,16 @@ struct LoginFlowView: View {
     private var codeFields: some View {
         VStack(alignment: .leading, spacing: 16) {
             loginPillField(icon: "lock.shield.fill") {
-                TextField("6-digit code", text: $code)
+                TextField(
+                    "",
+                    text: $code,
+                    prompt: Text("6-digit code").foregroundColor(.white.opacity(0.42))
+                )
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .tint(SnagDesignSystem.exploreCoralSolid)
                     .focused($focus, equals: .code)
                     .onChange(of: code) { _, new in
                         let filtered = new.filter { $0.isNumber }
@@ -182,13 +210,13 @@ struct LoginFlowView: View {
                     code = ""
                 }
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Color.blue)
+                .foregroundColor(SnagDesignSystem.exploreCoralSolid)
                 Spacer()
                 Button("Resend code") {
                     Task { await sendCode() }
                 }
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Color.blue)
+                .foregroundColor(SnagDesignSystem.exploreCoralSolid)
                 .disabled(isLoading)
             }
             primaryButton(title: isLoading ? "Checking…" : "Verify", disabled: code.count != 6) {
@@ -200,25 +228,43 @@ struct LoginFlowView: View {
     private var profileFields: some View {
         VStack(alignment: .leading, spacing: 14) {
             loginPillField(icon: "person.fill") {
-                TextField("First name", text: $firstName)
+                TextField(
+                    "",
+                    text: $firstName,
+                    prompt: Text("First name").foregroundColor(.white.opacity(0.42))
+                )
                     .textContentType(.givenName)
                     .font(.system(size: 16))
+                    .foregroundColor(.white)
+                    .tint(SnagDesignSystem.exploreCoralSolid)
                     .focused($focus, equals: .firstName)
             }
             .id("anchor-firstName")
             loginPillField(icon: "person.fill") {
-                TextField("Last name", text: $lastName)
+                TextField(
+                    "",
+                    text: $lastName,
+                    prompt: Text("Last name").foregroundColor(.white.opacity(0.42))
+                )
                     .textContentType(.familyName)
                     .font(.system(size: 16))
+                    .foregroundColor(.white)
+                    .tint(SnagDesignSystem.exploreCoralSolid)
                     .focused($focus, equals: .lastName)
             }
             .id("anchor-lastName")
             loginPillField(icon: "envelope.fill") {
-                TextField("Email", text: $email)
+                TextField(
+                    "",
+                    text: $email,
+                    prompt: Text("Email").foregroundColor(.white.opacity(0.42))
+                )
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .font(.system(size: 16))
+                    .foregroundColor(.white)
+                    .tint(SnagDesignSystem.exploreCoralSolid)
                     .focused($focus, equals: .email)
             }
             .id("anchor-email")
@@ -237,15 +283,18 @@ struct LoginFlowView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16))
-                .foregroundColor(Color(white: 0.55))
+                .foregroundColor(.white.opacity(0.45))
                 .frame(width: 22)
             content()
-                .foregroundColor(.black)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(Color(white: 0.94))
+        .background(Color.white.opacity(0.08))
         .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        )
     }
 
     private func primaryButton(title: String, disabled: Bool, action: @escaping () -> Void) -> some View {
@@ -255,7 +304,11 @@ struct LoginFlowView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(disabled || isLoading ? Color.black.opacity(0.35) : Color.black)
+                .background(
+                    disabled || isLoading
+                        ? Color.white.opacity(0.14)
+                        : SnagDesignSystem.exploreCoralSolid
+                )
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
