@@ -28,14 +28,11 @@ struct LoginFlowView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-
+            VStack(spacing: 0) {
                 LoginAnimatedSpotsHero()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.top, 8)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
@@ -89,6 +86,7 @@ struct LoginFlowView: View {
                     }
                 }
             }
+            .background(Color.black.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
