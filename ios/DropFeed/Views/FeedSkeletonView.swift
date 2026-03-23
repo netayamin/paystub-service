@@ -6,7 +6,8 @@ struct FeedSkeletonView: View {
     private let gap: CGFloat = 12
     /// Matches hottest carousel: two ~4:5 tiles + peek.
     private let peek: CGFloat = 8
-    private let streamRows = 6
+    /// Matches live stream minimum row count (`minQuietCuratorStreamRows`).
+    private let streamRows = 5
 
     /// Muted grey-beige blocks on cream (reference “brutalist-chic” loading).
     private let bone = Color(red: 228 / 255, green: 226 / 255, blue: 224 / 255)

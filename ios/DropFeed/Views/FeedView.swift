@@ -14,6 +14,26 @@ private enum QuietStreamEntry {
     }
 }
 
+/// Minimum venue rows in Quiet Curator **LIVE STREAM** (pool may be smaller).
+private let minQuietCuratorStreamRows = 5
+
+/// Append extra `.live` rows from the ranked pool so the stream never looks empty.
+private func padQuietCuratorStreamEntries(_ entries: inout [QuietStreamEntry], pool: [Drop], minimumRows: Int) {
+    guard entries.count < minimumRows else { return }
+    var used = Set<String>()
+    for e in entries {
+        switch e {
+        case .live(let d, _): used.insert(d.id)
+        case .missed(let v): used.insert(v.id)
+        }
+    }
+    for d in pool where !used.contains(d.id) {
+        entries.append(QuietStreamEntry.live(d, isPrimaryTier: false))
+        used.insert(d.id)
+        if entries.count >= minimumRows { break }
+    }
+}
+
 /// Hairline rule with centered **LIVE STREAM**, then status row (pulse + label / local clock).
 private struct QuietCuratorLiveStreamDividerHeader: View {
     var hasBookableLive: Bool
@@ -376,7 +396,7 @@ struct FeedView: View {
         return vm.drops.filter { seen.insert($0.id).inserted }
     }
 
-    /// Live stream: **3 primary** rows from Resy-bookable drops (Explore “taken” can still appear here with a real **BOOK** CTA) + **1–2** true taken rows (`explore_snag_available == false` or missed).
+    /// Live stream: **4 primary** slots from Resy-bookable drops + **1–2** taken/missed rows, then pad to **≥5** venues from the ranked pool.
     /// Depends on `liveListShuffleToken` and `lastRefreshed`.
     private var quietCuratorStreamEntries: [QuietStreamEntry] {
         _ = vm.liveListShuffleToken
@@ -393,7 +413,7 @@ struct FeedView: View {
         let exploreOpen = bookable.filter { $0.exploreSnagAvailable != false }
         let exploreTaken = bookable.filter { $0.exploreSnagAvailable == false }
 
-        let primaryTarget = 3
+        let primaryTarget = 4
         let primaryTriple: [Drop] = {
             guard !bookable.isEmpty else { return [] }
             if exploreOpen.count >= primaryTarget {
@@ -454,13 +474,21 @@ struct FeedView: View {
             // Do not treat undecoded/missing URLs as primary “BOOK” rows (was all TAKEN / BOOKED).
             let raw = Array(pool.filter { feedDropIsBookable($0) }.prefix(primaryTarget))
             if !raw.isEmpty {
-                return raw.map { .live($0, isPrimaryTier: true) }
+                var built = raw.map { QuietStreamEntry.live($0, isPrimaryTier: true) }
+                padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
+                return built
             }
-            if let m = vm.justMissed.first { return [.missed(m)] }
-            return []
+            if let m = vm.justMissed.first {
+                var built: [QuietStreamEntry] = [.missed(m)]
+                padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
+                return built
+            }
+            // Board has venues but none bookable here — still show up to 5 rows (TAKEN / grey state).
+            return Array(pool.prefix(minQuietCuratorStreamRows)).map { QuietStreamEntry.live($0, isPrimaryTier: false) }
         }
 
         out.append(contentsOf: bookedEntries)
+        padQuietCuratorStreamEntries(&out, pool: pool, minimumRows: minQuietCuratorStreamRows)
         return out
     }
 
