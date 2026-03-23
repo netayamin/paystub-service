@@ -229,13 +229,14 @@ def run_sliding_window_job() -> None:
         prune_extra_drop_events_per_open_slot,
         prune_old_drop_events,
         prune_old_market_metrics,
+        prune_old_notifications,
         prune_old_slot_availability,
         prune_old_availability_state,
+        prune_old_user_behavior_events,
         prune_old_venue_metrics,
         prune_old_venue_rolling_metrics,
         prune_old_venues,
     )
-        from app.services.discovery.buckets import prune_old_notifications, prune_old_user_behavior_events
     from app.core.scheduler_singleton_lock import (
         release_sliding_window_leader,
         try_acquire_sliding_window_leader,
