@@ -14,6 +14,7 @@ from app.db.session import SessionLocal
 from app.models.drop_event import DropEvent
 from app.models.notify_preference import NotifyPreference
 from app.models.push_token import PushToken
+from app.services.discovery.eligibility import push_notification_allowed
 from app.services.discovery.venue_profile import normalize_http_url
 from app.services.push import send_push_for_new_drops
 
@@ -74,8 +75,13 @@ def run_push_for_new_drops_job() -> None:
         )
         # Send email/push only for drops at watched venues (saved list + hotlist); use is_hotspot for fuzzy name match
         unsent = [
-            r for r in unsent
-            if _normalize_venue(r.venue_name) in watched_names or is_hotspot(r.venue_name)
+            r
+            for r in unsent
+            if push_notification_allowed(getattr(r, "eligibility_evidence", None))
+            and (
+                _normalize_venue(r.venue_name) in watched_names
+                or is_hotspot(r.venue_name)
+            )
         ]
         if not unsent:
             return

@@ -69,6 +69,8 @@ from app.models.slot_availability import SlotAvailability
 from app.models.user_notification import UserNotification
 from app.models.venue import Venue
 from app.models.venue_rolling_metrics import VenueRollingMetrics
+from app.services.discovery.drop_reads import latest_drop_row_per_pair, successful_poll_count_by_bucket
+from app.services.discovery.eligibility import qualified_for_home_feed, stronger_eligibility_evidence
 from app.services.discovery.likely_open_scoring import score_likely_open_rank
 from app.services.discovery.venue_profile import normalize_http_url, venue_profile_from_payload
 from app.services.aggregation import aggregate_closed_events_into_metrics
@@ -1493,6 +1495,8 @@ def get_just_opened_from_buckets(
     ]
     if not drop_pairs:
         return []
+    drop_meta = latest_drop_row_per_pair(db, list(drop_pairs), cutoff)
+    poll_by_bucket = successful_poll_count_by_bucket(db, list({p[0] for p in drop_pairs}))
     events = (
         db.query(SlotAvailability)
         .filter(
@@ -1534,7 +1538,28 @@ def get_just_opened_from_buckets(
             continue
         if venue_key not in by_venue[date_str]:
             by_venue[date_str][venue_key] = []
-        payload["detected_at"] = r.opened_at.isoformat() if r.opened_at else payload.get("detected_at")
+        pair_k = (r.bucket_id, r.slot_id)
+        dm = drop_meta.get(pair_k)
+        b_polls = poll_by_bucket.get(r.bucket_id)
+        if dm:
+            ufa = dm["user_facing_opened_at"]
+            payload["user_facing_opened_at"] = ufa.isoformat() if ufa else None
+            payload["eligibility_evidence"] = dm["eligibility_evidence"]
+            payload["prior_prev_slot_count"] = dm["prior_prev_slot_count"]
+            payload["prior_snapshot_included_slot"] = dm["prior_snapshot_included_slot"]
+            payload["detected_at"] = ufa.isoformat() if ufa else (
+                r.opened_at.isoformat() if r.opened_at else payload.get("detected_at")
+            )
+        else:
+            payload["eligibility_evidence"] = "unknown"
+            payload["prior_prev_slot_count"] = 0
+            payload["prior_snapshot_included_slot"] = False
+            payload["detected_at"] = r.opened_at.isoformat() if r.opened_at else payload.get("detected_at")
+        payload["bucket_successful_poll_count"] = b_polls
+        payload["_snag_feed_qualified"] = qualified_for_home_feed(
+            payload.get("eligibility_evidence"),
+            b_polls,
+        )
         payload["name"] = r.venue_name or payload.get("name")
         by_venue[date_str][venue_key].append((r, payload))
 
@@ -1542,6 +1567,13 @@ def get_just_opened_from_buckets(
     for date_str in by_venue:
         for venue_key, row_payloads in by_venue[date_str].items():
             _, first_payload = row_payloads[0]
+            merged_ev = first_payload.get("eligibility_evidence")
+            any_qualified = bool(first_payload.get("_snag_feed_qualified"))
+            for _r, pl in row_payloads[1:]:
+                merged_ev = stronger_eligibility_evidence(merged_ev, pl.get("eligibility_evidence"))
+                any_qualified = any_qualified or bool(pl.get("_snag_feed_qualified"))
+            first_payload["eligibility_evidence"] = merged_ev
+            first_payload["_snag_feed_qualified"] = any_qualified
             availability_times = sorted({(r.slot_time or "").strip() for r, _ in row_payloads if (r.slot_time or "").strip()})
             if not availability_times:
                 # fallback: first payload may have one time from Resy

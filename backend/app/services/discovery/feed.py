@@ -9,6 +9,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from app.core.hotspots import is_hotspot, top_priority_names
+from app.services.discovery.eligibility import (
+    qualified_for_home_feed,
+    rank_strength_multiplier,
+    stronger_eligibility_evidence,
+)
 from app.services.discovery.feed_display import attach_feed_card_display_fields
 
 TOP_OPPORTUNITIES_MAX = 4
@@ -19,7 +24,14 @@ BRAND_NEW_SECONDS = 300
 JUST_DROPPED_SECONDS = 600
 
 # Strip before JSON responses — not part of the public contract.
-_FEED_INTERNAL_KEYS = ("_priority", "_top_score", "_ticker_score")
+_FEED_INTERNAL_KEYS = (
+    "_priority",
+    "_top_score",
+    "_ticker_score",
+    "_from_just_opened_contrib",
+    "_has_still_open_contrib",
+    "_snag_feed_qualified",
+)
 
 
 def sanitize_feed_cards_for_client(cards: list[dict]) -> None:
@@ -157,6 +169,12 @@ def _consolidate_cards(
             "rating_average": payload.get("rating_average"),
             "rating_count": payload.get("rating_count"),
             "market": payload.get("market") or "nyc",
+            "eligibility_evidence": payload.get("eligibility_evidence"),
+            "user_facing_opened_at": payload.get("user_facing_opened_at"),
+            "bucket_successful_poll_count": payload.get("bucket_successful_poll_count"),
+            "_from_just_opened_contrib": False,
+            "_has_still_open_contrib": False,
+            "_snag_feed_qualified": False,
         }
 
     for item in just_opened_flat:
@@ -166,6 +184,23 @@ def _consolidate_cards(
         if norm not in by_name:
             by_name[norm] = _make_card(key, date_str, payload)
         card = by_name[norm]
+        card["_from_just_opened_contrib"] = True
+        ev = payload.get("eligibility_evidence")
+        if ev:
+            card["eligibility_evidence"] = stronger_eligibility_evidence(
+                card.get("eligibility_evidence"), ev
+            )
+        ufo = payload.get("user_facing_opened_at")
+        if ufo:
+            cur = card.get("user_facing_opened_at")
+            if not cur or ufo > cur:
+                card["user_facing_opened_at"] = ufo
+        bsp = payload.get("bucket_successful_poll_count")
+        if bsp is not None:
+            card["bucket_successful_poll_count"] = max(
+                int(card.get("bucket_successful_poll_count") or 0),
+                int(bsp or 0),
+            )
         slot = {"date_str": date_str, "time": time_str, "resyUrl": resy_url}
         if not any(s.get("date_str") == date_str and s.get("time") == time_str for s in card["slots"]):
             card["slots"].append(slot)
@@ -187,6 +222,7 @@ def _consolidate_cards(
         if norm not in by_name:
             by_name[norm] = _make_card(key, date_str, payload)
         card = by_name[norm]
+        card["_has_still_open_contrib"] = True
         slot = {"date_str": date_str, "time": time_str, "resyUrl": resy_url}
         if not any(s.get("date_str") == date_str and s.get("time") == time_str for s in card["slots"]):
             card["slots"].append(slot)
@@ -199,6 +235,13 @@ def _consolidate_cards(
                 card["party_sizes_available"].append(ps)
         if payload.get("venue_id") and not card.get("venue_id"):
             card["venue_id"] = payload["venue_id"]
+
+    for card in by_name.values():
+        if card.get("_from_just_opened_contrib"):
+            card["_snag_feed_qualified"] = qualified_for_home_feed(
+                card.get("eligibility_evidence"),
+                card.get("bucket_successful_poll_count"),
+            )
 
     # Sort slots by date then time; set resyUrl to first slot
     result = []
@@ -325,6 +368,22 @@ def _ticker_score(card: dict, is_hot: bool) -> float:
     return hot + scarcity + popularity + quality + speed + freshness
 
 
+def _rank_evidence_multiplier(card: dict) -> float:
+    """Downrank just-opened cards with weaker diff evidence; still_open-only stays neutral."""
+    if not card.get("_from_just_opened_contrib"):
+        return 1.0
+    return rank_strength_multiplier(card.get("eligibility_evidence"))
+
+
+def _snag_include_in_live_segments(card: dict) -> bool:
+    """Drop weak just-opened-only rows from ranked/ticker; still_open (or mixed) always kept."""
+    if card.get("_has_still_open_contrib"):
+        return True
+    if not card.get("_from_just_opened_contrib"):
+        return True
+    return bool(card.get("_snag_feed_qualified"))
+
+
 def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
     """
     Returns True if a venue deserves to appear in the Real-Time Ticker.
@@ -435,6 +494,7 @@ def build_feed(
                     so_flat.append((key, date_str, time_str, resy_url, payload))
 
     cards = _consolidate_cards(jo_flat, so_flat)
+    cards = [c for c in cards if _snag_include_in_live_segments(c)]
     now_ts = datetime.now(timezone.utc)
 
     for c in cards:
@@ -452,7 +512,7 @@ def build_feed(
         )
         is_hot = curated or data_hot
         c["feedHot"] = is_hot
-        c["_priority"] = _priority_score(c, is_hot)
+        c["_priority"] = _priority_score(c, is_hot) * _rank_evidence_multiplier(c)
 
     ranked = sorted(cards, key=lambda x: -(x.get("_priority") or 0))
 
@@ -538,7 +598,9 @@ def build_feed(
                 ticker_ids.add(c["id"])
 
     for c in ticker_worthy:
-        c["_ticker_score"] = _ticker_score(c, c.get("feedHot", False))
+        c["_ticker_score"] = _ticker_score(c, c.get("feedHot", False)) * _rank_evidence_multiplier(
+            c
+        )
     ticker_board = sorted(ticker_worthy, key=lambda x: -(x.get("_ticker_score") or 0))
 
     return {
