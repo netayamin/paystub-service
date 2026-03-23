@@ -36,5 +36,7 @@ DISCOVERY_PRUNE_EVERY_N_TICKS = 5   # ~50s at 10s tick; keeps tables bounded, av
 from app.core.discovery_config import DROP_EVENTS_RETENTION_DAYS  # noqa: F401
 # venue_metrics, market_metrics: keep this many days of history (daily prune in sliding window)
 METRICS_RETENTION_DAYS = 90
+# Client POST /notifications/behavior-events; daily prune in sliding window
+USER_BEHAVIOR_EVENTS_RETENTION_DAYS = 90
 # venues: prune rows not seen in this many days (daily prune in sliding window)
 VENUES_RETENTION_DAYS = 90

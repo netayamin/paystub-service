@@ -235,7 +235,7 @@ def run_sliding_window_job() -> None:
         prune_old_venue_rolling_metrics,
         prune_old_venues,
     )
-    from app.services.discovery.buckets import prune_old_notifications
+        from app.services.discovery.buckets import prune_old_notifications, prune_old_user_behavior_events
     from app.core.scheduler_singleton_lock import (
         release_sliding_window_leader,
         try_acquire_sliding_window_leader,
@@ -250,8 +250,9 @@ def run_sliding_window_job() -> None:
         leader = True
 
         # Rebuild rolling metrics BEFORE pruning so venue_metrics data is still available
-        from app.services.aggregation import compute_venue_rolling_metrics
+        from app.services.aggregation import compute_market_weekly_summary, compute_venue_rolling_metrics
         compute_venue_rolling_metrics(db, today)
+        compute_market_weekly_summary(db, today)
 
         delete_closed_drop_events(db)
         prune_old_buckets(db, today)
@@ -261,6 +262,7 @@ def run_sliding_window_job() -> None:
         prune_old_slot_availability(db, today)
         prune_old_availability_state(db, today)
         prune_old_notifications(db)
+        prune_old_user_behavior_events(db)
         prune_old_venue_rolling_metrics(db, today, keep_days=60)
         prune_old_venue_metrics(db, today)
         prune_old_market_metrics(db, today)

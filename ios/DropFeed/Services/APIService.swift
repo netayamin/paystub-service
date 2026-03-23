@@ -300,6 +300,22 @@ final class APIService {
         let _ = try? await session.data(for: request)
     }
 
+    /// Fire-and-forget product metrics (`user_behavior_events`). Uses `X-Recipient-Id` when you pass `recipientId`.
+    func trackBehaviorEvents(recipientId: String? = nil, events: [BehaviorTrackEvent]) {
+        guard !events.isEmpty else { return }
+        guard let url = URL(string: "\(baseURL)/chat/notifications/behavior-events") else { return }
+        Task {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let rid = recipientId, !rid.isEmpty {
+                request.setValue(rid, forHTTPHeaderField: "X-Recipient-Id")
+            }
+            request.httpBody = try? JSONEncoder().encode(BehaviorEventsRequestBody(recipientId: recipientId, events: events))
+            let _ = try? await session.data(for: request)
+        }
+    }
+
     // MARK: - Auth (phone / OTP / profile)
 
     func requestAuthCode(phoneE164: String) async throws {
@@ -401,6 +417,31 @@ struct NewDropSlot: Codable {
         case dateStr = "date_str"
         case time
         case resyUrl = "resyUrl"
+    }
+}
+
+/// Client event for `POST /chat/notifications/behavior-events` (conversion / product metrics).
+struct BehaviorTrackEvent: Encodable {
+    let eventType: String
+    var venueId: String?
+    var venueName: String?
+    var notificationId: Int?
+    var market: String?
+    enum CodingKeys: String, CodingKey {
+        case eventType = "event_type"
+        case venueId = "venue_id"
+        case venueName = "venue_name"
+        case notificationId = "notification_id"
+        case market
+    }
+}
+
+private struct BehaviorEventsRequestBody: Encodable {
+    var recipientId: String?
+    let events: [BehaviorTrackEvent]
+    enum CodingKeys: String, CodingKey {
+        case recipientId = "recipient_id"
+        case events
     }
 }
 

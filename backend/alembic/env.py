@@ -19,6 +19,7 @@ from app.models.notify_preference import NotifyPreference  # noqa: F401
 from app.models.push_token import PushToken  # noqa: F401
 from app.models.recent_missed_drop import RecentMissedDrop  # noqa: F401
 from app.models.slot_availability import SlotAvailability  # noqa: F401
+from app.models.user_behavior_event import UserBehaviorEvent  # noqa: F401
 from app.models.user_notification import UserNotification  # noqa: F401
 from app.models.venue import Venue  # noqa: F401
 from app.models.venue_metrics import VenueMetrics  # noqa: F401

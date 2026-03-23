@@ -5,6 +5,7 @@ rankings, scarcity scores, and predictions.
 """
 import json
 import logging
+import math
 import statistics
 from collections import defaultdict
 from datetime import date, datetime, timezone, timedelta
@@ -21,6 +22,8 @@ from app.models.venue_rolling_metrics import VenueRollingMetrics
 logger = logging.getLogger(__name__)
 
 METRIC_TYPE_DAILY_TOTALS = "daily_totals"
+METRIC_TYPE_BY_NEIGHBORHOOD = "by_neighborhood"
+METRIC_TYPE_WEEKLY_SUMMARY = "weekly_summary"
 ROLLING_WINDOW_DAYS = 14
 
 
@@ -32,6 +35,68 @@ class ClosedEventLike(Protocol):
     slot_date: str | None
     bucket_id: str | None
     session_id: int | None  # when set, we only aggregate if session.aggregated_at IS NULL and set it after
+    # Optional (poll close path): enrich market/venue metrics
+    # closed_at, neighborhood, market, time_bucket
+
+
+def _volatility_score_from_moments(n: int, mean: float | None, sum_sq: float | None) -> float | None:
+    """Coefficient-of-variation style score from running sum of squared durations (0–100)."""
+    if n < 2 or mean is None or sum_sq is None:
+        return None
+    var = sum_sq / n - mean * mean
+    if var <= 0:
+        return 0.0
+    stdev = math.sqrt(var)
+    cv = stdev / max(mean, 1.0)
+    return round(min(100.0, cv * 42.0), 2)
+
+
+def _implied_sum_sq_for_row(closed_count: int, avg: float | None, stored: float | None) -> float:
+    """If sum_sq was never stored, approximate prior totals as n * mean^2 (legacy rows)."""
+    if stored is not None:
+        return stored
+    if closed_count <= 0 or avg is None:
+        return 0.0
+    return float(avg * avg) * float(closed_count)
+
+
+def _closed_at_hour_key(closed_at: datetime | None) -> str | None:
+    if closed_at is None:
+        return None
+    if closed_at.tzinfo is None:
+        closed_at = closed_at.replace(tzinfo=timezone.utc)
+    return str(closed_at.astimezone(timezone.utc).hour)
+
+
+def _upsert_market_by_neighborhood(
+    db: Session, window_date: date, market: str | None, neighborhood: str | None, delta: int
+) -> None:
+    mkey = (market or "unknown").strip() or "unknown"
+    nkey = (neighborhood or "unknown").strip() or "unknown"
+    row = (
+        db.query(MarketMetrics)
+        .filter(
+            MarketMetrics.window_date == window_date,
+            MarketMetrics.metric_type == METRIC_TYPE_BY_NEIGHBORHOOD,
+        )
+        .first()
+    )
+    value: dict[str, Any] = {}
+    if row and row.value_json:
+        try:
+            value = json.loads(row.value_json)
+        except json.JSONDecodeError:
+            value = {}
+    by_market = value.setdefault("by_market", {})
+    inner = by_market.setdefault(mkey, {})
+    inner[nkey] = int(inner.get(nkey, 0)) + delta
+    payload = json.dumps(value)
+    now = datetime.now(timezone.utc)
+    if row:
+        row.value_json = payload
+        row.computed_at = now
+    else:
+        db.add(MarketMetrics(window_date=window_date, metric_type=METRIC_TYPE_BY_NEIGHBORHOOD, value_json=payload))
 
 
 def aggregate_open_drops_into_metrics(db: Session, today: date) -> int:
@@ -95,6 +160,7 @@ def aggregate_open_drops_into_metrics(db: Session, today: date) -> int:
                 median_drop_duration_seconds=None,
                 scarcity_score=_scarcity_score(None, cnt, 0),
                 volatility_score=None,
+                closed_duration_sum_sq=None,
             ))
         count += 1
     db.commit()
@@ -131,17 +197,18 @@ def aggregate_closed_events_into_metrics(db: Session, closed_events: list[Closed
     if not to_process:
         return
 
-    by_venue_date: dict[tuple[str, date], list[tuple[int | None, str | None]]] = defaultdict(list)
+    by_venue_date: dict[tuple[str, date], list[Any]] = defaultdict(list)
     for e in to_process:
         vid = e.venue_id or "unknown"
         wd = _window_date_from_closed_event(e)
-        by_venue_date[(vid, wd)].append((e.drop_duration_seconds, e.venue_name))
+        by_venue_date[(vid, wd)].append(e)
 
-    for (venue_id, window_date), items in by_venue_date.items():
-        durations = [d for d, _ in items if d is not None]
-        venue_name = next((n for _, n in items if n), None)
-        added_closed = len(items)
+    for (venue_id, window_date), evs in by_venue_date.items():
+        durations = [x.drop_duration_seconds for x in evs if x.drop_duration_seconds is not None]
+        venue_name = next((x.venue_name for x in evs if x.venue_name), None)
+        added_closed = len(evs)
         added_avg = float(statistics.mean(durations)) if durations else None
+        batch_sq = sum(float(d) * float(d) for d in durations)
 
         row = db.query(VenueMetrics).filter(
             VenueMetrics.venue_id == venue_id,
@@ -155,13 +222,18 @@ def aggregate_closed_events_into_metrics(db: Session, closed_events: list[Closed
                 new_avg = (old_avg * old_closed + added_avg * added_closed) / new_closed
             else:
                 new_avg = added_avg if added_avg is not None else old_avg
+            prior_ss = _implied_sum_sq_for_row(old_closed, old_avg, row.closed_duration_sum_sq)
+            new_ss = prior_ss + batch_sq
             row.closed_count = new_closed
+            row.closed_duration_sum_sq = new_ss
             row.avg_drop_duration_seconds = new_avg
             row.scarcity_score = _scarcity_score(new_avg, row.new_drop_count or 0, new_closed)
+            row.volatility_score = _volatility_score_from_moments(new_closed, new_avg, new_ss)
             row.computed_at = datetime.now(timezone.utc)
         else:
             new_avg = added_avg
             scarcity = _scarcity_score(new_avg, added_closed, added_closed)
+            vol = _volatility_score_from_moments(added_closed, new_avg, batch_sq if batch_sq else None)
             db.add(VenueMetrics(
                 venue_id=venue_id,
                 venue_name=venue_name,
@@ -173,28 +245,62 @@ def aggregate_closed_events_into_metrics(db: Session, closed_events: list[Closed
                 avg_drop_duration_seconds=new_avg,
                 median_drop_duration_seconds=None,
                 scarcity_score=scarcity,
-                volatility_score=None,
+                volatility_score=vol,
+                closed_duration_sum_sq=batch_sq if batch_sq > 0 else None,
             ))
     db.commit()
 
-    # Market metrics: incremental update daily_totals per window_date
-    by_date: dict[date, list[int | None]] = defaultdict(list)
+    # Market metrics: incremental update daily_totals + closures_by_hour / closure prime split
+    by_date_events: dict[date, list[Any]] = defaultdict(list)
     for e in to_process:
         wd = _window_date_from_closed_event(e)
-        by_date[wd].append(e.drop_duration_seconds)
+        by_date_events[wd].append(e)
 
-    for wd, durations in by_date.items():
+    for wd, evs in by_date_events.items():
         row = db.query(MarketMetrics).filter(
             MarketMetrics.window_date == wd,
             MarketMetrics.metric_type == METRIC_TYPE_DAILY_TOTALS,
         ).first()
-        added_closed = len(durations)
-        added_avg = float(statistics.mean([d for d in durations if d is not None])) if any(d is not None for d in durations) else None
+        durations = [x.drop_duration_seconds for x in evs if x.drop_duration_seconds is not None]
+        added_closed = len(evs)
+        added_avg = float(statistics.mean(durations)) if durations else None
         try:
             if row and row.value_json:
                 value = json.loads(row.value_json)
             else:
-                value = {"total_new_drops": 0, "total_closed": 0, "avg_drop_duration_seconds": None, "event_count": 0, "weekday": wd.weekday(), "by_hour": {}}
+                value = {}
+            if not value:
+                value = {
+                    "total_new_drops": 0,
+                    "total_closed": 0,
+                    "avg_drop_duration_seconds": None,
+                    "event_count": 0,
+                    "weekday": wd.weekday(),
+                    "by_hour": {},
+                    "closures_by_hour": {},
+                    "closure_prime": 0,
+                    "closure_off_peak": 0,
+                }
+            value.setdefault("by_hour", {})
+            closures_by_hour: dict[str, int] = dict(value.get("closures_by_hour") or {})
+            for x in evs:
+                hk = _closed_at_hour_key(getattr(x, "closed_at", None))
+                if hk:
+                    closures_by_hour[hk] = closures_by_hour.get(hk, 0) + 1
+            value["closures_by_hour"] = closures_by_hour
+            cp = int(value.get("closure_prime") or 0)
+            cop = int(value.get("closure_off_peak") or 0)
+            for x in evs:
+                tb = getattr(x, "time_bucket", None)
+                if tb == "prime":
+                    cp += 1
+                elif tb == "off_peak":
+                    cop += 1
+            value["closure_prime"] = cp
+            value["closure_off_peak"] = cop
+            denom = cp + cop
+            value["closure_prime_share"] = round(cp / denom, 4) if denom else None
+
             old_closed = value.get("total_closed") or 0
             old_avg = value.get("avg_drop_duration_seconds")
             new_closed = old_closed + added_closed
@@ -205,6 +311,7 @@ def aggregate_closed_events_into_metrics(db: Session, closed_events: list[Closed
             value["total_closed"] = new_closed
             value["avg_drop_duration_seconds"] = new_avg
             value["event_count"] = (value.get("event_count") or 0) + added_closed
+            value.setdefault("weekday", wd.weekday())
             if row:
                 row.value_json = json.dumps(value)
                 row.computed_at = datetime.now(timezone.utc)
@@ -212,6 +319,16 @@ def aggregate_closed_events_into_metrics(db: Session, closed_events: list[Closed
                 db.add(MarketMetrics(window_date=wd, metric_type=METRIC_TYPE_DAILY_TOTALS, value_json=json.dumps(value)))
         except (TypeError, json.JSONDecodeError):
             logger.warning("aggregate_closed_events: skip market_metrics for %s", wd)
+    db.commit()
+
+    nh_counts: dict[tuple[date, str, str], int] = defaultdict(int)
+    for e in to_process:
+        wd = _window_date_from_closed_event(e)
+        m = (getattr(e, "market", None) or "unknown").strip() or "unknown"
+        n = (getattr(e, "neighborhood", None) or "unknown").strip() or "unknown"
+        nh_counts[(wd, m, n)] += 1
+    for (wd, m, n), delta in nh_counts.items():
+        _upsert_market_by_neighborhood(db, wd, m, n, delta)
     db.commit()
 
     # Mark availability_state rows as aggregated so the same close is never double-counted
@@ -352,6 +469,71 @@ def compute_venue_rolling_metrics(db: Session, today: date) -> int:
     return count
 
 
+def compute_market_weekly_summary(db: Session, today: date) -> None:
+    """
+    One row per ISO week (window_date = Monday): this_week vs prev_week totals from daily_totals.
+    """
+    week_start = today - timedelta(days=today.weekday())
+
+    def _sum_week(start: date) -> dict[str, int]:
+        totals = {"total_new_drops": 0, "total_closed": 0, "event_count": 0}
+        for i in range(7):
+            d = start + timedelta(days=i)
+            row = (
+                db.query(MarketMetrics)
+                .filter(
+                    MarketMetrics.window_date == d,
+                    MarketMetrics.metric_type == METRIC_TYPE_DAILY_TOTALS,
+                )
+                .first()
+            )
+            if not row or not row.value_json:
+                continue
+            try:
+                v = json.loads(row.value_json)
+            except json.JSONDecodeError:
+                continue
+            totals["total_new_drops"] += int(v.get("total_new_drops") or 0)
+            totals["total_closed"] += int(v.get("total_closed") or 0)
+            totals["event_count"] += int(v.get("event_count") or 0)
+        return totals
+
+    this_w = _sum_week(week_start)
+    prev_w = _sum_week(week_start - timedelta(days=7))
+    trend = None
+    if prev_w["event_count"] > 0:
+        trend = round((this_w["event_count"] - prev_w["event_count"]) / prev_w["event_count"], 4)
+    value_json = json.dumps(
+        {
+            "week_start": week_start.isoformat(),
+            "this_week": this_w,
+            "prev_week": prev_w,
+            "event_count_trend_vs_prev_week": trend,
+        }
+    )
+    now = datetime.now(timezone.utc)
+    existing = (
+        db.query(MarketMetrics)
+        .filter(
+            MarketMetrics.window_date == week_start,
+            MarketMetrics.metric_type == METRIC_TYPE_WEEKLY_SUMMARY,
+        )
+        .first()
+    )
+    if existing:
+        existing.value_json = value_json
+        existing.computed_at = now
+    else:
+        db.add(
+            MarketMetrics(
+                window_date=week_start,
+                metric_type=METRIC_TYPE_WEEKLY_SUMMARY,
+                value_json=value_json,
+            )
+        )
+    db.commit()
+
+
 def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
     """
     Aggregate drop_events with bucket_id < today_15:00 into venue_metrics and
@@ -402,6 +584,7 @@ def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
             "median_drop_duration_seconds": med_dur,
             "scarcity_score": scarcity,
             "volatility_score": None,
+            "closed_duration_sum_sq": None,
         })
 
     # Upsert venue_metrics (Postgres ON CONFLICT)
@@ -420,7 +603,6 @@ def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
                 "avg_drop_duration_seconds": stmt.excluded.avg_drop_duration_seconds,
                 "median_drop_duration_seconds": stmt.excluded.median_drop_duration_seconds,
                 "scarcity_score": stmt.excluded.scarcity_score,
-                "volatility_score": stmt.excluded.volatility_score,
             },
         )
         db.execute(stmt)
@@ -447,6 +629,10 @@ def aggregate_before_prune(db: Session, today: date) -> dict[str, int]:
             "event_count": len(day_events),
             "weekday": wd.weekday(),
             "by_hour": dict(by_hour),
+            "closures_by_hour": {},
+            "closure_prime": 0,
+            "closure_off_peak": 0,
+            "closure_prime_share": None,
         }
         stmt = pg_insert(MarketMetrics).values(
             window_date=wd,

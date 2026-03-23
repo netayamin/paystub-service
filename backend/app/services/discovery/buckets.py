@@ -33,6 +33,7 @@ from app.core.constants import (
     DISCOVERY_MAX_VENUES_PER_DATE as MAX_VENUES_PER_DATE_CONF,
     DROP_EVENTS_RETENTION_DAYS,
     METRICS_RETENTION_DAYS,
+    USER_BEHAVIOR_EVENTS_RETENTION_DAYS,
     VENUES_RETENTION_DAYS,
 )
 from app.core.discovery_config import (
@@ -69,6 +70,7 @@ from app.models.availability_state import AvailabilityState
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
 from app.models.slot_availability import SlotAvailability
+from app.models.user_behavior_event import UserBehaviorEvent
 from app.models.user_notification import UserNotification
 from app.models.venue import Venue
 from app.models.venue_rolling_metrics import VenueRollingMetrics
@@ -85,8 +87,19 @@ logger = logging.getLogger(__name__)
 # session_id: when set, aggregate marks session as aggregated (idempotency).
 ClosedEventData = namedtuple(
     "ClosedEventData",
-    ["venue_id", "venue_name", "drop_duration_seconds", "slot_date", "bucket_id", "session_id"],
-    defaults=(None,),
+    [
+        "venue_id",
+        "venue_name",
+        "drop_duration_seconds",
+        "slot_date",
+        "bucket_id",
+        "session_id",
+        "closed_at",
+        "neighborhood",
+        "market",
+        "time_bucket",
+    ],
+    defaults=(None, None, None, None, None),
 )
 
 # From discovery_config (env-driven); aliased for in-file use.
@@ -777,6 +790,10 @@ def run_poll_for_bucket(
                     slot_date=row.slot_date or date_str,
                     bucket_id=bid,
                     session_id=open_state.id,
+                    closed_at=now,
+                    neighborhood=row.neighborhood,
+                    market=row.market or market,
+                    time_bucket=row.time_bucket,
                 ))
 
     bucket_row.prev_slot_ids_json = json.dumps(sorted(curr_set))
@@ -1063,6 +1080,16 @@ def prune_old_notifications(db: Session) -> int:
     db.commit()
     if n:
         logger.info("Pruned %s user_notifications (created_at > %s days)", n, NOTIFICATIONS_RETENTION_DAYS)
+    return n
+
+
+def prune_old_user_behavior_events(db: Session) -> int:
+    """Remove client behavior events older than USER_BEHAVIOR_EVENTS_RETENTION_DAYS."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=USER_BEHAVIOR_EVENTS_RETENTION_DAYS)
+    n = db.query(UserBehaviorEvent).filter(UserBehaviorEvent.occurred_at < cutoff).delete(synchronize_session=False)
+    db.commit()
+    if n:
+        logger.info("Pruned %s user_behavior_events (occurred_at older than %s days)", n, USER_BEHAVIOR_EVENTS_RETENTION_DAYS)
     return n
 
 

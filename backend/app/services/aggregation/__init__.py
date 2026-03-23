@@ -9,6 +9,7 @@ from app.services.aggregation.aggregate import (
     aggregate_before_prune,
     aggregate_closed_events_into_metrics,
     aggregate_open_drops_into_metrics,
+    compute_market_weekly_summary,
     compute_venue_rolling_metrics,
 )
 
@@ -16,5 +17,6 @@ __all__ = [
     "aggregate_before_prune",
     "aggregate_closed_events_into_metrics",
     "aggregate_open_drops_into_metrics",
+    "compute_market_weekly_summary",
     "compute_venue_rolling_metrics",
 ]

@@ -22,6 +22,7 @@ ALL_TABLE_NAMES = (
     "push_tokens",
     "notify_preferences",
     "user_notifications",
+    "user_behavior_events",
 )
 
 # Tables cleared when resetting discovery state (TRUNCATE). Order matters for FK if any.

@@ -29,6 +29,19 @@ struct TopOpportunityCardView: View {
     private var demandLabel: String {
         drop.topOpportunityDemandLabel ?? "POPULAR"
     }
+
+    private func openResy(_ url: URL) {
+        APIService.shared.trackBehaviorEvents(events: [
+            BehaviorTrackEvent(
+                eventType: "resy_opened",
+                venueId: drop.venueKey,
+                venueName: drop.name,
+                notificationId: nil,
+                market: drop.market
+            )
+        ])
+        UIApplication.shared.open(url)
+    }
     
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -95,7 +108,7 @@ struct TopOpportunityCardView: View {
                     Group {
                         if let url = resyUrl {
                             Button {
-                                UIApplication.shared.open(url)
+                                openResy(url)
                             } label: {
                                 timeLabelContent
                             }
@@ -111,7 +124,7 @@ struct TopOpportunityCardView: View {
 
                     if resyUrl != nil {
                         Button {
-                            UIApplication.shared.open(resyUrl!)
+                            openResy(resyUrl!)
                         } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 16, weight: .semibold))

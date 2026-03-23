@@ -26,6 +26,8 @@ class VenueMetrics(Base):
     # Duration (from CLOSED events)
     avg_drop_duration_seconds = Column(Float, nullable=True)
     median_drop_duration_seconds = Column(Float, nullable=True)
+    # Sum of squared closure durations (same n as closed_count when backfilled); enables variance / volatility_score.
+    closed_duration_sum_sq = Column(Float, nullable=True)
 
     # Scores (0–100 or similar; higher = harder / more volatile). Good for ranking and ML features.
     scarcity_score = Column(Float, nullable=True)

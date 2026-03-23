@@ -61,6 +61,7 @@ from app.services.discovery.buckets import (
     prune_extra_drop_events_per_open_slot,
     prune_old_market_metrics,
     prune_old_notifications,
+    prune_old_user_behavior_events,
     prune_old_slot_availability,
     prune_old_venue_metrics,
     prune_old_venue_rolling_metrics,
@@ -471,6 +472,7 @@ async def prune_now(db: Session = Depends(get_db)):
         "slot_availability": _prune_one(db, "slot_availability", prune_old_slot_availability, db, today),
         "availability_state": _prune_one(db, "availability_state", prune_old_availability_state, db, today),
         "user_notifications": _prune_one(db, "user_notifications", prune_old_notifications, db),
+        "user_behavior_events": _prune_one(db, "user_behavior_events", prune_old_user_behavior_events, db),
         "venue_rolling_metrics": _prune_one(db, "venue_rolling_metrics", prune_old_venue_rolling_metrics, db, today, keep_days=60),
         "venue_metrics": _prune_one(db, "venue_metrics", prune_old_venue_metrics, db, today),
         "market_metrics": _prune_one(db, "market_metrics", prune_old_market_metrics, db, today),
@@ -610,14 +612,23 @@ async def venue_rolling_metrics(
 async def market_metrics(
     db: Session = Depends(get_db),
     days: int = 14,
+    metric_type: list[str] | None = Query(
+        None,
+        description="Repeatable. Default daily_totals. Examples: daily_totals, by_neighborhood, weekly_summary",
+    ),
 ):
-    """Market-level aggregates (daily totals, etc.) for the last `days`. Good for trends and predictions."""
+    """Market-level aggregates for the last `days` (calendar window_date). Default: daily_totals only."""
     try:
         since = date.today() - timedelta(days=days)
+        types = metric_type if metric_type else ["daily_totals"]
+        since_cutoff = since
+        if "weekly_summary" in types:
+            # Rows keyed by week-start Monday; widen lookback so recent weeks appear
+            since_cutoff = date.today() - timedelta(days=days + 21)
         rows = (
             db.query(MarketMetrics)
-            .filter(MarketMetrics.window_date >= since, MarketMetrics.metric_type == "daily_totals")
-            .order_by(MarketMetrics.window_date.desc())
+            .filter(MarketMetrics.window_date >= since_cutoff, MarketMetrics.metric_type.in_(types))
+            .order_by(MarketMetrics.window_date.desc(), MarketMetrics.metric_type.asc())
             .all()
         )
         return {
@@ -631,6 +642,7 @@ async def market_metrics(
                 for r in rows
             ],
             "days": days,
+            "metric_types": types,
         }
     except Exception as e:
         logger.warning("market-metrics failed: %s", e, exc_info=True)
@@ -828,6 +840,7 @@ async def row_counts(db: Session = Depends(get_db)):
         "venues",
         "feed_cache",
         "user_notifications",
+        "user_behavior_events",
         "notify_preferences",
     )
     out = {}
