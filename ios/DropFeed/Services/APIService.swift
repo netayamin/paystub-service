@@ -2,34 +2,48 @@ import Foundation
 
 /// API service for the Drop Feed backend.
 /// Base URL is read from Info.plist key `API_BASE_URL` (e.g. set by `make ngrok-ios`).
+///
+/// On a **physical device**, `http://127.0.0.1` / `localhost` in Info.plist is ignored (that’s the phone, not your Mac); the app falls back to the deploy host unless you set a real URL (ngrok HTTPS, or `http://192.168.x.x:8000` on the same Wi‑Fi).
 final class APIService {
     static let shared = APIService()
 
     /// API origin only (no trailing slash, no `/chat` suffix — paths add `/chat/...` themselves).
-    private let baseURL: String = {
-        let raw: String = {
-            if let url = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String, !url.isEmpty {
-                return url.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            #if targetEnvironment(simulator)
-            return "http://127.0.0.1:8000"
-            #else
+    private let baseURL: String = APIService.resolvedAPIBaseOrigin
+
+    /// Normalized origin actually used for requests (same logic as `baseURL`).
+    private static let resolvedAPIBaseOrigin: String = normalizeAPIBaseOrigin(resolveAPIBaseOriginRaw())
+
+    private static func resolveAPIBaseOriginRaw() -> String {
+        let plist = (Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        #if targetEnvironment(simulator)
+        if !plist.isEmpty { return plist }
+        return "http://127.0.0.1:8000"
+        #else
+        if plist.isEmpty { return "http://18.118.55.231:8000" }
+        if plistHostIsDeviceLoopback(plist) {
             return "http://18.118.55.231:8000"
-            #endif
-        }()
-        var s = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        while s.hasSuffix("/") {
-            s.removeLast()
         }
-        // Avoid /chat/chat/... if someone set API_BASE_URL to .../chat
+        return plist
+        #endif
+    }
+
+    /// True when the URL points at this device (useless for reaching a Mac-hosted API).
+    private static func plistHostIsDeviceLoopback(_ string: String) -> Bool {
+        guard let u = URL(string: string), let host = u.host?.lowercased() else { return false }
+        if host == "localhost" || host == "127.0.0.1" { return true }
+        return host.hasPrefix("127.")
+    }
+
+    private static func normalizeAPIBaseOrigin(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        while s.hasSuffix("/") { s.removeLast() }
         if s.hasSuffix("/chat") {
             s = String(s.dropLast(5))
-            while s.hasSuffix("/") {
-                s.removeLast()
-            }
+            while s.hasSuffix("/") { s.removeLast() }
         }
         return s
-    }()
+    }
     
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -67,11 +81,12 @@ final class APIService {
             return """
             Can’t reach \(Self.sharedBaseURLDisplay).
 
-            On a real iPhone, 127.0.0.1 is the phone, not your Mac. Set Info.plist `API_BASE_URL` to your Mac’s Wi‑Fi address, e.g. http://192.168.1.12:8000, then run:
+            On a real iPhone: use ngrok or your Mac’s LAN IP (not 127.0.0.1).
 
-            `poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000`
+            • ngrok: from repo root run make ngrok-ios, then rebuild the app (updates Info.plist).
+            • Same Wi‑Fi: set API_BASE_URL to http://192.168.x.x:8000 and run uvicorn with --host 0.0.0.0 --port 8000.
 
-            Phone and Mac must be on the same network.
+            If Info.plist still has 127.0.0.1, this build ignores it and uses the deploy server instead.
             """
             #endif
         case .notConnectedToInternet:
@@ -82,23 +97,7 @@ final class APIService {
     }
 
     /// For error copy only (no secrets).
-    private static var sharedBaseURLDisplay: String {
-        let raw: String = {
-            if let url = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String, !url.isEmpty {
-                return url.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            #if targetEnvironment(simulator)
-            return "http://127.0.0.1:8000"
-            #else
-            return "http://18.118.55.231:8000"
-            #endif
-        }()
-        var s = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        while s.hasSuffix("/") { s.removeLast() }
-        if s.hasSuffix("/chat") { s = String(s.dropLast(5)) }
-        while s.hasSuffix("/") { s.removeLast() }
-        return s
-    }
+    private static var sharedBaseURLDisplay: String { resolvedAPIBaseOrigin }
     
     // MARK: - Feed
     
