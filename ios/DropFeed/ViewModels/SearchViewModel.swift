@@ -136,14 +136,9 @@ final class SearchViewModel: ObservableObject {
     }
 
     /// Party sizes sent to `/just-opened`; `nil` means omit param (any party).
+    /// Explore omits party on the wire so `/just-opened` returns the full day inventory; party segment is display-only.
     private var effectivePartySizesForAPI: [Int]? {
-        if exploreTabActive {
-            switch explorePartySegment {
-            case .two: return [2]
-            case .four: return [4, 6, 8]
-            case .anyParty: return nil
-            }
-        }
+        if exploreTabActive { return nil }
         return partyAPIFilter
     }
 
@@ -189,14 +184,19 @@ final class SearchViewModel: ObservableObject {
                 timeBefore: nil
             )
             var ranked = resp.rankedBoard ?? []
-            // Explore: show date-bucket inventory (just_opened + still_open), not curated ranked_board
-            // (ranked cards often lack a matching top-level date_str after server filters).
+            // Explore: prefer date-bucket inventory (just_opened + still_open).
+            // Only replace ranked_board when the filtered inventory is non-empty — otherwise we'd wipe
+            // ranked_board on date-string mismatches and show an empty grid.
             if exploreTabActive {
                 if let inv = resp.dayInventory, !inv.isEmpty {
-                    let allowed = selectedDates
-                    ranked = inv.filter { drop in
+                    let allowedNorm = Set(selectedDates.map { Self.normalizeISODateString($0) })
+                    let filtered = inv.filter { drop in
                         guard let ds = drop.dateStr, !ds.isEmpty else { return false }
-                        return allowed.isEmpty || allowed.contains(ds)
+                        let dn = Self.normalizeISODateString(ds)
+                        return selectedDates.isEmpty || allowedNorm.contains(dn)
+                    }
+                    if !filtered.isEmpty {
+                        ranked = filtered
                     }
                 }
             }
@@ -239,6 +239,18 @@ final class SearchViewModel: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// Calendar day key `YYYY-MM-DD` from API values that may include time (`2026-03-23T00:00:00Z`).
+    private static func normalizeISODateString(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.count >= 10 else { return t }
+        let head = String(t.prefix(10))
+        let parts = head.split(separator: "-")
+        guard parts.count == 3, parts[0].count == 4, parts[1].count == 2, parts[2].count == 2 else {
+            return t
+        }
+        return head
+    }
 
     private static func userFacingError(_ e: Error) -> String {
         if let u = e as? URLError {

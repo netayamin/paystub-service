@@ -418,7 +418,17 @@ def filter_snapshot_for_request(
     """Build a filtered response dict from the shared snapshot (non-mutating).
     Pass market_filter=["nyc"] or ["miami"] to return only one city's data.
     """
-    date_set = set(date_filter) if date_filter else None
+    def _calendar_day_key(s: str | None) -> str | None:
+        if not s:
+            return None
+        t = str(s).strip()
+        if len(t) >= 10 and t[4] == "-" and t[7] == "-":
+            return t[:10]
+        return t or None
+
+    date_set = {_calendar_day_key(d) for d in (date_filter or []) if _calendar_day_key(d)}
+    date_set.discard(None)
+    date_set = date_set or None
     ps_set = set(party_sizes) if party_sizes else None
     mkt_set = set(market_filter) if market_filter else None
 
@@ -430,7 +440,8 @@ def filter_snapshot_for_request(
     def _filter_days(days: list[dict]) -> list[dict]:
         out = []
         for day in days:
-            if date_set and day.get("date_str") not in date_set:
+            ds = _calendar_day_key(day.get("date_str"))
+            if date_set and (ds is None or ds not in date_set):
                 continue
             venues = day.get("venues") or []
             if ps_set:
@@ -446,7 +457,8 @@ def filter_snapshot_for_request(
     def _filter_cards(cards: list[dict]) -> list[dict]:
         out = []
         for c in cards:
-            if date_set and c.get("date_str") and str(c["date_str"]).strip() not in date_set:
+            cds = _calendar_day_key(c.get("date_str"))
+            if date_set and cds is not None and cds not in date_set:
                 continue
             if ps_set and not _venue_matches_party(c, ps_set):
                 continue

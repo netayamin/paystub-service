@@ -780,7 +780,7 @@ struct JustOpenedResponse {
     private static func dropsFromVenueDayBuckets(_ days: [[String: Any]]) -> [Drop] {
         var result: [Drop] = []
         for day in days {
-            guard let dateStr = day["date_str"] as? String,
+            guard let dateStr = dayStringFromJSON(day["date_str"]),
                   let venues = day["venues"] as? [[String: Any]] else { continue }
             for venue in venues {
                 guard let name = (venue["name"] as? String)?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { continue }
@@ -824,6 +824,23 @@ struct JustOpenedResponse {
             }
         }
         return result
+    }
+
+    /// `date_str` from JSON may be `String` or occasionally another scalar; normalize to `YYYY-MM-DD`.
+    private static func dayStringFromJSON(_ value: Any?) -> String? {
+        if value is NSNull { return nil }
+        if let s = value as? String {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty { return nil }
+            if t.count >= 10 { return String(t.prefix(10)) }
+            return t
+        }
+        if let n = value as? NSNumber {
+            // Unusual but avoids silently dropping a day bucket.
+            let t = n.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        return nil
     }
 }
 

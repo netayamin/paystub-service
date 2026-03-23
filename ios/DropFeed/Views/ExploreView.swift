@@ -304,7 +304,7 @@ struct ExploreView: View {
                     .pickerStyle(.inline)
                 }
                 Section {
-                    Text("Results refresh for the selected day and party.")
+                    Text("Party size updates labels on cards. Inventory is loaded for the full selected day.")
                         .font(.system(size: 13))
                         .foregroundColor(CreamEditorialTheme.textTertiary)
                 }
