@@ -59,6 +59,8 @@ struct Drop: Codable, Identifiable {
     let dropFrequencyPerDay: Double?
     let isHotspot: Bool?
     let neighborhood: String?
+    /// e.g. nyc, miami — from API `market` when present.
+    let market: String?
     let trendPct: Double?
     let avgDropDurationSeconds: Double?
     /// Server-computed 1–99 from the same signals as backend `build_feed` / `_top_opportunity_score`.
@@ -139,6 +141,7 @@ struct Drop: Codable, Identifiable {
         dropFrequencyPerDay = try c.decodeIfPresent(Double.self, forKey: .dropFrequencyPerDay)
         isHotspot = try c.decodeIfPresent(Bool.self, forKey: .isHotspot)
         neighborhood = try c.decodeIfPresent(String.self, forKey: .neighborhood)
+        market = try c.decodeIfPresent(String.self, forKey: .market)
         trendPct = try c.decodeIfPresent(Double.self, forKey: .trendPct)
         avgDropDurationSeconds = try c.decodeIfPresent(Double.self, forKey: .avgDropDurationSeconds)
         snagScore = Self.decodeFlexibleInt(c, forKey: .snagScore)
@@ -208,6 +211,7 @@ struct Drop: Codable, Identifiable {
         dropFrequencyPerDay: Double? = nil,
         isHotspot: Bool? = nil,
         neighborhood: String? = nil,
+        market: String? = nil,
         trendPct: Double? = nil,
         avgDropDurationSeconds: Double? = nil,
         snagScore: Int? = nil,
@@ -268,6 +272,7 @@ struct Drop: Codable, Identifiable {
         self.dropFrequencyPerDay = dropFrequencyPerDay
         self.isHotspot = isHotspot
         self.neighborhood = neighborhood
+        self.market = market
         self.trendPct = trendPct
         self.avgDropDurationSeconds = avgDropDurationSeconds
         self.snagScore = snagScore
@@ -349,6 +354,7 @@ struct Drop: Codable, Identifiable {
         case dropFrequencyPerDay = "drop_frequency_per_day"
         case isHotspot = "is_hotspot"
         case neighborhood
+        case market
         case trendPct = "trend_pct"
         case avgDropDurationSeconds = "avg_drop_duration_seconds"
         case snagScore = "snag_score"
@@ -707,6 +713,7 @@ struct JustOpenedResponse: Codable {
                     dropFrequencyPerDay: venue["drop_frequency_per_day"] as? Double,
                     isHotspot: (venue["is_hotspot"] as? NSNumber)?.boolValue ?? (venue["is_hotspot"] as? Bool),
                     neighborhood: venue["neighborhood"] as? String,
+                    market: venue["market"] as? String,
                     eligibilityEvidence: venue["eligibility_evidence"] as? String,
                     userFacingOpenedAt: venue["user_facing_opened_at"] as? String,
                     bucketSuccessfulPollCount: (venue["bucket_successful_poll_count"] as? NSNumber)?.intValue
