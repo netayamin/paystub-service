@@ -70,7 +70,7 @@ struct LikelyToOpenSection: View {
         }()
         let imgURL: URL? = {
             guard let s = venue.imageUrl, !s.isEmpty else { return nil }
-            return URL(string: s)
+            return URL(dropFeedMediaString: s) ?? URL(string: s)
         }()
 
         return VStack(alignment: .leading, spacing: 0) {

@@ -71,7 +71,13 @@ def _get_apns_jwt() -> str | None:
         return None
 
 
-def send_apns(device_token: str, title: str, body: str, bundle_id: str | None = None) -> bool:
+def send_apns(
+    device_token: str,
+    title: str,
+    body: str,
+    bundle_id: str | None = None,
+    custom_data: dict[str, str] | None = None,
+) -> bool:
     """
     Send one push notification to an iOS device via APNs.
     Returns True if sent successfully, False otherwise (config missing or APNs error).
@@ -93,12 +99,16 @@ def send_apns(device_token: str, title: str, body: str, bundle_id: str | None = 
         "apns-push-type": "alert",
         "apns-priority": "10",
     }
-    payload = {
+    payload: dict = {
         "aps": {
             "alert": {"title": title, "body": body},
             "sound": "default",
         }
     }
+    if custom_data:
+        for k, v in custom_data.items():
+            if v is not None and str(v).strip():
+                payload[str(k)] = str(v).strip()
     try:
         with httpx.Client(http2=True, timeout=10.0) as client:
             resp = client.post(url, json=payload, headers=headers)
@@ -117,9 +127,11 @@ def send_push_for_new_drops(
     slot_date: str | None = None,
     slot_time: str | None = None,
     bundle_id: str | None = None,
+    resy_url: str | None = None,
 ) -> int:
     """
     Send "New drop: {venue_name}" push to all given device tokens.
+    Optional resy_url is attached at the payload root for the app (open on tap).
     Returns count of successful sends.
     """
     title = "New drop"
@@ -128,8 +140,11 @@ def send_push_for_new_drops(
         parts = [p for p in (slot_date, slot_time) if p]
         if parts:
             body = f"{venue_name} — {', '.join(parts)}"
+    extra: dict[str, str] = {}
+    if resy_url and str(resy_url).strip():
+        extra["resy_url"] = str(resy_url).strip()[:1024]
     sent = 0
     for token in device_tokens:
-        if send_apns(token, title, body, bundle_id=bundle_id):
+        if send_apns(token, title, body, bundle_id=bundle_id, custom_data=extra or None):
             sent += 1
     return sent

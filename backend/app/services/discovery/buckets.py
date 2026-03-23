@@ -67,7 +67,7 @@ from app.models.user_notification import UserNotification
 from app.models.venue import Venue
 from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.discovery.likely_open_scoring import score_likely_open_rank
-from app.services.discovery.venue_profile import venue_profile_from_payload
+from app.services.discovery.venue_profile import normalize_http_url, venue_profile_from_payload
 from app.services.aggregation import aggregate_closed_events_into_metrics
 from app.services.providers import get_provider
 
@@ -1050,7 +1050,9 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
                             or payload.get("images", {}).get("small")
                         )
                         if img:
-                            image_url_by_vid[vks] = img
+                            nu = normalize_http_url(str(img).strip())
+                            if nu:
+                                image_url_by_vid[vks] = nu
                     except (ValueError, AttributeError, TypeError):
                         pass
                 if opened_at is not None:
@@ -1077,6 +1079,7 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
         vp = venue_profile_by_id.get(vk)
         nb = neighborhood_by_vid.get(vk) or (vp.neighborhood if vp and vp.neighborhood else None)
         im = image_url_by_vid.get(vk) or (vp.image_url if vp and vp.image_url else None)
+        im = normalize_http_url(im) if im else None
         out.append(
             {
                 "venue_id": r.venue_id,

@@ -268,6 +268,7 @@ def rebuild_snapshot(db: Session) -> None:
         likely_to_open = get_likely_to_open_venues(db, today)
 
         for i, item in enumerate(likely_to_open):
+            item["name"] = item.get("venue_name") or item.get("name") or ""
             enrich_likely_open_item(item, i)
 
         from app.services.discovery.recent_missed import build_just_missed_payload

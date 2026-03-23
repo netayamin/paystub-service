@@ -1521,7 +1521,7 @@ private struct FeedPredictWillOpenSection: View {
                                     .font(.system(size: 12, weight: .semibold))
                             }
                             .foregroundColor(SnagDesignSystem.salmonAccent)
-                            .frame(width: 148, height: 168)
+                            .frame(width: 148, height: 188)
                             .background(Color(white: 0.14))
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
@@ -1536,26 +1536,15 @@ private struct FeedPredictWillOpenSection: View {
         }
     }
 
-    private func predictSubtitle(_ venue: LikelyToOpenVenue) -> String {
-        if let h = venue.predictedDropHint, !h.isEmpty {
-            return h
-        }
-        if let t = venue.predictedDropTime, !t.isEmpty {
-            return t
-        }
-        if let d = venue.daysWithDrops {
-            return "Tables \(d)× / 14d"
-        }
-        return "Watch for releases"
-    }
-
     private func predictCard(_ venue: LikelyToOpenVenue) -> some View {
         let watched = isWatched(venue.name)
         let score = venue.probability.map { min(99, max(1, $0)) }
         let imgURL: URL? = {
             guard let s = venue.imageUrl, !s.isEmpty else { return nil }
-            return URL(string: s)
+            return URL(dropFeedMediaString: s) ?? URL(string: s)
         }()
+        let hint = venue.predictedDropHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let window = venue.predictedDropTime?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return ZStack(alignment: .topTrailing) {
             VStack(alignment: .leading, spacing: 0) {
@@ -1568,10 +1557,10 @@ private struct FeedPredictWillOpenSection: View {
                         SnagDesignSystem.darkElevated
                     }
                 }
-                .frame(width: 148, height: 72)
+                .frame(width: 148, height: 80)
                 .clipped()
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text("FORECAST")
                             .font(.system(size: 8, weight: .heavy))
@@ -1588,16 +1577,36 @@ private struct FeedPredictWillOpenSection: View {
                         .foregroundColor(SnagDesignSystem.darkTextPrimary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.85)
-                    Text(predictSubtitle(venue))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
-                        .lineLimit(2)
+                    if let h = hint, !h.isEmpty {
+                        Text(h)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(SnagDesignSystem.mint)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let w = window, !w.isEmpty, w != hint {
+                        Text(w)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .lineLimit(2)
+                    }
+                    if (hint == nil || hint?.isEmpty == true), (window == nil || window?.isEmpty == true) {
+                        if let d = venue.daysWithDrops {
+                            Text("Tables \(d)× / 14d")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        } else {
+                            Text("Watch for releases")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        }
+                    }
                 }
                 .padding(10)
                 .frame(width: 148, alignment: .leading)
                 .background(Color(white: 0.12))
             }
-            .frame(width: 148, height: 168, alignment: .top)
+            .frame(width: 148, height: 188, alignment: .top)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -1617,7 +1626,7 @@ private struct FeedPredictWillOpenSection: View {
             .buttonStyle(.plain)
             .padding(8)
         }
-        .frame(width: 148, height: 168)
+        .frame(width: 148, height: 188)
     }
 }
 
@@ -1859,7 +1868,7 @@ private struct InventoryPredictionRow: View {
 
     private var imageURL: URL? {
         guard let s = venue.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
+        return URL(dropFeedMediaString: s) ?? URL(string: s)
     }
 
     private var statusTag: (String, Color) {

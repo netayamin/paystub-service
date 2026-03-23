@@ -14,6 +14,7 @@ from app.db.session import SessionLocal
 from app.models.drop_event import DropEvent
 from app.models.notify_preference import NotifyPreference
 from app.models.push_token import PushToken
+from app.services.discovery.venue_profile import normalize_http_url
 from app.services.push import send_push_for_new_drops
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,9 @@ def run_push_for_new_drops_job() -> None:
                 if row.payload_json:
                     try:
                         p = json.loads(row.payload_json)
-                        resy_url = p.get("resy_url") or p.get("book_url")
+                        raw_u = p.get("resy_url") or p.get("resyUrl") or p.get("book_url")
+                        if isinstance(raw_u, str) and raw_u.strip():
+                            resy_url = normalize_http_url(raw_u.strip())
                     except Exception:
                         pass
                 n = send_push_for_new_drops(

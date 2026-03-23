@@ -48,6 +48,7 @@
 		A3000001 /* AuthSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000002 /* AuthSessionManager.swift */; };
 		A3000003 /* LoginFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000004 /* LoginFlowView.swift */; };
 		A3000007 /* LoginAnimatedSpotsHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000008 /* LoginAnimatedSpotsHero.swift */; };
+		B1000201 /* URL+DropFeedMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000200 /* URL+DropFeedMedia.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -95,6 +96,7 @@
 		A3000002 /* AuthSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSessionManager.swift; sourceTree = "<group>"; };
 		A3000004 /* LoginFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginFlowView.swift; sourceTree = "<group>"; };
 		A3000008 /* LoginAnimatedSpotsHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginAnimatedSpotsHero.swift; sourceTree = "<group>"; };
+		B1000200 /* URL+DropFeedMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+DropFeedMedia.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -117,6 +119,7 @@
 				A1000033 /* Services */,
 				A1000043 /* Theme */,
 				A100010A /* Helpers */,
+				B1000202 /* Extensions */,
 				A1000034 /* Views */,
 				A1000035 /* ViewModels */,
 				A1000018 /* Assets.xcassets */,
@@ -210,6 +213,14 @@
 				A1000110 /* RestaurantImageCache.swift */,
 			);
 			path = Helpers;
+			sourceTree = "<group>";
+		};
+		B1000202 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				B1000200 /* URL+DropFeedMedia.swift */,
+			);
+			path = Extensions;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -343,6 +354,7 @@
 				A3000001 /* AuthSessionManager.swift in Sources */,
 				A3000003 /* LoginFlowView.swift in Sources */,
 				A3000007 /* LoginAnimatedSpotsHero.swift in Sources */,
+				B1000201 /* URL+DropFeedMedia.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

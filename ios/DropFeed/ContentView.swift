@@ -597,7 +597,7 @@ private struct LikelyOpenRow: View {
 
     private var imageURL: URL? {
         guard let s = venue.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
+        return URL(dropFeedMediaString: s) ?? URL(string: s)
     }
 
     /// Probability shown in the card — uses the real `probability` field from backend metrics.

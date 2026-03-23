@@ -85,8 +85,13 @@ final class SavedViewModel: ObservableObject {
             watchedVenues.insert(key)
             Task {
                 if let watch = try? await service.addWatch(venueName: name) {
+                    let returned = watch.venueName.trimmingCharacters(in: .whitespacesAndNewlines)
                     watchIds[name] = watch.id
                     watchIds[key] = watch.id
+                    if !returned.isEmpty {
+                        watchIds[returned] = watch.id
+                        watchIds[returned.lowercased()] = watch.id
+                    }
                 }
             }
         }
