@@ -4,6 +4,8 @@ import SwiftUI
 struct CustomTabBar: View {
     @Binding var selectedTab: Int
     var alertBadgeCount: Int = 0
+    /// Cream / white dock with outline-style tabs (feed home); Explore/Profile keep contrast when this tab is active.
+    var useLightChrome: Bool = false
 
     private let iconWellSize: CGFloat = 44
     private let pillRowHeight: CGFloat = 62
@@ -11,9 +13,9 @@ struct CustomTabBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            tabButton(tag: 0, icon: "location.north.circle.fill", label: "FEED")
-            tabButton(tag: 1, icon: "safari.fill", label: "EXPLORE", badge: alertBadgeCount)
-            tabButton(tag: 2, icon: "person.fill", label: "PROFILE")
+            tabButton(tag: 0, icon: feedIcon, label: "FEED")
+            tabButton(tag: 1, icon: exploreIcon, label: "EXPLORE", badge: alertBadgeCount)
+            tabButton(tag: 2, icon: profileIcon, label: "PROFILE")
         }
         .padding(.horizontal, 8)
         .padding(.top, 10)
@@ -28,21 +30,48 @@ struct CustomTabBar: View {
                 topTrailingRadius: topCornerRadius,
                 style: .continuous
             )
-            .fill(SnagDesignSystem.tabBarDarkSurface)
+            .fill(useLightChrome ? CreamEditorialTheme.cardWhite : SnagDesignSystem.tabBarDarkSurface)
+            .shadow(color: useLightChrome ? CreamEditorialTheme.cardShadow : .clear, radius: 12, x: 0, y: -4)
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(useLightChrome ? CreamEditorialTheme.hairline : Color.white.opacity(0.06))
                     .frame(height: 0.5)
             }
         }
         .background {
-            SnagDesignSystem.tabBarDarkSurface
+            (useLightChrome ? CreamEditorialTheme.canvas : SnagDesignSystem.tabBarDarkSurface)
                 .ignoresSafeArea(edges: .bottom)
         }
     }
 
+    private var feedIcon: String {
+        useLightChrome ? "dot.radiowaves.left.and.right" : "location.north.circle.fill"
+    }
+
+    private var exploreIcon: String {
+        useLightChrome ? "safari" : "safari.fill"
+    }
+
+    private var profileIcon: String {
+        useLightChrome ? "person" : "person.fill"
+    }
+
     private func tabAccent(for tag: Int) -> Color {
-        tag == 1 ? SnagDesignSystem.exploreRed : SnagDesignSystem.salmonAccent
+        if useLightChrome {
+            if tag == 1 { return SnagDesignSystem.exploreRed }
+            return tag == 0 ? CreamEditorialTheme.streamRed : CreamEditorialTheme.textPrimary
+        }
+        return tag == 1 ? SnagDesignSystem.exploreRed : SnagDesignSystem.salmonAccent
+    }
+
+    private func tabInactiveColor() -> Color {
+        useLightChrome ? CreamEditorialTheme.textTertiary : SnagDesignSystem.darkTextMuted
+    }
+
+    private func selectedWellFill() -> Color {
+        useLightChrome
+            ? CreamEditorialTheme.canvas.opacity(0.95)
+            : SnagDesignSystem.tabBarDarkSelectedWell
     }
 
     private func tabButton(tag: Int, icon: String, label: String, badge: Int = 0) -> some View {
@@ -57,13 +86,17 @@ struct CustomTabBar: View {
                     ZStack {
                         if on {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(SnagDesignSystem.tabBarDarkSelectedWell)
+                                .fill(selectedWellFill())
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(useLightChrome ? CreamEditorialTheme.hairline : Color.clear, lineWidth: 1)
+                                )
                                 .frame(width: iconWellSize + 8, height: iconWellSize + 4)
                         }
                         Image(systemName: icon)
                             .font(.system(size: 20, weight: on ? .semibold : .regular))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundColor(on ? tabAccent(for: tag) : SnagDesignSystem.darkTextMuted)
+                            .symbolRenderingMode(useLightChrome ? .monochrome : .hierarchical)
+                            .foregroundColor(on ? tabAccent(for: tag) : tabInactiveColor())
                     }
                     .frame(width: iconWellSize + 8, height: iconWellSize + 4)
 
@@ -84,7 +117,7 @@ struct CustomTabBar: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
-                    .foregroundColor(on ? tabAccent(for: tag) : SnagDesignSystem.darkTextMuted)
+                    .foregroundColor(on ? tabAccent(for: tag) : tabInactiveColor())
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())

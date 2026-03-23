@@ -92,3 +92,28 @@ enum SnagDesignSystem {
     /// Secondary labels (~#8E8E93).
     static let exploreSecondaryLabel = Color(red: 142 / 255, green: 142 / 255, blue: 147 / 255)
 }
+
+// MARK: - Cream editorial home (light mockup: warm canvas + serif + soft cards)
+
+enum CreamEditorialTheme {
+    static let canvas = Color(red: 250 / 255, green: 248 / 255, blue: 244 / 255)
+    static let cardWhite = Color.white
+    static let textPrimary = Color(red: 18 / 255, green: 18 / 255, blue: 20 / 255)
+    static let textSecondary = Color(red: 100 / 255, green: 100 / 255, blue: 108 / 255)
+    static let textTertiary = Color(red: 140 / 255, green: 140 / 255, blue: 148 / 255)
+    static let hairline = Color.black.opacity(0.09)
+    static let peachBadgeFill = Color(red: 255 / 255, green: 236 / 255, blue: 228 / 255)
+    static let peachBadgeText = Color(red: 180 / 255, green: 72 / 255, blue: 48 / 255)
+    static let streamRed = Color(red: 200 / 255, green: 32 / 255, blue: 38 / 255)
+    static let liveDot = Color(red: 220 / 255, green: 48 / 255, blue: 52 / 255)
+    static let cardShadow = Color.black.opacity(0.07)
+
+    static var sectionSans: Font { .system(size: 11, weight: .bold) }
+    static var titleSerif: Font { .system(size: 22, weight: .bold, design: .serif) }
+    static var heroSerif: Font { .system(size: 26, weight: .bold, design: .serif) }
+    static var bodySans: Font { .system(size: 14, weight: .semibold) }
+    static var metaSans: Font { .system(size: 12, weight: .medium) }
+
+    static let cardRadius: CGFloat = 20
+    static let cardRadiusSm: CGFloat = 16
+}

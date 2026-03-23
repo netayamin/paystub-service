@@ -30,7 +30,11 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(tabBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            CustomTabBar(selectedTab: $selectedTab, alertBadgeCount: alertsVM.unreadCount)
+            CustomTabBar(
+                selectedTab: $selectedTab,
+                alertBadgeCount: alertsVM.unreadCount,
+                useLightChrome: selectedTab == 0
+            )
         }
         .task {
             await savedVM.loadAll()
@@ -40,7 +44,8 @@ struct ContentView: View {
 
     private var tabBackground: Color {
         switch selectedTab {
-        case 0, 1: return SnagDesignSystem.darkCanvas
+        case 0: return CreamEditorialTheme.canvas
+        case 1: return SnagDesignSystem.darkCanvas
         default: return SnagDesignSystem.pageCanvas
         }
     }

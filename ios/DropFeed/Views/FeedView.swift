@@ -37,7 +37,7 @@ struct FeedView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewStateId)
         }
-        .background(SnagDesignSystem.darkCanvas)
+        .background(CreamEditorialTheme.canvas)
         .refreshable { await vm.refresh() }
         .sheet(isPresented: $showFilterSheet) {
             DateTimeFilterSheet(vm: vm)
@@ -252,16 +252,22 @@ struct FeedView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    liveUpdatesCarouselSection
-                        .padding(.top, 12)
-                    trendingHotCarouselSection
-                        .padding(.top, 26)
-                    mealWindowSection
-                        .padding(.top, 28)
-                    viewAllExploreSection
-                        .padding(.top, 22)
-                    mockJustMissedSection
-                    mockPredictWillOpenSection
+                    EditorialHomeStatusBar(lastRefreshed: vm.lastRefreshed, lastScanFallback: vm.lastScanText)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                        .padding(.bottom, 18)
+
+                    if let hero = editorialHeroDrop {
+                        EditorialFeaturedHeroCard(drop: hero)
+                            .padding(.horizontal, 18)
+                        Color.clear.frame(height: 28)
+                    }
+
+                    editorialHottestSection
+                    editorialStreamSection
+                    editorialExploreAllButton
+                    mockPredictWillOpenSectionCream
+                    mockJustMissedSectionCream
                     Color.clear.frame(height: vm.newDropsCount > 0 ? 96 : 28)
                 }
             }
@@ -275,7 +281,147 @@ struct FeedView: View {
             }
             .padding(.bottom, 6)
         }
-        .background(SnagDesignSystem.darkCanvas)
+        .background(CreamEditorialTheme.canvas)
+    }
+
+    /// Featured hero — left-mockup style single spotlight.
+    private var editorialHeroDrop: Drop? {
+        if let h = vm.heroCard, feedDropIsBookable(h) { return h }
+        if let t = trendingHotCarouselDrops.first { return t }
+        return liveGlanceCarouselDrops.first
+    }
+
+    private var hottestEditorialDrops: [Drop] {
+        if !trendingHotCarouselDrops.isEmpty { return Array(trendingHotCarouselDrops.prefix(10)) }
+        return Array(vm.topDrops.prefix(8))
+    }
+
+    private var editorialStreamDrops: [Drop] {
+        let base = liveGlanceCarouselDrops.isEmpty ? vm.justDropped : liveGlanceCarouselDrops
+        var seen = Set<String>()
+        return base.filter { seen.insert($0.id).inserted }.prefix(18).map { $0 }
+    }
+
+    private var editorialHottestSection: some View {
+        let drops = hottestEditorialDrops
+        return Group {
+            if drops.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Hottest Restaurants")
+                        .font(CreamEditorialTheme.titleSerif)
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .padding(.horizontal, 20)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(drops, id: \.id) { drop in
+                                EditorialHottestCard(drop: drop)
+                                    .frame(width: min(UIScreen.main.bounds.width - 56, 318))
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                }
+                .padding(.bottom, 26)
+            }
+        }
+    }
+
+    private var editorialStreamSection: some View {
+        let rows = editorialStreamDrops
+        return Group {
+            if rows.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("The Stream")
+                        .font(CreamEditorialTheme.titleSerif)
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .padding(.horizontal, 20)
+                    VStack(spacing: 12) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, drop in
+                            let party = mockPreferredParty(for: drop)
+                            EditorialTheStreamRow(
+                                drop: drop,
+                                preferredParty: party,
+                                available: feedMealRowIsAvailable(drop),
+                                subline: feedMealMetricsLine(for: drop, preferredParty: party)
+                            )
+                            .padding(.horizontal, 20)
+                            .staggeredAppear(index: idx, delayPerItem: 0.03)
+                        }
+                    }
+                }
+                .padding(.bottom, 22)
+            }
+        }
+    }
+
+    private var editorialExploreAllButton: some View {
+        Button {
+            onOpenExplore?()
+        } label: {
+            Text("EXPLORE ALL DESTINATIONS")
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundColor(CreamEditorialTheme.textPrimary)
+                .tracking(0.65)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(CreamEditorialTheme.cardWhite)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(CreamEditorialTheme.textPrimary.opacity(0.88), lineWidth: 1.5)
+                )
+                .shadow(color: CreamEditorialTheme.cardShadow, radius: 10, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 26)
+    }
+
+    private var mockPredictWillOpenSectionCream: some View {
+        Group {
+            if vm.likelyToOpen.isEmpty {
+                EmptyView()
+            } else {
+                FeedPredictWillOpenSection(
+                    venues: vm.likelyToOpen,
+                    premium: premium,
+                    onNotify: { savedVM.toggleWatch($0) },
+                    isWatched: { savedVM.isWatched($0) },
+                    editorialCream: true
+                )
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    private var mockJustMissedSectionCream: some View {
+        let items = vm.justMissed
+        return Group {
+            if items.isEmpty {
+                EmptyView()
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Just missed")
+                        .font(CreamEditorialTheme.titleSerif)
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .padding(.horizontal, 20)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(items) { venue in
+                                MockJustMissedCard(venue: venue, editorialCream: true)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                }
+                .padding(.top, 24)
+                .padding(.bottom, 8)
+            }
+        }
     }
 
     private func feedSectionHeader(eyebrow: String, title: String) -> some View {
@@ -1257,6 +1403,393 @@ private struct FeedClaimUrgencyBar: View {
 }
 
 /// Only the numeric claim clock ticks — avoids relayouting the whole hero every second in `ScrollView`.
+// MARK: - Cream editorial home (reference layout)
+
+private struct EditorialHomeStatusBar: View {
+    let lastRefreshed: Date?
+    let lastScanFallback: String
+
+    var body: some View {
+        HStack(alignment: .center) {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                Text(editorialUpdatedUppercased)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .tracking(0.95)
+            }
+            Spacer()
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(CreamEditorialTheme.liveDot)
+                    .frame(width: 7, height: 7)
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(CreamEditorialTheme.streamRed.opacity(0.9))
+                Text("LIVE")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+                    .tracking(0.85)
+            }
+        }
+    }
+
+    private var editorialUpdatedUppercased: String {
+        guard let d = lastRefreshed else {
+            return "UPDATED —"
+        }
+        let s = Int(-d.timeIntervalSinceNow)
+        if s < 2 { return "UPDATED JUST NOW" }
+        if s < 60 { return "UPDATED \(s)S AGO" }
+        if s < 3600 { return "UPDATED \(s / 60)M AGO" }
+        let u = lastScanFallback.trimmingCharacters(in: .whitespacesAndNewlines)
+        return u.isEmpty ? "UPDATED" : "UPDATED \(u.uppercased())"
+    }
+}
+
+/// Large hero — warm canvas, full-bleed image, serif title, white BOOK CTA (left mockup).
+private struct EditorialFeaturedHeroCard: View {
+    let drop: Drop
+    private static let heroH: CGFloat = 292
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private func openResy() {
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        APIService.shared.trackBehaviorEvents(events: [
+            BehaviorTrackEvent(
+                eventType: "resy_opened",
+                venueId: drop.venueKey,
+                venueName: drop.name,
+                notificationId: nil,
+                market: drop.market
+            )
+        ])
+        UIApplication.shared.open(url)
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if let url = imageURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
+                        LinearGradient(
+                            colors: [
+                                CreamEditorialTheme.canvas.opacity(0.35),
+                                Color(red: 0.85, green: 0.82, blue: 0.78)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                } else {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.92, green: 0.9, blue: 0.86),
+                            Color(red: 0.78, green: 0.76, blue: 0.72)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+            }
+            .frame(height: Self.heroH)
+            .frame(maxWidth: .infinity)
+            .clipped()
+
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.0), location: 0.0),
+                    .init(color: .black.opacity(0.0), location: 0.42),
+                    .init(color: .black.opacity(0.5), location: 0.72),
+                    .init(color: .black.opacity(0.78), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: Self.heroH)
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Spacer()
+                    HStack(spacing: -6) {
+                        ForEach(0..<3, id: \.self) { i in
+                            Circle()
+                                .strokeBorder(Color.white.opacity(0.9), lineWidth: 1.5)
+                                .background(Circle().fill(Color(white: 0.88 - Double(i) * 0.04)))
+                                .frame(width: 26, height: 26)
+                        }
+                    }
+                    Text("Booking now")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .padding(.leading, 8)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .padding(.top, 14)
+                .padding(.trailing, 14)
+                .frame(maxWidth: .infinity, alignment: .topTrailing)
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text((drop.neighborhood ?? drop.location ?? "NYC").uppercased())
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.6)
+                    }
+                    .foregroundColor(.white.opacity(0.88))
+
+                    Text(drop.name)
+                        .font(CreamEditorialTheme.heroSerif)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                        .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 2)
+
+                    if let line = drop.heroDescription?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty {
+                        Text(line)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.9))
+                            .lineLimit(2)
+                    }
+
+                    Button(action: openResy) {
+                        Text("BOOK")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(CreamEditorialTheme.textPrimary)
+                            .tracking(0.8)
+                            .frame(width: 88, height: 40)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        let s = drop.secondsSinceDetected
+                        let label = s < 90 ? "Opened \(max(1, s))s ago" : "Opened \(max(1, s / 60))m ago"
+                        HStack(spacing: 6) {
+                            Circle()
+                                .trim(from: 0, to: 0.72)
+                                .stroke(Color.white.opacity(0.85), lineWidth: 2)
+                                .frame(width: 14, height: 14)
+                                .rotationEffect(.degrees(-90))
+                            Text(label)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.85))
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: Self.heroH)
+        }
+        .frame(height: Self.heroH)
+        .clipShape(RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadius, style: .continuous))
+        .shadow(color: CreamEditorialTheme.cardShadow, radius: 16, x: 0, y: 8)
+    }
+}
+
+private struct EditorialHottestCard: View {
+    let drop: Drop
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var secondaryPill: String {
+        if let s = drop.snagScore {
+            return "Score \(s) · live"
+        }
+        if drop.feedHot == true {
+            return "Trending on feed"
+        }
+        return "On the board now"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Group {
+                if let url = imageURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                        CreamEditorialTheme.canvas
+                    }
+                } else {
+                    CreamEditorialTheme.canvas
+                }
+            }
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(drop.name)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                Text(drop.location ?? drop.neighborhood ?? "New York")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 6) {
+                    if drop.feedHot == true || (drop.snagScore ?? 0) >= 80 {
+                        HStack(spacing: 4) {
+                            Text("🔥")
+                            Text("High demand")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(CreamEditorialTheme.peachBadgeText)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(CreamEditorialTheme.peachBadgeFill)
+                        .clipShape(Capsule())
+                    }
+                    Text(secondaryPill)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(CreamEditorialTheme.peachBadgeText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(CreamEditorialTheme.peachBadgeFill.opacity(0.85))
+                        .clipShape(Capsule())
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(CreamEditorialTheme.cardWhite)
+        .clipShape(RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous)
+                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+        )
+        .shadow(color: CreamEditorialTheme.cardShadow, radius: 12, x: 0, y: 6)
+    }
+}
+
+private struct EditorialTheStreamRow: View {
+    let drop: Drop
+    let preferredParty: Int
+    let available: Bool
+    let subline: String
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private func openResy() {
+        let urlStr = drop.slots.first?.resyUrl ?? drop.resyUrl ?? ""
+        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
+        APIService.shared.trackBehaviorEvents(events: [
+            BehaviorTrackEvent(
+                eventType: "resy_opened",
+                venueId: drop.venueKey,
+                venueName: drop.name,
+                notificationId: nil,
+                market: drop.market
+            )
+        ])
+        UIApplication.shared.open(url)
+    }
+
+    private var statusHeadline: String {
+        if !available {
+            let s = drop.secondsSinceDetected
+            if s < 3600 { return "BOOKED \(max(1, s))S AGO" }
+            return "BOOKED \(s / 60)M AGO"
+        }
+        if drop.secondsSinceDetected < 120 {
+            return "JUST OPENED"
+        }
+        let s = drop.secondsSinceDetected
+        if s < 3600 { return "OPENED \(s)S AGO" }
+        return "OPENED \(s / 60)M AGO"
+    }
+
+    private var statusColor: Color {
+        if !available { return CreamEditorialTheme.textPrimary }
+        if drop.secondsSinceDetected < 120 { return CreamEditorialTheme.streamRed }
+        return CreamEditorialTheme.textPrimary
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Group {
+                if let url = imageURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                        CreamEditorialTheme.canvas
+                    }
+                } else {
+                    CreamEditorialTheme.canvas
+                }
+            }
+            .frame(width: 54, height: 54)
+            .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(drop.name)
+                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+                    .lineLimit(1)
+                Text(statusHeadline)
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundColor(statusColor)
+                    .lineLimit(1)
+                Text(subline)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.9)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if available {
+                Button(action: openResy) {
+                    Text("Book")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(CreamEditorialTheme.cardWhite)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(CreamEditorialTheme.textPrimary.opacity(0.85), lineWidth: 1.2)
+                        )
+                }
+                .buttonStyle(.plain)
+            } else {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .frame(width: 40, height: 40)
+            }
+        }
+        .padding(14)
+        .background(CreamEditorialTheme.cardWhite)
+        .clipShape(RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: CreamEditorialTheme.cardRadiusSm, style: .continuous)
+                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+        )
+        .shadow(color: CreamEditorialTheme.cardShadow, radius: 8, x: 0, y: 4)
+    }
+}
+
 private struct MarketLeaderTimeToClaimBadge: View {
     let drop: Drop
 
@@ -1428,6 +1961,7 @@ private struct MarketLeaderHeroCard: View {
 
 private struct MockJustMissedCard: View {
     let venue: JustMissedVenue
+    var editorialCream: Bool = false
 
     private var imageURL: URL? {
         guard let s = venue.imageUrl, !s.isEmpty else { return nil }
@@ -1440,11 +1974,15 @@ private struct MockJustMissedCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
                 if let url = imageURL {
-                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
-                        SnagDesignSystem.darkElevated
+                    CardAsyncImage(
+                        url: url,
+                        contentMode: .fill,
+                        skeletonTone: editorialCream ? .lightOnLight : .darkCard
+                    ) {
+                        editorialCream ? CreamEditorialTheme.canvas : SnagDesignSystem.darkElevated
                     }
                 } else {
-                    SnagDesignSystem.darkElevated
+                    editorialCream ? CreamEditorialTheme.canvas : SnagDesignSystem.darkElevated
                 }
             }
             .frame(width: cardW, height: 86)
@@ -1453,29 +1991,33 @@ private struct MockJustMissedCard: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(venue.name)
                     .font(.system(size: 13, weight: .bold, design: .serif))
-                    .foregroundColor(SnagDesignSystem.darkTextPrimary)
+                    .foregroundColor(editorialCream ? CreamEditorialTheme.textPrimary : SnagDesignSystem.darkTextPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
                 Text(feedRelativeMissedLabel(venue.goneAt))
                     .font(.system(size: 9, weight: .heavy))
-                    .foregroundColor(SnagDesignSystem.darkTextMuted)
+                    .foregroundColor(editorialCream ? CreamEditorialTheme.textSecondary : SnagDesignSystem.darkTextMuted)
                     .tracking(0.35)
                 if let nb = venue.neighborhood, !nb.isEmpty {
                     Text(nb.uppercased())
                         .font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(SnagDesignSystem.darkTextMuted)
+                        .foregroundColor(editorialCream ? CreamEditorialTheme.textTertiary : SnagDesignSystem.darkTextMuted)
                         .lineLimit(1)
                 }
             }
             .padding(8)
             .frame(width: cardW, alignment: .leading)
-            .background(Color(white: 0.14))
+            .background(editorialCream ? CreamEditorialTheme.cardWhite : Color(white: 0.14))
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(
+                    editorialCream ? CreamEditorialTheme.hairline : Color.white.opacity(0.06),
+                    lineWidth: 1
+                )
         )
+        .shadow(color: editorialCream ? CreamEditorialTheme.cardShadow : .clear, radius: 8, x: 0, y: 4)
     }
 }
 
@@ -1484,6 +2026,7 @@ private struct FeedPredictWillOpenSection: View {
     @ObservedObject var premium: PremiumManager
     var onNotify: (String) -> Void
     var isWatched: (String) -> Bool
+    var editorialCream: Bool = false
 
     @State private var showPaywall = false
 
@@ -1495,13 +2038,13 @@ private struct FeedPredictWillOpenSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("WE PREDICT WILL OPEN")
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundColor(.white)
-                    .tracking(0.6)
+                Text(editorialCream ? "PREDICTED TO OPEN" : "WE PREDICT WILL OPEN")
+                    .font(editorialCream ? CreamEditorialTheme.sectionSans : .system(size: 13, weight: .heavy))
+                    .foregroundColor(editorialCream ? CreamEditorialTheme.textPrimary : .white)
+                    .tracking(editorialCream ? 0.85 : 0.6)
                 Text("From live scans — tap the bell to get notified when we spot a table.")
                     .font(.system(size: 11))
-                    .foregroundColor(SnagDesignSystem.darkTextMuted)
+                    .foregroundColor(editorialCream ? CreamEditorialTheme.textSecondary : SnagDesignSystem.darkTextMuted)
             }
             .padding(.horizontal, 16)
 
@@ -1520,10 +2063,27 @@ private struct FeedPredictWillOpenSection: View {
                                 Text("\(lockedVenues.count) more")
                                     .font(.system(size: 12, weight: .semibold))
                             }
-                            .foregroundColor(SnagDesignSystem.salmonAccent)
+                            .foregroundColor(
+                                editorialCream ? CreamEditorialTheme.peachBadgeText : SnagDesignSystem.salmonAccent
+                            )
                             .frame(width: 148, height: 188)
-                            .background(Color(white: 0.14))
+                            .background(
+                                editorialCream ? CreamEditorialTheme.cardWhite : Color(white: 0.14)
+                            )
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(
+                                        editorialCream ? CreamEditorialTheme.hairline : Color.clear,
+                                        lineWidth: 1
+                                    )
+                            )
+                            .shadow(
+                                color: editorialCream ? CreamEditorialTheme.cardShadow : .clear,
+                                radius: 10,
+                                x: 0,
+                                y: 4
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -1622,7 +2182,16 @@ private struct FeedPredictWillOpenSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(
+                        editorialCream ? CreamEditorialTheme.hairline : Color.white.opacity(0.08),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: editorialCream ? CreamEditorialTheme.cardShadow : .clear,
+                radius: 12,
+                x: 0,
+                y: 6
             )
 
             Button {
@@ -1630,9 +2199,13 @@ private struct FeedPredictWillOpenSection: View {
             } label: {
                 Image(systemName: watched ? "bell.fill" : "bell")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(watched ? SnagDesignSystem.salmonAccent : .white)
+                    .foregroundColor(
+                        watched
+                            ? (editorialCream ? CreamEditorialTheme.peachBadgeText : SnagDesignSystem.salmonAccent)
+                            : .white
+                    )
                     .padding(8)
-                    .background(Color.black.opacity(0.45))
+                    .background(Color.black.opacity(editorialCream ? 0.38 : 0.45))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
