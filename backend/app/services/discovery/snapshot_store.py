@@ -446,11 +446,8 @@ def filter_snapshot_for_request(
     def _filter_cards(cards: list[dict]) -> list[dict]:
         out = []
         for c in cards:
-            # When filtering by date, drop cards with missing/unknown date — they are not in-scope for Explore.
-            if date_set:
-                ds = c.get("date_str")
-                if not ds or str(ds).strip() not in date_set:
-                    continue
+            if date_set and c.get("date_str") and str(c["date_str"]).strip() not in date_set:
+                continue
             if ps_set and not _venue_matches_party(c, ps_set):
                 continue
             if mkt_set and not _venue_matches_market(c):

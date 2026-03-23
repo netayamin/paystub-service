@@ -634,28 +634,19 @@ struct CalendarCounts: Codable {
     }
 }
 
-/// Response from GET /chat/watches/just-opened
-struct JustOpenedResponse: Codable {
+/// Response from GET /chat/watches/just-opened (built via ``decodeLenient`` — not direct JSON decode).
+struct JustOpenedResponse {
     let rankedBoard: [Drop]?
     let topOpportunities: [Drop]?
     let hotRightNow: [Drop]?
     let likelyToOpen: [LikelyToOpenVenue]?
     let justMissed: [JustMissedVenue]?
+    /// Merged `just_opened` + `still_open` venue rows for the requested dates — used by Explore (by-date inventory).
+    let dayInventory: [Drop]?
     let lastScanAt: String?
     let totalVenuesScanned: Int?
     let nextScanAt: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case rankedBoard = "ranked_board"
-        case topOpportunities = "top_opportunities"
-        case hotRightNow = "hot_right_now"
-        case likelyToOpen = "likely_to_open"
-        case justMissed = "just_missed"
-        case lastScanAt = "last_scan_at"
-        case totalVenuesScanned = "total_venues_scanned"
-        case nextScanAt = "next_scan_at"
-    }
-    
+
     /// Decode response, skipping any feed cards that fail to decode so one bad card doesn't empty the feed.
     /// When ranked_board is empty but the API returned just_opened, build drops from just_opened so the feed shows results.
     static func decodeLenient(from data: Data, decoder: JSONDecoder) throws -> JustOpenedResponse {
@@ -690,22 +681,103 @@ struct JustOpenedResponse: Codable {
         }
         var rankedBoard = decodeDrops("ranked_board")
         if rankedBoard.isEmpty, let justOpenedDays = json["just_opened"] as? [[String: Any]] {
-            rankedBoard = Self.dropsFromJustOpened(justOpenedDays)
+            rankedBoard = Self.dropsFromVenueDayBuckets(justOpenedDays)
         }
+        let jo = Self.dropsFromVenueDayBuckets(json["just_opened"] as? [[String: Any]] ?? [])
+        let so = Self.dropsFromVenueDayBuckets(json["still_open"] as? [[String: Any]] ?? [])
+        let mergedInventory = Self.mergeVenueDayInventory(jo + so)
         return JustOpenedResponse(
             rankedBoard: rankedBoard.isEmpty ? nil : rankedBoard,
             topOpportunities: decodeDrops("top_opportunities"),
             hotRightNow: decodeDrops("hot_right_now"),
             likelyToOpen: likelyVenues.isEmpty ? nil : likelyVenues,
             justMissed: missedVenues.isEmpty ? nil : missedVenues,
+            dayInventory: mergedInventory.isEmpty ? nil : mergedInventory,
             lastScanAt: json["last_scan_at"] as? String,
             totalVenuesScanned: intValue("total_venues_scanned"),
             nextScanAt: json["next_scan_at"] as? String
         )
     }
+
+    /// Dedupe same restaurant + date from `just_opened` and `still_open`; merge slot lists.
+    private static func mergeVenueDayInventory(_ drops: [Drop]) -> [Drop] {
+        var map: [String: Drop] = [:]
+        for d in drops {
+            let date = (d.dateStr ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !date.isEmpty else { continue }
+            let key = "\(date)|\(d.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+            if let ex = map[key] {
+                map[key] = mergeTwoVenueDayDrops(ex, d)
+            } else {
+                map[key] = d
+            }
+        }
+        return map.values.sorted { a, b in
+            let ra = a.rarityScore ?? -1
+            let rb = b.rarityScore ?? -1
+            if ra != rb { return ra > rb }
+            return (a.name) < (b.name)
+        }
+    }
+
+    private static func mergeTwoVenueDayDrops(_ a: Drop, _ b: Drop) -> Drop {
+        var seen = Set<String>()
+        var slots: [DropSlot] = []
+        for s in a.slots + b.slots {
+            let sig = "\(s.dateStr ?? "")|\(s.time ?? "")|\(s.resyUrl ?? "")"
+            if seen.insert(sig).inserted { slots.append(s) }
+        }
+        slots.sort { ($0.time ?? "") < ($1.time ?? "") }
+        let party = Array(Set(a.partySizesAvailable + b.partySizesAvailable)).sorted()
+        let dateStr = a.dateStr ?? b.dateStr
+        let name = a.name
+        let slug = name.replacingOccurrences(of: " ", with: "-")
+        let id = "inventory-\(dateStr ?? "day")-\(slug)"
+        let rarity: Double? = {
+            switch (a.rarityScore, b.rarityScore) {
+            case (nil, nil): return nil
+            case (let x?, nil): return x
+            case (nil, let y?): return y
+            case (let x?, let y?): return max(x, y)
+            }
+        }()
+        let det = laterISO(a.detectedAt, b.detectedAt)
+        return Drop(
+            id: id,
+            name: name,
+            venueKey: a.venueKey ?? b.venueKey,
+            location: a.location ?? b.location,
+            dateStr: dateStr,
+            slots: slots,
+            partySizesAvailable: party,
+            imageUrl: a.imageUrl ?? b.imageUrl,
+            createdAt: det ?? a.createdAt ?? b.createdAt,
+            detectedAt: det ?? a.detectedAt ?? b.detectedAt,
+            resyUrl: a.resyUrl ?? b.resyUrl,
+            feedHot: a.feedHot ?? b.feedHot,
+            resyPopularityScore: a.resyPopularityScore ?? b.resyPopularityScore,
+            ratingAverage: a.ratingAverage ?? b.ratingAverage,
+            ratingCount: a.ratingCount ?? b.ratingCount,
+            rarityScore: rarity,
+            availabilityRate14d: a.availabilityRate14d ?? b.availabilityRate14d,
+            daysWithDrops: a.daysWithDrops ?? b.daysWithDrops,
+            dropFrequencyPerDay: a.dropFrequencyPerDay ?? b.dropFrequencyPerDay,
+            isHotspot: a.isHotspot ?? b.isHotspot,
+            neighborhood: a.neighborhood ?? b.neighborhood,
+            market: a.market ?? b.market,
+            eligibilityEvidence: a.eligibilityEvidence ?? b.eligibilityEvidence,
+            userFacingOpenedAt: laterISO(a.userFacingOpenedAt, b.userFacingOpenedAt),
+            bucketSuccessfulPollCount: a.bucketSuccessfulPollCount ?? b.bucketSuccessfulPollCount
+        )
+    }
+
+    private static func laterISO(_ x: String?, _ y: String?) -> String? {
+        guard let xa = x, let ya = y, !xa.isEmpty, !ya.isEmpty else { return x?.isEmpty == false ? x : y }
+        return xa >= ya ? xa : y
+    }
     
-    /// Build [Drop] from backend just_opened shape: [{ date_str, venues: [{ name, availability_times, detected_at, resy_url, ... }] }]
-    private static func dropsFromJustOpened(_ days: [[String: Any]]) -> [Drop] {
+    /// Build [Drop] from backend day buckets: `just_opened` / `still_open` — same `{ date_str, venues: [...] }` shape.
+    private static func dropsFromVenueDayBuckets(_ days: [[String: Any]]) -> [Drop] {
         var result: [Drop] = []
         for day in days {
             guard let dateStr = day["date_str"] as? String,

@@ -189,6 +189,17 @@ final class SearchViewModel: ObservableObject {
                 timeBefore: nil
             )
             var ranked = resp.rankedBoard ?? []
+            // Explore: show date-bucket inventory (just_opened + still_open), not curated ranked_board
+            // (ranked cards often lack a matching top-level date_str after server filters).
+            if exploreTabActive {
+                if let inv = resp.dayInventory, !inv.isEmpty {
+                    let allowed = selectedDates
+                    ranked = inv.filter { drop in
+                        guard let ds = drop.dateStr, !ds.isEmpty else { return false }
+                        return allowed.isEmpty || allowed.contains(ds)
+                    }
+                }
+            }
 
             // Client-side time window filter (Search sheet only; Explore uses accordion buckets)
             if !exploreTabActive, selectedMealPreset != nil {
