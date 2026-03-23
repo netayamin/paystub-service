@@ -23,8 +23,8 @@ Tables are kept bounded by **retention pruning**:
 - **Discovery bucket job (every tick)**  
   - `prune_old_buckets`: drop `discovery_buckets` with `date_str < today`.  
   - Every **`DISCOVERY_PRUNE_EVERY_N_TICKS`** ticks (~50s): also run  
-    **Every tick:** `prune_old_drop_events`. Every **`DISCOVERY_PRUNE_EVERY_N_TICKS`** ticks: `prune_old_slot_availability`, `prune_old_sessions`  
-    so `slot_availability`, `drop_events`, and `availability_sessions` don’t grow.
+    `prune_old_slot_availability`, `prune_old_availability_state` (not `drop_events`; that is daily only).  
+    so projection tables don’t grow between sliding-window runs.
 
 - **Sliding window job (daily)**  
   - Same pruning as above plus:  
@@ -33,7 +33,7 @@ Tables are kept bounded by **retention pruning**:
 Result:
 
 - **discovery_buckets**: only current 14-day window.
-- **drop_events**: (1) bucket_id before today (same as others); (2) rows with `opened_at` older than `DROP_EVENTS_RETENTION_DAYS` (7 days) **and** `push_sent_at` set; (3) when a slot is marked closed, the corresponding `drop_events` row is deleted if `push_sent_at` is already set.
+- **drop_events**: (1) `slot_date` before sliding-window `today`; (2) `user_facing_opened_at` older than `DROP_EVENTS_RETENTION_DAYS` (all rows, not only pushed); (3) when a slot closes in the poll, **all** `drop_events` for that `(bucket_id, slot_id)` are deleted.
 - **slot_availability**, **availability_sessions**: only current window; pruning runs every N ticks and daily.
 - **venue_rolling_metrics**: last 60 days only (daily job).
 - **venue_metrics**, **market_metrics**: last **90 days** only (`METRICS_RETENTION_DAYS`); pruned in the daily sliding-window job.

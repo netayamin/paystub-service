@@ -82,12 +82,13 @@ events = q.all()  # NO LIMIT — can load 50k+ rows and full payload_json
 
 ### 3.1 `drop_events` — pruned daily only; DELETE is unbounded
 
-**Where:** `prune_old_drop_events(db, today)` in `buckets.py`; called only from `run_sliding_window_job()` (daily), not from the 30s discovery job.
+**Where:** `prune_old_drop_events(db, today)` in `buckets.py`; called only from `run_sliding_window_job()` (daily), not from the 30s discovery job. **Per poll:** when a slot leaves the live set, **all** `drop_events` for that `(bucket_id, slot_id)` are deleted (not only rows with `push_sent_at`).
+
+**Retention:** (1) `slot_date` before calendar `today` (from sliding-window `today`); (2) `user_facing_opened_at` older than `DROP_EVENTS_RETENTION_DAYS` for **every** row — push is optional, so pruning must not require `push_sent_at`.
 
 **Issue:**
 
-- Rows for dates before today are deleted with `filter(DropEvent.bucket_id < cutoff).delete(synchronize_session=False)`.
-- No `LIMIT`; one big DELETE. With millions of rows, this can hold locks and run for a long time.
+- Older docs mentioned `bucket_id` lexicographic prune; current code uses `slot_date` + age. No `LIMIT` on the daily DELETE. With millions of rows, this can hold locks and run for a long time.
 
 **Recommendations:**
 

@@ -758,19 +758,19 @@ def run_poll_for_bucket(
     bucket_row.scanned_at = now
     bucket_row.successful_poll_count = polls_before + 1
 
-    # Remove drop_events for closed slots that have already been pushed (keeps table bounded)
+    # Remove drop_events for closed slots (open-drop rows are not history; keeps table bounded).
+    # Do not require push_sent_at — most rows never get a push (eligibility / unwatched venues).
     if closed_slot_ids:
         n_dropped = (
             db.query(DropEvent)
             .filter(
                 DropEvent.bucket_id == bid,
                 DropEvent.slot_id.in_(closed_slot_ids),
-                DropEvent.push_sent_at.isnot(None),
             )
             .delete(synchronize_session=False)
         )
         if n_dropped:
-            logger.debug("Pruned %s drop_events (closed+push_sent) for bucket %s", n_dropped, bid)
+            logger.debug("Pruned %s drop_events (closed slots) for bucket %s", n_dropped, bid)
 
     stats = {
         "B": B,
@@ -844,9 +844,12 @@ def delete_closed_drop_events(db: Session, batch_size: int = 50_000) -> int:
 
 def prune_old_drop_events(db: Session, today: date) -> int:
     """
-    Keep drop_events bounded: (1) remove rows for slot dates before today;
-    (2) remove rows older than DROP_EVENTS_RETENTION_DAYS that have already been pushed.
-    Uses slot_date column (market-agnostic) instead of bucket_id lexicographic comparison.
+    Keep drop_events bounded: (1) remove rows for reservation slot_date before calendar today;
+    (2) remove rows older than DROP_EVENTS_RETENTION_DAYS by user_facing_opened_at (all rows —
+    not only pushed; otherwise never-pushed events grow without bound).
+
+    venue_metrics.new_drop_count is updated with monotonic max from aggregate_open_drops_into_metrics,
+    so shrinking live row counts does not decrease stored counts.
     """
     today_str = today.isoformat()
     # Rows with slot_date set (all rows written after migration 042)
@@ -855,18 +858,18 @@ def prune_old_drop_events(db: Session, today: date) -> int:
         .filter(DropEvent.slot_date < today_str, DropEvent.slot_date.isnot(None))
         .delete(synchronize_session=False)
     )
-    # Time-based: drop old events that we've already sent (push_sent_at set)
+    # Time-based: any stale open-drop row (push is optional; most rows never get push_sent_at)
     cutoff_time = datetime.now(timezone.utc) - timedelta(days=DROP_EVENTS_RETENTION_DAYS)
     n_time = (
         db.query(DropEvent)
-        .filter(DropEvent.user_facing_opened_at < cutoff_time, DropEvent.push_sent_at.isnot(None))
+        .filter(DropEvent.user_facing_opened_at < cutoff_time)
         .delete(synchronize_session=False)
     )
     db.commit()
     n = n_bucket + n_time
     if n:
         logger.info(
-            "Pruned %s drop_events (slot_date<%s: %s, user_facing_opened_at>%s days + pushed: %s)",
+            "Pruned %s drop_events (slot_date<%s: %s, user_facing_opened_at older than %s days: %s)",
             n, today_str, n_bucket, DROP_EVENTS_RETENTION_DAYS, n_time,
         )
     return n

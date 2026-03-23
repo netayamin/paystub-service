@@ -1,4 +1,4 @@
-"""Open drops only: slot became available and is still available. Metrics store aggregates; we remove rows when a slot closes."""
+"""Open-drop facts for feed, push TTL, and TTL dedupe. Rows are deleted when the slot closes (all rows for that bucket_id+slot_id) and by daily retention on slot_date / user_facing_opened_at."""
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.sql import func
 
