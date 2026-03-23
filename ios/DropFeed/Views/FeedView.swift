@@ -493,14 +493,15 @@ struct FeedView: View {
     private func quietCuratorHottestCarouselTileSize(trackWidth: CGFloat, dropCount: Int) -> (w: CGFloat, h: CGFloat) {
         let side: CGFloat = 18
         let gap: CGFloat = 12
-        let peek: CGFloat = 14
+        /// Tighter peek so each tile is wider (cards read larger on screen).
+        let peek: CGFloat = 8
         let inner = max(1, trackWidth) - 2 * side
         let aspect: CGFloat = 5.0 / 4.0
         if dropCount <= 1 {
-            let w = min(max(168, inner * 0.58), inner - peek)
+            let w = min(max(196, inner * 0.74), inner - peek)
             return (w, w * aspect)
         }
-        let w = max(132, (inner - gap - peek) / 2)
+        let w = max(156, (inner - gap - peek) / 2)
         return (w, w * aspect)
     }
 
@@ -1785,9 +1786,13 @@ private struct QuietCuratorHeroCard: View {
 
     private var effectiveHeight: CGFloat { layoutHeight ?? Self.heroH }
 
-    private var isCompactTile: Bool { (layoutHeight ?? .greatestFiniteMagnitude) < 280 }
+    private var isCompactTile: Bool { (layoutHeight ?? .greatestFiniteMagnitude) < 300 }
+
+    /// Short tiles: one line + scaling avoids vertical overflow in the ZStack overlay.
+    private var venueTitleLineLimit: Int { effectiveHeight < 248 ? 1 : 2 }
 
     private var venueTitleSize: CGFloat {
+        if effectiveHeight < 248 { return 16 }
         if isCompactTile { return 18 }
         if effectiveHeight < 340 { return 22 }
         return 28
@@ -1828,7 +1833,7 @@ private struct QuietCuratorHeroCard: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        let stack = ZStack(alignment: .bottom) {
             Group {
                 if let url = imageURL {
                     CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
@@ -1878,7 +1883,7 @@ private struct QuietCuratorHeroCard: View {
                     .font(.system(size: isCompactTile ? 9 : 11, weight: .medium))
                     .foregroundColor(CreamEditorialTheme.heroNeighborhoodRed)
                     .tracking(0.55)
-                    .lineLimit(2)
+                    .lineLimit(effectiveHeight < 248 ? 1 : 2)
                     .minimumScaleFactor(0.85)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, isCompactTile ? 10 : 14)
@@ -1886,8 +1891,8 @@ private struct QuietCuratorHeroCard: View {
                 Text(drop.name.uppercased())
                     .font(.system(size: venueTitleSize, weight: .bold))
                     .foregroundColor(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.55)
+                    .lineLimit(venueTitleLineLimit)
+                    .minimumScaleFactor(0.5)
                     .multilineTextAlignment(.leading)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, isCompactTile ? 10 : 14)
@@ -1896,14 +1901,23 @@ private struct QuietCuratorHeroCard: View {
 
                 heroBottomChrome
                     .padding(.horizontal, isCompactTile ? 10 : 14)
-                    .padding(.top, isCompactTile ? 10 : 14)
-                    .padding(.bottom, isCompactTile ? 12 : 16)
+                    .padding(.top, isCompactTile ? 8 : 14)
+                    .padding(.bottom, isCompactTile ? 10 : 16)
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        // Bounded box + clip so overlays (ZStack) cannot paint outside the card — fixes carousel edge bleed.
-        .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
-        .clipped()
+
+        return Group {
+            if useSharpRectangleBorder {
+                stack
+                    .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
+                    .clipped()
+            } else {
+                stack
+                    .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
         .overlay {
             if useSharpRectangleBorder {
                 Rectangle()

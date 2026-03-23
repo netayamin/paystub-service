@@ -5,7 +5,7 @@ struct FeedSkeletonView: View {
     private let side: CGFloat = 18
     private let gap: CGFloat = 12
     /// Matches hottest carousel: two ~4:5 tiles + peek.
-    private let peek: CGFloat = 14
+    private let peek: CGFloat = 8
     private let streamRows = 6
 
     /// Muted grey-beige blocks on cream (reference “brutalist-chic” loading).
@@ -16,7 +16,7 @@ struct FeedSkeletonView: View {
 
     private var heroInner: CGFloat { max(1, screenW - 2 * side) }
 
-    private var heroMainWidth: CGFloat { max(132, (heroInner - gap - peek) / 2) }
+    private var heroMainWidth: CGFloat { max(156, (heroInner - gap - peek) / 2) }
 
     private var heroHeight: CGFloat { heroMainWidth * 5.0 / 4.0 }
 
