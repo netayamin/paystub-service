@@ -107,6 +107,8 @@ enum CreamEditorialTheme {
     static let peachBadgeText = Color(red: 180 / 255, green: 72 / 255, blue: 48 / 255)
     static let streamRed = Color(red: 178 / 255, green: 28 / 255, blue: 42 / 255)
     static let liveDot = Color(red: 200 / 255, green: 32 / 255, blue: 48 / 255)
+    /// Live stream divider header — pulse dot + “JUST OPENED” (reference UI).
+    static let liveStreamPulseGreen = Color(red: 31 / 255, green: 138 / 255, blue: 88 / 255)
     static let cardShadow = Color.black.opacity(0.06)
     /// Deep burgundy — HIGH DEMAND, live labels, forecast bars.
     static let burgundy = Color(red: 118 / 255, green: 26 / 255, blue: 34 / 255)

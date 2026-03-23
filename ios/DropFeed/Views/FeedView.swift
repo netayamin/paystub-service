@@ -13,6 +13,60 @@ private enum QuietStreamEntry {
     }
 }
 
+/// Hairline rule with centered **LIVE STREAM**, then status row (pulse + label / local clock).
+private struct QuietCuratorLiveStreamDividerHeader: View {
+    var hasBookableLive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(CreamEditorialTheme.hairline)
+                    .frame(height: 1)
+                Text("LIVE STREAM")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+                    .tracking(0.85)
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .background(CreamEditorialTheme.canvas)
+                Rectangle()
+                    .fill(CreamEditorialTheme.hairline)
+                    .frame(height: 1)
+            }
+
+            HStack(alignment: .center, spacing: 0) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(hasBookableLive ? CreamEditorialTheme.liveStreamPulseGreen : CreamEditorialTheme.textTertiary)
+                        .frame(width: 6, height: 6)
+                    Text(hasBookableLive ? "JUST OPENED" : "LIVE")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(hasBookableLive ? CreamEditorialTheme.liveStreamPulseGreen : CreamEditorialTheme.textTertiary)
+                        .tracking(0.35)
+                }
+                Spacer(minLength: 12)
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    Text(Self.clockString(for: context.date))
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(CreamEditorialTheme.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+            }
+        }
+        .padding(.horizontal, 18)
+    }
+
+    private static func clockString(for date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "HH:mm zzz"
+        return f.string(from: date).uppercased()
+    }
+}
+
 struct FeedView: View {
     @ObservedObject var feedVM: FeedViewModel
     @ObservedObject var savedVM: SavedViewModel
@@ -472,22 +526,12 @@ struct FeedView: View {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("LIVE STREAM")
-                            .font(.system(size: 22, weight: .heavy))
-                            .foregroundColor(CreamEditorialTheme.textPrimary)
-                            .tracking(0.2)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                        Text("ACTIVE NOW")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(CreamEditorialTheme.streamRed)
-                            .tracking(0.45)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
+                    QuietCuratorLiveStreamDividerHeader(
+                        hasBookableLive: entries.contains {
+                            if case .live(let d) = $0 { return feedMealRowIsAvailable(d) }
+                            return false
+                        }
+                    )
 
                     VStack(spacing: 0) {
                         ForEach(Array(entries.enumerated()), id: \.element.streamRowIdentity) { idx, entry in
