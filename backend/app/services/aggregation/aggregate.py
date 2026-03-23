@@ -54,7 +54,8 @@ def aggregate_open_drops_into_metrics(db: Session, today: date) -> int:
         )
         .filter(
             DropEvent.venue_id.isnot(None),
-            DropEvent.opened_at >= datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc),
+            DropEvent.user_facing_opened_at
+            >= datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc),
         )
         .group_by(DropEvent.venue_id, DropEvent.venue_name, DropEvent.slot_date)
         .all()

@@ -1,6 +1,6 @@
 """
 Send push notifications for new drops: every minute, find drop_events that haven't
-had push_sent_at set, send to registered device tokens (APNs).
+had push_sent_at set (canonical `user_facing_opened_at` window), send to registered device tokens (APNs).
 
 Push is sent only when a drop is for a restaurant on the notify list.
 Notify list = (hotlist ∪ user-added includes) − user exclusions (from notify_preferences).
@@ -67,8 +67,8 @@ def run_push_for_new_drops_job() -> None:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=PUSH_WINDOW_MINUTES)
         unsent = (
             db.query(DropEvent)
-            .filter(DropEvent.push_sent_at.is_(None), DropEvent.opened_at >= cutoff)
-            .order_by(DropEvent.opened_at.asc())
+            .filter(DropEvent.push_sent_at.is_(None), DropEvent.user_facing_opened_at >= cutoff)
+            .order_by(DropEvent.user_facing_opened_at.asc())
             .limit(100)  # cap per run to avoid burst
             .all()
         )

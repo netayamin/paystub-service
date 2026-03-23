@@ -1,5 +1,5 @@
 """Open drops only: slot became available and is still available. Metrics store aggregates; we remove rows when a slot closes."""
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -7,6 +7,20 @@ from app.db.base import Base
 
 class DropEvent(Base):
     __tablename__ = "drop_events"
+    __table_args__ = (
+        Index("ix_drop_events_user_facing_opened_at", "user_facing_opened_at"),
+        Index(
+            "ix_drop_events_market_user_facing_opened_at",
+            "market",
+            "user_facing_opened_at",
+            postgresql_ops={"user_facing_opened_at": "DESC"},
+        ),
+        Index(
+            "ix_drop_events_bucket_id_user_facing_opened_at",
+            "bucket_id",
+            "user_facing_opened_at",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     bucket_id = Column(String(40), nullable=False, index=True)
@@ -27,7 +41,7 @@ class DropEvent(Base):
     neighborhood = Column(String(128), nullable=True)
     price_range = Column(String(32), nullable=True)
     push_sent_at = Column(DateTime(timezone=True), nullable=True)
-    market = Column(String(32), nullable=True, index=True)  # e.g. "nyc", "miami"
+    market = Column(String(32), nullable=True)  # e.g. "nyc", "miami"; composite idx in __table_args__
     eligibility_evidence = Column(String(32), nullable=False, default="unknown")
     prior_snapshot_included_slot = Column(Boolean, nullable=False, default=False)
     prior_prev_slot_count = Column(Integer, nullable=False, default=0)

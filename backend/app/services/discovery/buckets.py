@@ -519,7 +519,7 @@ def run_poll_for_bucket(
         row[0]
         for row in db.query(DropEvent.slot_id).filter(
             DropEvent.bucket_id == bid,
-            DropEvent.opened_at >= cutoff,
+            DropEvent.user_facing_opened_at >= cutoff,
         ).distinct().all()
     }
     drops_to_emit = drops_venue_zero - recently_notified
@@ -803,14 +803,14 @@ def prune_old_drop_events(db: Session, today: date) -> int:
     cutoff_time = datetime.now(timezone.utc) - timedelta(days=DROP_EVENTS_RETENTION_DAYS)
     n_time = (
         db.query(DropEvent)
-        .filter(DropEvent.opened_at < cutoff_time, DropEvent.push_sent_at.isnot(None))
+        .filter(DropEvent.user_facing_opened_at < cutoff_time, DropEvent.push_sent_at.isnot(None))
         .delete(synchronize_session=False)
     )
     db.commit()
     n = n_bucket + n_time
     if n:
         logger.info(
-            "Pruned %s drop_events (slot_date<%s: %s, opened_at>%s days + pushed: %s)",
+            "Pruned %s drop_events (slot_date<%s: %s, user_facing_opened_at>%s days + pushed: %s)",
             n, today_str, n_bucket, DROP_EVENTS_RETENTION_DAYS, n_time,
         )
     return n
@@ -923,7 +923,7 @@ def _hours_since_utc(last_open: datetime | None, now: datetime) -> float | None:
 
 
 def _max_opened_at_by_venue(db: Session, venue_ids: list[str]) -> dict[str, datetime]:
-    """Latest drop_event.opened_at per venue (all time in DB — recency is capped in scoring)."""
+    """Latest drop_event.user_facing_opened_at per venue (all time in DB — recency is capped in scoring)."""
     from app.models.drop_event import DropEvent
 
     if not venue_ids:
@@ -933,7 +933,7 @@ def _max_opened_at_by_venue(db: Session, venue_ids: list[str]) -> dict[str, date
     for i in range(0, len(venue_ids), chunk):
         part = venue_ids[i : i + chunk]
         q = (
-            db.query(DropEvent.venue_id, func.max(DropEvent.opened_at))
+            db.query(DropEvent.venue_id, func.max(DropEvent.user_facing_opened_at))
             .filter(DropEvent.venue_id.in_(part))
             .group_by(DropEvent.venue_id)
         )
@@ -1025,11 +1025,16 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
     if venue_ids:
         try:
             recent_events = (
-                db.query(DropEvent.venue_id, DropEvent.neighborhood, DropEvent.payload_json, DropEvent.opened_at)
+                db.query(
+                    DropEvent.venue_id,
+                    DropEvent.neighborhood,
+                    DropEvent.payload_json,
+                    DropEvent.user_facing_opened_at,
+                )
                 .filter(
                     DropEvent.venue_id.in_(venue_ids),
                 )
-                .order_by(DropEvent.opened_at.desc())
+                .order_by(DropEvent.user_facing_opened_at.desc())
                 .limit(len(venue_ids) * 8)
                 .all()
             )
@@ -1427,7 +1432,7 @@ def get_just_opened_from_buckets(
     drop_pairs = [
         (r.bucket_id, r.slot_id)
         for r in db.query(DropEvent.bucket_id, DropEvent.slot_id)
-        .filter(DropEvent.opened_at >= cutoff)
+        .filter(DropEvent.user_facing_opened_at >= cutoff)
         .distinct()
         .limit(limit_events)
         .all()
@@ -1532,7 +1537,7 @@ def get_still_open_from_buckets(
         recent_drop_pairs = [
             (r.bucket_id, r.slot_id)
             for r in db.query(DropEvent.bucket_id, DropEvent.slot_id)
-            .filter(DropEvent.opened_at >= cutoff)
+            .filter(DropEvent.user_facing_opened_at >= cutoff)
             .distinct()
             .all()
         ]
