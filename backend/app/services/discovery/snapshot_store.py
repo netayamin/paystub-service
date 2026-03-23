@@ -42,6 +42,8 @@ _snapshot_lock = threading.Lock()
 
 # How many ranked_board items to include in the mobile snapshot.
 _MOBILE_RANKED_BOARD_LIMIT = 60
+# Cap full JSON snapshot size (ranked/ticker/top/hot) — still-open + just-opened day arrays already bounded by query limits.
+_SNAPSHOT_FULL_BOARD_CAP = 500
 
 
 def get_snapshot_json() -> bytes | None:
@@ -251,10 +253,11 @@ def rebuild_snapshot(db: Session) -> None:
 
         # Pass both just_opened AND still_open so the ranked board always has content
         feed = build_feed(just_opened, still_open)
-        ranked_board    = feed["ranked_board"]
-        ticker_board    = feed["ticker_board"]
-        top_opportunities = feed["top_opportunities"]
-        hot_right_now   = feed["hot_right_now"]
+        _cap = _SNAPSHOT_FULL_BOARD_CAP
+        ranked_board = (feed.get("ranked_board") or [])[:_cap]
+        ticker_board = (feed.get("ticker_board") or [])[:_cap]
+        top_opportunities = (feed.get("top_opportunities") or [])[:_cap]
+        hot_right_now = (feed.get("hot_right_now") or [])[:_cap]
 
         try:
             from zoneinfo import ZoneInfo

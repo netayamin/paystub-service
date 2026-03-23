@@ -236,10 +236,19 @@ def run_sliding_window_job() -> None:
         prune_old_venues,
     )
     from app.services.discovery.buckets import prune_old_notifications
+    from app.core.scheduler_singleton_lock import (
+        release_sliding_window_leader,
+        try_acquire_sliding_window_leader,
+    )
 
     today = window_start_date()
     db = SessionLocal()
+    leader = False
     try:
+        if not try_acquire_sliding_window_leader(db):
+            return
+        leader = True
+
         # Rebuild rolling metrics BEFORE pruning so venue_metrics data is still available
         from app.services.aggregation import compute_venue_rolling_metrics
         compute_venue_rolling_metrics(db, today)
@@ -273,4 +282,6 @@ def run_sliding_window_job() -> None:
         )
         set_discovery_sliding_window_finished_at(datetime.now(timezone.utc))
     finally:
+        if leader:
+            release_sliding_window_leader(db)
         db.close()

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.constants import DISCOVERY_JUST_OPENED_LIMIT
 from app.models.feed_cache import FeedCache
 from app.services.discovery.buckets import get_just_opened_from_buckets, get_still_open_from_buckets, window_start_date
 from app.services.discovery.feed import build_feed
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 CACHE_KEY_DEFAULT = "default"
 CACHE_STALE_MINUTES = 10  # Use cache if updated within this; else recompute
+# Bound DB row size: feed_cache.payload_json must stay well under 1MB typical.
+FEED_CACHE_BOARD_CAP = 400
 
 
 def refresh_feed_cache(db: Session) -> None:
@@ -28,7 +31,7 @@ def refresh_feed_cache(db: Session) -> None:
     today = window_start_date()
     just_opened = get_just_opened_from_buckets(
         db,
-        limit_events=5000,
+        limit_events=DISCOVERY_JUST_OPENED_LIMIT,
         date_filter=None,
         time_slots=None,
         party_sizes=None,
@@ -43,15 +46,21 @@ def refresh_feed_cache(db: Session) -> None:
         exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
     )
     feed = build_feed(just_opened, still_open)
+    cap = FEED_CACHE_BOARD_CAP
+    ranked = (feed.get("ranked_board") or [])[:cap]
+    ticker = (feed.get("ticker_board") or [])[:cap]
+    top = (feed.get("top_opportunities") or [])[:cap]
+    hot = (feed.get("hot_right_now") or [])[:cap]
     from app.services.discovery.buckets import get_last_scan_info_buckets
 
     info = get_last_scan_info_buckets(db, today)
     payload = {
         "just_opened": just_opened,
         "still_open": still_open,
-        "ranked_board": feed["ranked_board"],
-        "top_opportunities": feed["top_opportunities"],
-        "hot_right_now": feed["hot_right_now"],
+        "ranked_board": ranked,
+        "ticker_board": ticker,
+        "top_opportunities": top,
+        "hot_right_now": hot,
         **info,
     }
     row = db.query(FeedCache).filter(FeedCache.cache_key == CACHE_KEY_DEFAULT).first()

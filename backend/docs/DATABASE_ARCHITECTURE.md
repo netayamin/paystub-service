@@ -83,7 +83,7 @@ flowchart LR
 | Architectural limit | What happens as you grow |
 |---------------------|---------------------------|
 | **API and discovery share the process** | Poll CPU and DB writes compete with request latency; long **prune / compaction** jobs can stall or slow HTTP unless you isolate workers or run maintenance off-peak. |
-| **Single active poller assumption** | Running **two app instances** with both schedulers enabled **doubles Resy traffic** and risks **write races** on the same `bucket_id` rows. You need **one leader**, a **dedicated poller service**, or **distributed locks** beyond what the repo ships by default. |
+| **Multiple schedulers** | If **every** replica runs APScheduler, you duplicate Resy polls unless only one enables jobs. **Mitigation:** `ENABLE_BACKGROUND_SCHEDULER=false` on API-only replicas; **bucket** writes already use `pg_try_advisory_xact_lock` per `bucket_id`. **Daily prune** and **push** use **session advisory locks** so only one instance runs those jobs at a time (Postgres). |
 | **One Postgres primary** | Feed reads and poll writes share the same DB; there is **no app-level read-replica** path today. |
 | **Synchronous Resy in poll threads** | Throughput is capped by **RTT × pagination** per bucket; slow provider → threads busy → fewer buckets completed per wall-clock (cooldown spreads load but does not add capacity). |
 
@@ -96,7 +96,7 @@ flowchart LR
 | **String keys (`bucket_id`, `slot_id`) with few SQL `FOREIGN KEY`s** | Referential integrity is **application-enforced**. Orphans/duplicates need **jobs** (prune, compact); the DB will not cascade deletes for you if a code path regresses. |
 | **Large JSON in `discovery_buckets`** (`baseline_*` / `prev_*` slot id arrays) | Wide rows × 28 buckets → **parse/serialize cost** and **WAL** on every poll update if arrays are huge. |
 | **`payload_json` on `slot_availability` / `drop_events`** | Feed builders can **load many large texts** into memory; limits on queries are mandatory — see `SCALABILITY_AND_MAINTENANCE.md` §1. |
-| **`feed_cache` single-row blob** | Simple read path, but **coarse invalidation** and risk of **multi-MB** JSON if upstream lists are uncapped. |
+| **`feed_cache` single-row blob** | Simple read path, but **coarse invalidation**; **mitigation:** `refresh_feed_cache` uses the same `just_opened` limit as the main pipeline and **caps** ranked/ticker/top/hot boards (400 cards). |
 | **`venues` append-only today** | Table grows with every venue ever seen; fine until very large — then **vacuum**, backups, and occasional full scans get costlier. |
 | **Retention via batched `DELETE`** | Without **partitioning**, big purges need **`VACUUM ANALYZE`**; indexes can bloat until autovacuum catches up. Natural evolution: **time partitions** + `DROP PARTITION`. |
 
@@ -116,17 +116,34 @@ Each bucket completion does **bursty upserts** and a **commit**. More markets li
 
 ### 2.5 Connection pool × API workers
 
-Pool settings are **per process**. **Multiple Uvicorn workers** multiply DB connections; small RDS tiers hit **`max_connections`** unless you add **PgBouncer** (or lower per-worker pool size).
+Pool settings are **per process**. **Multiple Uvicorn workers** multiply DB connections; small RDS tiers hit **`max_connections`** unless you add **PgBouncer** (or lower per-worker pool size). **`DB_POOL_SIZE`** and **`DB_MAX_OVERFLOW`** env vars tune the pool; **`/health`** exposes effective values.
 
 ---
 
 ### 2.6 Push pipeline
 
-Scans **recent `drop_events`** with caps — acceptable now. At much higher event volume, an **outbox** or **partial index** on unsent rows avoids widening full scans.
+Scans **recent `drop_events`** with caps — acceptable now. **Singleton advisory lock** avoids duplicate sends when several hosts run the push job. At much higher volume, an **outbox** or **partial index** on unsent rows is the next step.
 
 ---
 
-**Concrete mitigations already in code** (limits, batched prunes, `ensure_buckets` batching, etc.) are listed in **`backend/docs/SCALABILITY_AND_MAINTENANCE.md`**.
+### 2.7 Implemented mitigations (this repo)
+
+| Mechanism | Where |
+|-----------|--------|
+| `ENABLE_BACKGROUND_SCHEDULER` | `app/config.py` → `main.py`: skip jobs on API-only replicas; optional **one-shot** `rebuild_snapshot` on startup so read APIs still serve DB-backed snapshot. |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `app/config.py` → `app/db/session.py` engine |
+| `/health` → `background_scheduler`, `database_pool` | `app/main.py` |
+| Postgres **session** advisory lock: daily sliding-window job | `app/core/scheduler_singleton_lock.py` + `run_sliding_window_job` |
+| Same for **push** job | `run_push_for_new_drops_job` |
+| Per-bucket **transaction** advisory lock (cross-process) | `run_poll_for_bucket` in `buckets.py` (existing) |
+| In-memory snapshot JSON caps | `snapshot_store._SNAPSHOT_FULL_BOARD_CAP` (500) on ranked/ticker/top/hot |
+| `feed_cache` payload caps + aligned `just_opened` limit | `feed_cache.py` |
+
+Non-Postgres DBs skip advisory SQL and behave single-leader (dev/tests).
+
+---
+
+**Additional mitigations** (limits, batched prunes, `ensure_buckets` batching, etc.) are listed in **`backend/docs/SCALABILITY_AND_MAINTENANCE.md`**.
 
 ---
 

@@ -66,8 +66,15 @@ def _normalize_venue(name: str | None) -> str:
 
 
 def run_push_for_new_drops_job() -> None:
+    from app.core.scheduler_singleton_lock import release_push_leader, try_acquire_push_leader
+
     db = SessionLocal()
+    leader = False
     try:
+        if not try_acquire_push_leader(db):
+            return
+        leader = True
+
         # Notify list = (hotlist ∪ includes) − excludes from notify_preferences
         watched_names = set()
         explicit_includes: set[str] = set()
@@ -182,4 +189,6 @@ def run_push_for_new_drops_job() -> None:
         logger.exception("Push job failed: %s", e)
         db.rollback()
     finally:
+        if leader:
+            release_push_leader(db)
         db.close()

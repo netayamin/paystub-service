@@ -81,7 +81,7 @@ This doc captures hardening rules for the discovery pipeline and related backend
 
 **Status:**
 - Single instance: current design is safe. ✅
-- Multi-instance: no leader election or cross-process bucket lease yet. Before scaling to multiple backend replicas, add scheduler leader election and ensure bucket advisory lock is process-wide (same DB). 📋
+- Multi-instance: set **`ENABLE_BACKGROUND_SCHEDULER=false`** on all but one replica. **Bucket polls** use `pg_try_advisory_xact_lock(bucket_id)` (same DB). **Daily sliding-window** and **push** use **session advisory locks** (`scheduler_singleton_lock.py`) so only one instance runs those jobs. For many Uvicorn workers on one host, lower **`DB_POOL_SIZE`** or use PgBouncer.
 
 ---
 

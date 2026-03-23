@@ -64,52 +64,78 @@ _scheduler = BackgroundScheduler()
 async def lifespan(app: FastAPI):
     import threading
 
-    _scheduler.add_job(run_hourly_check, "interval", hours=1, id="resy_hourly")
-    _scheduler.add_job(
-        run_discovery_bucket_job,
-        "interval",
-        seconds=DISCOVERY_POLL_INTERVAL_SECONDS,
-        id=DISCOVERY_BUCKET_JOB_ID,
-    )
-    _scheduler.add_job(
-        run_sliding_window_job,
-        "cron",
-        hour=7,
-        minute=5,
-        id=DISCOVERY_SLIDING_WINDOW_JOB_ID,
-    )
-    _scheduler.add_job(
-        run_push_for_new_drops_job,
-        "interval",
-        seconds=PUSH_INTERVAL_SECONDS,
-        id=PUSH_JOB_ID,
-    )
-    _scheduler.start()
-    app.state.scheduler = _scheduler
+    app.state.enable_background_scheduler = settings.enable_background_scheduler
 
-    def startup_background():
-        # Brief delay so /health is up; then build initial snapshot + run first discovery tick.
-        import time
-        time.sleep(3)
-        # Build snapshot from existing DB data so clients get data immediately
-        try:
-            from app.services.discovery.snapshot_store import rebuild_snapshot
-            from app.db.session import SessionLocal
-            _db = SessionLocal()
+    if settings.enable_background_scheduler:
+        _scheduler.add_job(run_hourly_check, "interval", hours=1, id="resy_hourly")
+        _scheduler.add_job(
+            run_discovery_bucket_job,
+            "interval",
+            seconds=DISCOVERY_POLL_INTERVAL_SECONDS,
+            id=DISCOVERY_BUCKET_JOB_ID,
+        )
+        _scheduler.add_job(
+            run_sliding_window_job,
+            "cron",
+            hour=7,
+            minute=5,
+            id=DISCOVERY_SLIDING_WINDOW_JOB_ID,
+        )
+        _scheduler.add_job(
+            run_push_for_new_drops_job,
+            "interval",
+            seconds=PUSH_INTERVAL_SECONDS,
+            id=PUSH_JOB_ID,
+        )
+        _scheduler.start()
+        app.state.scheduler = _scheduler
+
+        def startup_background():
+            # Brief delay so /health is up; then build initial snapshot + run first discovery tick.
+            import time
+            time.sleep(3)
+            # Build snapshot from existing DB data so clients get data immediately
             try:
-                rebuild_snapshot(_db)
-                logger.info("Initial discovery snapshot built from existing DB data")
-            finally:
-                _db.close()
-        except Exception as e:
-            logger.warning("Initial snapshot build failed (will retry after first tick): %s", e)
-        try:
-            run_discovery_bucket_job()
-            logger.info("Discovery bucket job tick on startup; next tick in %ss", DISCOVERY_POLL_INTERVAL_SECONDS)
-        except Exception as e:
-            logger.warning("Discovery bucket job on startup failed: %s", e, exc_info=True)
+                from app.services.discovery.snapshot_store import rebuild_snapshot
+                from app.db.session import SessionLocal
+                _db = SessionLocal()
+                try:
+                    rebuild_snapshot(_db)
+                    logger.info("Initial discovery snapshot built from existing DB data")
+                finally:
+                    _db.close()
+            except Exception as e:
+                logger.warning("Initial snapshot build failed (will retry after first tick): %s", e)
+            try:
+                run_discovery_bucket_job()
+                logger.info("Discovery bucket job tick on startup; next tick in %ss", DISCOVERY_POLL_INTERVAL_SECONDS)
+            except Exception as e:
+                logger.warning("Discovery bucket job on startup failed: %s", e, exc_info=True)
 
-    threading.Thread(target=startup_background, daemon=True).start()
+        threading.Thread(target=startup_background, daemon=True).start()
+    else:
+        app.state.scheduler = None
+        logger.warning(
+            "Background scheduler DISABLED (ENABLE_BACKGROUND_SCHEDULER=false). "
+            "Use on API-only replicas; run one instance with scheduler enabled for discovery + push."
+        )
+
+        def startup_snapshot_only():
+            import time
+            time.sleep(2)
+            try:
+                from app.services.discovery.snapshot_store import rebuild_snapshot
+                from app.db.session import SessionLocal
+                _db = SessionLocal()
+                try:
+                    rebuild_snapshot(_db)
+                    logger.info("Initial snapshot from DB (scheduler off; data is read-only until poller runs)")
+                finally:
+                    _db.close()
+            except Exception as e:
+                logger.warning("Initial snapshot build failed: %s", e)
+
+        threading.Thread(target=startup_snapshot_only, daemon=True).start()
     print("\n" + "=" * 60)
     print("  BACKEND READY  http://127.0.0.1:8000")
     print("  API docs       http://127.0.0.1:8000/docs")
@@ -117,7 +143,8 @@ async def lifespan(app: FastAPI):
     print("=" * 60 + "\n")
     logger.info("Backend ready at http://127.0.0.1:8000")
     yield
-    _scheduler.shutdown(wait=False)
+    if getattr(app.state, "scheduler", None):
+        _scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="Resy Discovery", version="0.1.0", lifespan=lifespan)
@@ -199,6 +226,8 @@ def health() -> dict:
     return {
         "status": "ok",
         "version": _health_version(),
+        "background_scheduler": settings.enable_background_scheduler,
+        "database_pool": {"pool_size": settings.db_pool_size, "max_overflow": settings.db_max_overflow},
         "discovery": {
             "window_days": DISCOVERY_WINDOW_DAYS,
             "time_slots": DISCOVERY_TIME_SLOTS,
