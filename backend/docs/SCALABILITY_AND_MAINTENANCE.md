@@ -80,21 +80,20 @@ events = q.all()  # NO LIMIT — can load 50k+ rows and full payload_json
 
 ## 3. Data growth and retention (overtime)
 
-### 3.1 `drop_events` — pruned daily only; DELETE is unbounded
+### 3.1 `drop_events` — bounded to “live” slots + retention
 
-**Where:** `prune_old_drop_events(db, today)` in `buckets.py`; called only from `run_sliding_window_job()` (daily), not from the 30s discovery job. **Per poll:** when a slot leaves the live set, **all** `drop_events` for that `(bucket_id, slot_id)` are deleted (not only rows with `push_sent_at`).
+**Intent:** A row should exist only while the slot is still **open** in `slot_availability` (plus short retention via `DROP_EVENTS_RETENTION_DAYS`). When a slot leaves the live Resy set, the poll deletes its `slot_availability` row(s) and **all** `drop_events` for that `(bucket_id, slot_id)`.
 
-**Retention:** (1) `slot_date` before calendar `today` (from sliding-window `today`); (2) `user_facing_opened_at` older than `DROP_EVENTS_RETENTION_DAYS` for **every** row — push is optional, so pruning must not require `push_sent_at`.
+**Where:**
 
-**Issue:**
+- Time / `slot_date` prune: `prune_old_drop_events(db, today)` — daily sliding-window job.
+- **Orphan reclaim:** `prune_drop_events_without_open_slot` — batched DELETE where no matching **open** `slot_availability` row (discovery tick, small batches; daily job, larger cap). Fixes leaks if close-path missed rows.
+- **Follow “last drop” without scanning `drop_events`:** `venues.last_drop_opened_at` (migration 051), bumped on each DropEvent emit. Follow status reads venues first, then falls back to `drop_events` for legacy gaps.
+- **Ops:** `POST /chat/watches/admin/prune-orphan-drop-events` to drain orphans immediately after deploy/migration.
 
-- Older docs mentioned `bucket_id` lexicographic prune; current code uses `slot_date` + age. No `LIMIT` on the daily DELETE. With millions of rows, this can hold locks and run for a long time.
+**Retention:** (1) `slot_date` before calendar `today`; (2) `user_facing_opened_at` older than `DROP_EVENTS_RETENTION_DAYS` for **every** row.
 
-**Recommendations:**
-
-- Keep pruning daily; ensure only one sliding-window job runs (no overlap).
-- If `drop_events` grows very large (e.g. 500k+), consider batched deletes (e.g. delete 10k at a time in a loop until no rows match) or partition by `bucket_id`/date for easier pruning.
-- Optional: run `prune_old_drop_events` from the main discovery job occasionally (e.g. once per hour) with a small batch to smooth out load, or keep daily and monitor lock duration.
+**Issue:** Unbounded growth usually means orphans (no open slot row) or the daily job not running — use orphan prune + confirm sliding window schedule.
 
 ---
 

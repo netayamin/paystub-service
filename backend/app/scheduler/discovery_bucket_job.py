@@ -6,8 +6,8 @@ Discovery bucket scheduler — **hot path** vs **daily sliding window**.
   `_poll_one_bucket` (Resy fetch → `run_poll_for_bucket`: slot diff, `SlotAvailability`,
   `DropEvent`, `AvailabilityState`, close aggregation, **drop_events prune on close**).
 - Every `DISCOVERY_PRUNE_EVERY_N_TICKS`: `prune_old_buckets`, `prune_old_slot_availability`,
-  `prune_old_availability_state` (same `today` as `window_start_date()`). Does **not** run
-  `prune_old_drop_events` here — that stays in the daily job to avoid large deletes on the hot path.
+  `prune_old_availability_state`, and a **small** batched `prune_drop_events_without_open_slot` (orphan rows only).
+  Full time-based `prune_old_drop_events` stays in the daily job.
 - Snapshot rebuild is debounced (`_maybe_schedule_snapshot_rebuild`) so feed JSON stays fresh
   without blocking polls.
 
@@ -150,11 +150,17 @@ def run_discovery_bucket_job() -> None:
             _tick_count = 0
             try:
                 from app.services.discovery.buckets import (
+                    prune_drop_events_without_open_slot,
                     prune_old_availability_state,
                     prune_old_slot_availability,
                 )
                 prune_old_slot_availability(db, today)
                 prune_old_availability_state(db, today)
+                try:
+                    prune_drop_events_without_open_slot(db, batch_size=10_000, max_batches=2)
+                except Exception as pe:
+                    logger.warning("prune_drop_events_without_open_slot (tick) failed: %s", pe, exc_info=True)
+                    db.rollback()
             except Exception as e:
                 logger.warning("prune slot_availability/sessions failed (tick continues): %s", e, exc_info=True)
                 db.rollback()
@@ -219,6 +225,7 @@ def run_sliding_window_job() -> None:
     """
     from app.services.discovery.buckets import (
         delete_closed_drop_events,
+        prune_drop_events_without_open_slot,
         prune_old_drop_events,
         prune_old_market_metrics,
         prune_old_slot_availability,
@@ -239,6 +246,7 @@ def run_sliding_window_job() -> None:
         delete_closed_drop_events(db)
         prune_old_buckets(db, today)
         prune_old_drop_events(db, today)  # Scheduled: only daily, not every tick
+        prune_drop_events_without_open_slot(db, batch_size=25_000, max_batches=200)
         prune_old_slot_availability(db, today)
         prune_old_availability_state(db, today)
         prune_old_notifications(db)

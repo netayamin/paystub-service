@@ -57,6 +57,7 @@ from app.services.discovery.buckets import (
     prune_old_availability_state,
     prune_old_buckets,
     prune_old_drop_events,
+    prune_drop_events_without_open_slot,
     prune_old_market_metrics,
     prune_old_notifications,
     prune_old_slot_availability,
@@ -1395,6 +1396,33 @@ async def admin_delete_closed_events(db: Session = Depends(get_db)):
         return {"ok": True, "deleted": total, "message": f"Deleted {total} CLOSED drop_events."}
     except Exception as e:
         logger.exception("admin/delete-closed-events failed")
+        return {"ok": False, "error": str(e)}
+
+
+@router.post("/admin/prune-orphan-drop-events")
+async def admin_prune_orphan_drop_events(
+    db: Session = Depends(get_db),
+    batch_size: int = Query(25_000, ge=1_000, le=100_000),
+    max_batches: int | None = Query(
+        default=None,
+        description="Max delete batches this call (omit to run until no orphans remain).",
+    ),
+):
+    """
+    Remove drop_events rows that have no matching **open** slot_availability row.
+
+    These are leaks (should have been deleted when the slot left the live Resy set). Safe to run anytime;
+    `venues.last_drop_opened_at` keeps last-drop times for follows. Omit max_batches to drain until empty.
+    """
+    try:
+        total = prune_drop_events_without_open_slot(db, batch_size=batch_size, max_batches=max_batches)
+        return {
+            "ok": True,
+            "deleted": total,
+            "message": f"Deleted {total} orphan drop_event row(s) (no open slot_availability).",
+        }
+    except Exception as e:
+        logger.exception("admin/prune-orphan-drop-events failed")
         return {"ok": False, "error": str(e)}
 
 

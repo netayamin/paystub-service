@@ -8,7 +8,10 @@ Discovery: per-bucket state and drop formula (scalable pattern).
 - DropEvent rows set user_facing_opened_at (same instant as opened_at / slot_availability.opened_at), eligibility
   evidence from prev/baseline geometry, prior_prev_slot_count, and prior_snapshot_included_slot=false for adds.
 - successful_poll_count increments on each completed baseline init or full poll (not on advisory lock skip).
-- Closed: prev - curr → mark closed in SlotAvailability and sessions.
+- Closed: prev - curr → remove SlotAvailability rows and **all** drop_events for that (bucket_id, slot_id).
+- **Orphan drop_events** (no matching open `slot_availability` row) are pruned periodically and daily — they should
+  not exist if close-path runs; pruning reclaims leaks. **venues.last_drop_opened_at** holds last emit time so we
+  do not need to scan `drop_events` for follow status.
 """
 import hashlib
 import json
@@ -663,6 +666,9 @@ def run_poll_for_bucket(
         except Exception as e:
             logger.debug("DropEvent batch insert skip: %s", e)
 
+    if drop_rows:
+        _bump_venue_last_drop_opened_at(db, drop_rows)
+
     # availability_state: one row per (bucket, slot). Upsert on open (no history — avoids write amplification).
     existing_slot_ids = {
         row[0]
@@ -833,6 +839,81 @@ def prune_old_buckets(db: Session, today: date) -> int:
     if n:
         logger.info("Pruned %s discovery buckets (date < %s)", n, today_str)
     return n
+
+
+def _bump_venue_last_drop_opened_at(db: Session, drop_rows: list[dict]) -> None:
+    """Set venues.last_drop_opened_at = GREATEST(existing, new) for each venue_id in emitted drops."""
+    by_vid: dict[str, datetime] = {}
+    for row in drop_rows:
+        vid = row.get("venue_id")
+        ts = row.get("user_facing_opened_at")
+        if not vid or ts is None:
+            continue
+        if getattr(ts, "tzinfo", None) is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        cur = by_vid.get(vid)
+        if cur is None or ts > cur:
+            by_vid[vid] = ts
+    if not by_vid:
+        return
+    for vid, ts in by_vid.items():
+        db.execute(
+            text(
+                """
+                UPDATE venues
+                SET last_drop_opened_at = GREATEST(
+                    COALESCE(last_drop_opened_at, TIMESTAMP WITH TIME ZONE '-infinity'),
+                    CAST(:ts AS TIMESTAMP WITH TIME ZONE)
+                )
+                WHERE venue_id = :vid
+                """
+            ),
+            {"vid": vid, "ts": ts},
+        )
+
+
+def prune_drop_events_without_open_slot(
+    db: Session, batch_size: int = 25_000, max_batches: int | None = None
+) -> int:
+    """
+    Delete drop_events with no open slot_availability row for the same (bucket_id, slot_id).
+
+    Invariant: a DropEvent is only meaningful while that slot is still in the live projection. Rows left
+    behind (crashes, old code, failed commits) grow without bound; this reclaims them in batches.
+    """
+    total = 0
+    batches = 0
+    while True:
+        batches += 1
+        result = db.execute(
+            text(
+                """
+                DELETE FROM drop_events
+                WHERE id IN (
+                    SELECT de.id
+                    FROM drop_events de
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM slot_availability sa
+                        WHERE sa.bucket_id = de.bucket_id
+                          AND sa.slot_id = de.slot_id
+                          AND sa.state = 'open'
+                    )
+                    LIMIT :lim
+                )
+                """
+            ),
+            {"lim": batch_size},
+        )
+        n = int(result.rowcount or 0)
+        total += n
+        db.commit()
+        if n < batch_size:
+            break
+        if max_batches is not None and batches >= max_batches:
+            break
+    if total:
+        logger.info("prune_drop_events_without_open_slot removed %s orphan drop_event row(s)", total)
+    return total
 
 
 def delete_closed_drop_events(db: Session, batch_size: int = 50_000) -> int:

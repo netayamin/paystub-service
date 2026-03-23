@@ -16,3 +16,6 @@ class Venue(Base):
     market = Column(String(32), nullable=True)
     first_seen_at = Column(DateTime(timezone=True), server_default=func.now())
     last_seen_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Max user_facing_opened_at from any DropEvent for this venue (updated on emit). Lets us prune
+    # drop_events aggressively without losing "last drop" for follows / copy.
+    last_drop_opened_at = Column(DateTime(timezone=True), nullable=True)

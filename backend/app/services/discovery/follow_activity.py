@@ -10,6 +10,7 @@ from app.core.hotspots import list_hotspots
 from app.models.drop_event import DropEvent
 from app.models.notify_preference import NotifyPreference
 from app.models.user_notification import UserNotification
+from app.models.venue import Venue
 
 
 def _norm(s: str | None) -> str:
@@ -17,22 +18,48 @@ def _norm(s: str | None) -> str:
 
 
 def last_drop_at_by_normalized_venue_name(db: Session, normalized_names: list[str]) -> dict[str, datetime]:
-    """Latest DropEvent.user_facing_opened_at per normalized venue_name (trimmed, lower)."""
+    """
+    Latest drop time per normalized venue display name.
+
+    Primary: **venues.last_drop_opened_at** (maintained on each DropEvent emit) so we do not scan a huge
+    drop_events table. Fallback: max(DropEvent.user_facing_opened_at) for names still missing (legacy rows).
+    """
     names = [_norm(n) for n in normalized_names if _norm(n)]
     if not names:
         return {}
+    out: dict[str, datetime] = {}
+
+    vv = func.lower(func.trim(Venue.venue_name))
+    vrows = (
+        db.query(vv.label("k"), func.max(Venue.last_drop_opened_at))
+        .filter(Venue.venue_name.isnot(None))
+        .filter(vv.in_(names))
+        .filter(Venue.last_drop_opened_at.isnot(None))
+        .group_by(vv)
+        .all()
+    )
+    for k, ts in vrows:
+        if k and ts:
+            out[str(k)] = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+    missing = [n for n in names if n not in out]
+    if not missing:
+        return out
+
     vn = func.lower(func.trim(DropEvent.venue_name))
-    rows = (
+    drows = (
         db.query(vn.label("k"), func.max(DropEvent.user_facing_opened_at))
         .filter(DropEvent.venue_name.isnot(None))
-        .filter(vn.in_(names))
+        .filter(vn.in_(missing))
         .group_by(vn)
         .all()
     )
-    out: dict[str, datetime] = {}
-    for k, mx in rows:
+    for k, mx in drows:
         if k and mx:
-            out[str(k)] = mx if mx.tzinfo else mx.replace(tzinfo=timezone.utc)
+            key = str(k)
+            mx_aware = mx if mx.tzinfo else mx.replace(tzinfo=timezone.utc)
+            prev = out.get(key)
+            out[key] = mx_aware if prev is None else max(prev, mx_aware)
     return out
 
 
