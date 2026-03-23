@@ -2,10 +2,10 @@ import SwiftUI
 
 /// Quiet Curator first-load skeleton: cream canvas, **zero radius**, carousel peek, stream rows + tactical/footer blocks.
 struct FeedSkeletonView: View {
-    private let side: CGFloat = 18
-    private let gap: CGFloat = 12
+    private let side: CGFloat = 14
+    private let gap: CGFloat = 10
     /// Matches hottest carousel: two ~4:5 tiles + peek.
-    private let peek: CGFloat = 8
+    private let peek: CGFloat = 4
     /// Matches live stream minimum row count (`minQuietCuratorStreamRows`).
     private let streamRows = 5
 
@@ -17,7 +17,7 @@ struct FeedSkeletonView: View {
 
     private var heroInner: CGFloat { max(1, screenW - 2 * side) }
 
-    private var heroMainWidth: CGFloat { max(156, (heroInner - gap - peek) / 2) }
+    private var heroMainWidth: CGFloat { max(178, (heroInner - gap - peek) / 2) }
 
     private var heroHeight: CGFloat { heroMainWidth * 5.0 / 4.0 }
 

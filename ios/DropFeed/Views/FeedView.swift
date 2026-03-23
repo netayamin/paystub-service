@@ -546,19 +546,18 @@ struct FeedView: View {
         return out
     }
 
-    /// ~**4:5** portrait tiles; multi mode fits **~two cards + peek** (reference dimensions).
+    /// ~**4:5** portrait tiles; multi mode fits **~two cards + sliver peek** — wider than before for readability.
     private func quietCuratorHottestCarouselTileSize(trackWidth: CGFloat, dropCount: Int) -> (w: CGFloat, h: CGFloat) {
-        let side: CGFloat = 18
-        let gap: CGFloat = 12
-        /// Tighter peek so each tile is wider (cards read larger on screen).
-        let peek: CGFloat = 8
+        let side: CGFloat = 14
+        let gap: CGFloat = 10
+        let peek: CGFloat = 4
         let inner = max(1, trackWidth) - 2 * side
         let aspect: CGFloat = 5.0 / 4.0
         if dropCount <= 1 {
-            let w = min(max(196, inner * 0.74), inner - peek)
+            let w = min(max(232, inner * 0.84), inner - peek)
             return (w, w * aspect)
         }
-        let w = max(156, (inner - gap - peek) / 2)
+        let w = max(178, (inner - gap - peek) / 2)
         return (w, w * aspect)
     }
 
@@ -575,8 +574,8 @@ struct FeedView: View {
 
     @ViewBuilder
     private func quietCuratorHottestCarousel(drops: [Drop]) -> some View {
-        let gap: CGFloat = 12
-        let side: CGFloat = 18
+        let gap: CGFloat = 10
+        let side: CGFloat = 14
         let outerH = quietCuratorHottestCarouselTileSize(
             trackWidth: UIScreen.main.bounds.width,
             dropCount: drops.count
@@ -643,7 +642,7 @@ struct FeedView: View {
                 .fixedSize(horizontal: true, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 14)
         .padding(.bottom, 12)
     }
 
