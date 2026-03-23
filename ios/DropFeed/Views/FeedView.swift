@@ -1779,8 +1779,7 @@ private struct QuietCuratorHeroCard: View {
                     Color(white: 0.22)
                 }
             }
-            .frame(height: Self.heroH)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .clipped()
 
             LinearGradient(
@@ -1792,25 +1791,27 @@ private struct QuietCuratorHeroCard: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.heroH)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
 
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
+                HStack(spacing: 0) {
                     if showHighDemand {
                         Text("HIGH DEMAND")
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(.white)
                             .tracking(0.5)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(CreamEditorialTheme.burgundy)
                     }
                     Spacer(minLength: 0)
                 }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 14)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 14)
 
                 Spacer(minLength: 0)
 
@@ -1820,75 +1821,93 @@ private struct QuietCuratorHeroCard: View {
                     .tracking(0.55)
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
 
                 Text(drop.name.uppercased())
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.68)
+                    .minimumScaleFactor(0.55)
                     .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
                     .padding(.top, 4)
-                    .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
 
-                HStack(alignment: .center, spacing: 6) {
-                    Text("TONIGHT")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.5))
-                        .overlay(
-                            Rectangle()
-                                .stroke(Color.white.opacity(0.45), lineWidth: 1)
-                        )
-                    Text(heroTimePill)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.5))
-                        .overlay(
-                            Rectangle()
-                                .stroke(Color.white.opacity(0.45), lineWidth: 1)
-                        )
-                    Spacer(minLength: 4)
-                    Button(action: openResy) {
-                        Text("BOOK")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(CreamEditorialTheme.textPrimary)
-                            .tracking(0.55)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 12)
-                            .background(Color.white)
-                    }
-                    .buttonStyle(.plain)
-                    .layoutPriority(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 18)
+                heroBottomChrome
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14)
+                    .padding(.bottom, 16)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .frame(height: Self.heroH)
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        // Width comes from the parent (full width on single-hero, fixed width per carousel page).
-        // Avoid outer `maxWidth: .infinity` here — inside a horizontal `ScrollView` it competes for
-        // unbounded width and cards overlap.
-        .frame(height: Self.heroH)
+        // Bounded box + clip so overlays (ZStack) cannot paint outside the card — fixes carousel edge bleed.
+        .frame(maxWidth: .infinity, maxHeight: Self.heroH)
+        .clipped()
         .overlay(
             Rectangle()
                 .stroke(Color.black.opacity(0.08), lineWidth: 1)
         )
+    }
+
+    /// Pills + BOOK: reflow when the carousel page is narrow so nothing clips past the card.
+    @ViewBuilder
+    private var heroBottomChrome: some View {
+        let pills = HStack(alignment: .center, spacing: 6) {
+            Text("TONIGHT")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.5))
+                .overlay(
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.45), lineWidth: 1)
+                )
+            Text(heroTimePill)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.5))
+                .overlay(
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.45), lineWidth: 1)
+                )
+        }
+
+        let book = Button(action: openResy) {
+            Text("BOOK")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(CreamEditorialTheme.textPrimary)
+                .tracking(0.55)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .background(Color.white)
+        }
+        .buttonStyle(.plain)
+
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 8) {
+                pills
+                Spacer(minLength: 6)
+                book
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 10) {
+                pills
+                book
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 }
 
