@@ -5,17 +5,30 @@ import Foundation
 final class APIService {
     static let shared = APIService()
 
+    /// API origin only (no trailing slash, no `/chat` suffix — paths add `/chat/...` themselves).
     private let baseURL: String = {
-        if let url = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String, !url.isEmpty {
-            return url.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let raw: String = {
+            if let url = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String, !url.isEmpty {
+                return url.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            #if targetEnvironment(simulator)
+            return "http://127.0.0.1:8000"
+            #else
+            return "http://18.118.55.231:8000"
+            #endif
+        }()
+        var s = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        while s.hasSuffix("/") {
+            s.removeLast()
         }
-        #if targetEnvironment(simulator)
-        return "http://127.0.0.1:8000"
-        #else
-        // On a physical device without Info.plist URL, fall back to the known EC2 server.
-        // Update this if the backend moves. For local dev use ngrok and set API_BASE_URL in Info.plist.
-        return "http://18.118.55.231:8000"
-        #endif
+        // Avoid /chat/chat/... if someone set API_BASE_URL to .../chat
+        if s.hasSuffix("/chat") {
+            s = String(s.dropLast(5))
+            while s.hasSuffix("/") {
+                s.removeLast()
+            }
+        }
+        return s
     }()
     
     private let session: URLSession
@@ -213,7 +226,7 @@ final class APIService {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
         guard (200...299).contains(http.statusCode) else {
-            throw APIError.serverMessage(Self.parseErrorDetail(data) ?? "Could not send code")
+            throw Self.authFailure(status: http.statusCode, data: data, fallback: "Could not send code")
         }
     }
 
@@ -227,7 +240,7 @@ final class APIService {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
         guard (200...299).contains(http.statusCode) else {
-            throw APIError.serverMessage(Self.parseErrorDetail(data) ?? "Invalid code")
+            throw Self.authFailure(status: http.statusCode, data: data, fallback: "Invalid code")
         }
         struct Resp: Decodable { let access_token: String }
         return try decoder.decode(Resp.self, from: data).access_token
@@ -248,8 +261,21 @@ final class APIService {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
         guard (200...299).contains(http.statusCode) else {
-            throw APIError.serverMessage(Self.parseErrorDetail(data) ?? "Could not save profile")
+            throw Self.authFailure(status: http.statusCode, data: data, fallback: "Could not save profile")
         }
+    }
+
+    /// 404 on auth paths almost always means the server image is older than the phone-login API.
+    private static func authFailure(status: Int, data: Data, fallback: String) -> APIError {
+        if status == 404 {
+            let d = parseErrorDetail(data)?.lowercased()
+            if d == nil || d == "not found" {
+                return .serverMessage(
+                    "This server doesn’t have phone sign-in yet (404). Redeploy the latest backend, or point API_BASE_URL at a machine running the current API (e.g. your Mac on the same Wi‑Fi: http://192.168.x.x:8000)."
+                )
+            }
+        }
+        return .serverMessage(parseErrorDetail(data) ?? fallback)
     }
 
     private static func parseErrorDetail(_ data: Data) -> String? {
