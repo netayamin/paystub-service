@@ -449,20 +449,22 @@ struct FeedView: View {
 
         let primaryIds = Set(primaryTriple.map(\.id))
 
-        var bookedEntries: [QuietStreamEntry] = []
-        if let m = vm.justMissed.first {
-            bookedEntries.append(.missed(m))
-        }
-        let takenSlots = max(0, 2 - bookedEntries.count)
+        /// One “slot” reserved when we show a just-missed row so the tail doesn’t balloon.
+        let hasJustMissed = vm.justMissed.first != nil
+        let takenSlots = max(0, 2 - (hasJustMissed ? 1 : 0))
+
+        var tailLiveTaken: [QuietStreamEntry] = []
         if takenSlots > 0 {
             let takenOnly = exploreTaken.filter { !primaryIds.contains($0.id) }
             if !takenOnly.isEmpty {
                 if takenOnly.count <= takenSlots {
-                    bookedEntries.append(contentsOf: takenOnly.map { QuietStreamEntry.live($0, isPrimaryTier: false) })
+                    tailLiveTaken.append(contentsOf: takenOnly.map { QuietStreamEntry.live($0, isPrimaryTier: false) })
                 } else {
                     let w = takenOnly.count - takenSlots
                     let s = Int((vm.liveListShuffleToken >> 1) % UInt64(w + 1))
-                    bookedEntries.append(contentsOf: takenOnly[s ..< (s + takenSlots)].map { QuietStreamEntry.live($0, isPrimaryTier: false) })
+                    tailLiveTaken.append(
+                        contentsOf: takenOnly[s ..< (s + takenSlots)].map { QuietStreamEntry.live($0, isPrimaryTier: false) }
+                    )
                 }
             }
         }
@@ -475,11 +477,32 @@ struct FeedView: View {
             let raw = Array(pool.filter { feedDropIsBookable($0) }.prefix(primaryTarget))
             if !raw.isEmpty {
                 var built = raw.map { QuietStreamEntry.live($0, isPrimaryTier: true) }
+                if let m = vm.justMissed.first {
+                    let at = min(1, built.count)
+                    built.insert(QuietStreamEntry.missed(m), at: at)
+                }
+                let rawIds = Set(raw.map(\.id))
+                built.append(contentsOf: tailLiveTaken.filter { entry in
+                    if case .live(let d, _) = entry { return !rawIds.contains(d.id) }
+                    return true
+                })
                 padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
                 return built
             }
             if let m = vm.justMissed.first {
-                var built: [QuietStreamEntry] = [.missed(m)]
+                // Never lead with only JUST MISSED — surface 1–2 board rows first, then missed (mixed strip).
+                var built: [QuietStreamEntry] = []
+                let skipIds: Set<String> = [m.id]
+                let lead = pool.filter { !skipIds.contains($0.id) }.prefix(2)
+                for d in lead {
+                    built.append(QuietStreamEntry.live(d, isPrimaryTier: false))
+                }
+                if built.isEmpty {
+                    built.append(QuietStreamEntry.missed(m))
+                } else {
+                    built.insert(QuietStreamEntry.missed(m), at: min(1, built.count))
+                }
+                built.append(contentsOf: tailLiveTaken)
                 padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
                 return built
             }
@@ -487,7 +510,12 @@ struct FeedView: View {
             return Array(pool.prefix(minQuietCuratorStreamRows)).map { QuietStreamEntry.live($0, isPrimaryTier: false) }
         }
 
-        out.append(contentsOf: bookedEntries)
+        // Mix: first OPEN row, then JUST MISSED, then remaining primaries + taken tail (matches reference strip).
+        if let m = vm.justMissed.first {
+            let at = min(1, out.count)
+            out.insert(QuietStreamEntry.missed(m), at: at)
+        }
+        out.append(contentsOf: tailLiveTaken)
         padQuietCuratorStreamEntries(&out, pool: pool, minimumRows: minQuietCuratorStreamRows)
         return out
     }
