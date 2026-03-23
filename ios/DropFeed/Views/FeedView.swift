@@ -671,7 +671,7 @@ struct FeedView: View {
                                 QuietCuratorLiveStreamRow(
                                     drop: drop,
                                     preferredParty: party,
-                                    available: drop.exploreCanSnag,
+                                    available: drop.effectiveResyBookingURL != nil || drop.exploreSnagAvailable != false,
                                     waitMinutesLabel: quietCuratorWaitMinutesLabel(
                                         drop,
                                         requireExploreOpenForVanish: !isPrimaryTier
