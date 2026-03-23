@@ -1220,9 +1220,13 @@ async def list_just_opened(
             item["name"] = item.get("venue_name") or item.get("name") or ""
             enrich_likely_open_item(item, i)
 
-        from app.services.discovery.recent_missed import build_just_missed_payload
+        from app.services.discovery.recent_missed import (
+            build_just_missed_payload,
+            collect_bookable_venue_keys,
+        )
 
-        just_missed = build_just_missed_payload(db)
+        _bookable_keys = collect_bookable_venue_keys(just_opened, still_open)
+        just_missed = build_just_missed_payload(db, exclude_bookable_keys=_bookable_keys)
 
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:

@@ -16,6 +16,28 @@ JUST_MISSED_PRUNE_HOURS = 6
 JUST_MISSED_FEED_LIMIT = 12
 
 
+def venue_identity_key(venue_id: str | None, name: str | None) -> str:
+    """Stable key matching `build_just_missed_payload` dedupe (venue_id else name, lowercased)."""
+    return ((venue_id or "").strip().lower() or (name or "").strip().lower())
+
+
+def collect_bookable_venue_keys(
+    just_opened: list[dict] | None,
+    still_open: list[dict] | None,
+) -> set[str]:
+    """Venues that still have at least one open slot in discovery day lists."""
+    keys: set[str] = set()
+    for days in (just_opened or [], still_open or []):
+        for day in days:
+            for v in day.get("venues") or []:
+                if not isinstance(v, dict):
+                    continue
+                k = venue_identity_key(v.get("venue_id"), v.get("name"))
+                if k:
+                    keys.add(k)
+    return keys
+
+
 def record_closed_slots_as_missed(
     db: Session,
     closed_rows: list[Any],
@@ -62,23 +84,39 @@ def prune_stale_missed_rows(db: Session, *, now: datetime | None = None) -> int:
         return 0
 
 
-def build_just_missed_payload(db: Session, *, now: datetime | None = None) -> list[dict]:
-    """Deduplicate by venue_id or name; newest first; cap JUST_MISSED_FEED_LIMIT."""
+def build_just_missed_payload(
+    db: Session,
+    *,
+    now: datetime | None = None,
+    exclude_bookable_keys: set[str] | None = None,
+) -> list[dict]:
+    """Deduplicate by venue_id or name; newest first; cap JUST_MISSED_FEED_LIMIT.
+
+    If ``exclude_bookable_keys`` is set (from just_opened + still_open), venues that
+    still have availability are omitted — a single closed slot must not imply \"just missed\"
+    for the whole venue while other slots remain bookable.
+    """
     now_utc = now or datetime.now(timezone.utc)
     prune_stale_missed_rows(db, now=now_utc)
     cutoff = now_utc - timedelta(minutes=JUST_MISSED_WITHIN_MINUTES)
+    # When excluding many rows, scan deeper so the strip can still fill up to the cap.
+    query_limit = 200 if exclude_bookable_keys else 80
     rows = (
         db.query(RecentMissedDrop)
         .filter(RecentMissedDrop.gone_at >= cutoff)
         .order_by(RecentMissedDrop.gone_at.desc())
-        .limit(80)
+        .limit(query_limit)
         .all()
     )
     seen: set[str] = set()
     out: list[dict] = []
+    exc = exclude_bookable_keys or set()
     for r in rows:
-        key = ((r.venue_id or "").strip().lower() or (r.venue_name or "").strip().lower())
+        key = venue_identity_key(r.venue_id, r.venue_name)
         if not key or key in seen:
+            continue
+        if key in exc:
+            seen.add(key)
             continue
         seen.add(key)
         ga = r.gone_at
