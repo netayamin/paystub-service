@@ -267,10 +267,9 @@ struct FeedView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 20)
 
-                    if let hero = editorialHeroDrop ?? vm.drops.first {
+                    if !quietCuratorHottestCarouselDrops.isEmpty {
                         quietCuratorHottestHeader
-                        QuietCuratorHeroCard(drop: hero)
-                            .padding(.horizontal, 18)
+                        quietCuratorHottestCarousel(drops: quietCuratorHottestCarouselDrops)
                         Color.clear.frame(height: 24)
                     }
 
@@ -323,6 +322,59 @@ struct FeedView: View {
             if out.count >= 6 { break }
         }
         return out
+    }
+
+    /// Up to three hot / trending drops for the Quiet Curator hero carousel (“TOP 3 EXCLUSIVE”).
+    private var quietCuratorHottestCarouselDrops: [Drop] {
+        var out: [Drop] = []
+        var seen = Set<String>()
+        for d in trendingHotCarouselDrops {
+            guard !seen.contains(d.id) else { continue }
+            out.append(d)
+            seen.insert(d.id)
+            if out.count >= 3 { break }
+        }
+        if out.isEmpty {
+            if let h = editorialHeroDrop { return [h] }
+            if let f = vm.drops.first { return [f] }
+            return []
+        }
+        if out.count < 3 {
+            for d in vm.drops {
+                guard !seen.contains(d.id) else { continue }
+                out.append(d)
+                seen.insert(d.id)
+                if out.count >= 3 { break }
+            }
+        }
+        return out
+    }
+
+    @ViewBuilder
+    private func quietCuratorHottestCarousel(drops: [Drop]) -> some View {
+        let peek: CGFloat = 28
+        let gap: CGFloat = 12
+        let side: CGFloat = 18
+        let screenW = UIScreen.main.bounds.width
+        let multiCardWidth = screenW - side - peek
+
+        if drops.count == 1, let only = drops.first {
+            QuietCuratorHeroCard(drop: only)
+                .padding(.horizontal, side)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: gap) {
+                    ForEach(drops, id: \.id) { drop in
+                        QuietCuratorHeroCard(drop: drop)
+                            .frame(width: multiCardWidth)
+                    }
+                }
+                .padding(.leading, side)
+                .padding(.trailing, side)
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.viewAligned)
+        }
     }
 
     private var quietCuratorHottestHeader: some View {
@@ -1537,7 +1589,8 @@ private struct CuratorTopBar: View {
 
 private struct QuietCuratorHeroCard: View {
     let drop: Drop
-    private static let heroH: CGFloat = 312
+    /// Taller hero to match reference; carousel uses same height per card.
+    private static let heroH: CGFloat = 372
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
