@@ -111,13 +111,6 @@ final class APIService {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
         ]
-        let dateFilterActive = (dates?.isEmpty == false)
-        let partyFilterActive = (partySizes?.isEmpty == false)
-        // Compact mobile snapshot only when no server-side filters — otherwise the API must use the
-        // filtered snapshot path (`dates` / `party_sizes` / `market`) so Explore stays scoped to the selected day.
-        if !dateFilterActive && !partyFilterActive {
-            queryItems.append(URLQueryItem(name: "mobile", value: "1"))
-        }
         if let dates = dates, !dates.isEmpty {
             queryItems.append(URLQueryItem(name: "dates", value: dates.joined(separator: ",")))
         }

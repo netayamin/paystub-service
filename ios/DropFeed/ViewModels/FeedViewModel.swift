@@ -47,7 +47,7 @@ final class FeedViewModel: ObservableObject {
     }
 
     /// Pool for rotating ticker rows: same order as `drops`.
-    /// With `mobile=1`, the API serves backend-ranked live drops (ticker_board slice) as `ranked_board` — keep that order.
+    /// `ranked_board` order comes from the discovery snapshot / feed builder — keep that order for the ticker pool.
     var justDropped: [Drop] { drops }
 
     var feedCards: [Drop] {
