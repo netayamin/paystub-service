@@ -5,6 +5,9 @@ Discovery: per-bucket state and drop formula (scalable pattern).
 - Each poll: curr = fetch from Resy; added = curr - prev; update prev = curr. Baseline is only for the first prev.
 - We write all added to SlotAvailability (feed shows them). We only create DropEvent for added slots not in
   "notified recently" (TTL dedupe: same bucket+slot within NOTIFIED_DEDUPE_MINUTES → no duplicate notification).
+- DropEvent rows set user_facing_opened_at (same instant as opened_at / slot_availability.opened_at), eligibility
+  evidence from prev/baseline geometry, prior_prev_slot_count, and prior_snapshot_included_slot=false for adds.
+- successful_poll_count increments on each completed baseline init or full poll (not on advisory lock skip).
 - Closed: prev - curr → mark closed in SlotAvailability and sessions.
 """
 import hashlib
@@ -197,6 +200,25 @@ def _parse_slot_ids_json(js: str | None) -> set[str]:
         return set()
 
 
+def _drop_eligibility_evidence_for_poll(
+    prior_count: int,
+    baseline_count: int,
+    successful_polls_before: int,
+) -> str:
+    """
+    CHECK v1 values on drop_events.eligibility_evidence (see TARGET_SCHEMA_AND_INVARIANTS §4).
+    prior_count = len(prev) before this poll; baseline_count = len(baseline JSON);
+    successful_polls_before = discovery_buckets.successful_poll_count before incrementing for this poll.
+    """
+    if prior_count > 0:
+        return "nonempty_prev_delta"
+    if successful_polls_before > 0:
+        return "empty_prev_delta"
+    if baseline_count > 0:
+        return "baseline_only"
+    return "first_poll_bucket"
+
+
 def _time_bucket_from_slot(time_slot: str) -> str:
     """Map bucket time_slot to time_bucket: 20:30 = prime (8:30 PM), 15:00 = off_peak."""
     return "prime" if time_slot == "20:30" else "off_peak"
@@ -380,10 +402,22 @@ def run_baseline_for_bucket(
         row.baseline_slot_ids_json = js
         row.prev_slot_ids_json = js
         row.scanned_at = now
+        row.successful_poll_count = (row.successful_poll_count or 0) + 1
         if not row.market:
             row.market = market
     else:
-        db.add(DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, market=market, baseline_slot_ids_json=js, prev_slot_ids_json=js, scanned_at=now))
+        db.add(
+            DiscoveryBucket(
+                bucket_id=bid,
+                date_str=date_str,
+                time_slot=time_slot,
+                market=market,
+                baseline_slot_ids_json=js,
+                prev_slot_ids_json=js,
+                scanned_at=now,
+                successful_poll_count=1,
+            )
+        )
     db.commit()
     logger.info("Baseline bucket %s: %s slots", bid, len(slot_ids))
     return len(slot_ids)
@@ -459,7 +493,18 @@ def run_poll_for_bucket(
 
     if not bucket_row:
         js = json.dumps(sorted(curr_set))
-        db.add(DiscoveryBucket(bucket_id=bid, date_str=date_str, time_slot=time_slot, market=market, baseline_slot_ids_json=js, prev_slot_ids_json=js, scanned_at=now))
+        db.add(
+            DiscoveryBucket(
+                bucket_id=bid,
+                date_str=date_str,
+                time_slot=time_slot,
+                market=market,
+                baseline_slot_ids_json=js,
+                prev_slot_ids_json=js,
+                scanned_at=now,
+                successful_poll_count=1,
+            )
+        )
         db.commit()
         return 0, len(curr_set), {"B": len(curr_set), "P": len(curr_set), "C": len(curr_set), "baseline_ready": True, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
 
@@ -469,6 +514,7 @@ def run_poll_for_bucket(
         bucket_row.baseline_slot_ids_json = js
         bucket_row.prev_slot_ids_json = js
         bucket_row.scanned_at = now
+        bucket_row.successful_poll_count = (bucket_row.successful_poll_count or 0) + 1
         n = len(curr_set)
         if n > 0:
             logger.info("Bucket %s: initialized baseline (was None), %s slots (no bootstrap write to slot_availability)", bid, n)
@@ -483,6 +529,9 @@ def run_poll_for_bucket(
     prev_set = _parse_slot_ids_json(bucket_row.prev_slot_ids_json)
     B = len(_parse_slot_ids_json(baseline_js))
     P, C = len(prev_set), len(curr_set)
+    polls_before = int(bucket_row.successful_poll_count or 0)
+    drop_evidence = _drop_eligibility_evidence_for_poll(P, B, polls_before)
+    prior_prev_slot_count = P
 
     # New since last poll only (no comparison to initial baseline forever)
     added = curr_set - prev_set
@@ -549,6 +598,7 @@ def run_poll_for_bucket(
             "bucket_id": bid,
             "slot_id": sid,
             "opened_at": now,
+            "user_facing_opened_at": now,
             "venue_id": r.get("venue_id") if r else None,
             "venue_name": r.get("venue_name") if r else None,
             "payload_json": json.dumps(payload_to_store) if payload_to_store else None,
@@ -560,6 +610,9 @@ def run_poll_for_bucket(
             "neighborhood": neighborhood_val,
             "price_range": price_range_val,
             "market": market,
+            "eligibility_evidence": drop_evidence,
+            "prior_snapshot_included_slot": False,
+            "prior_prev_slot_count": prior_prev_slot_count,
         })
 
     for sid in drops:
@@ -701,6 +754,7 @@ def run_poll_for_bucket(
 
     bucket_row.prev_slot_ids_json = json.dumps(sorted(curr_set))
     bucket_row.scanned_at = now
+    bucket_row.successful_poll_count = polls_before + 1
 
     # Remove drop_events for closed slots that have already been pushed (keeps table bounded)
     if closed_slot_ids:
