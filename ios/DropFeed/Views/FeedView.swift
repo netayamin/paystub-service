@@ -547,12 +547,12 @@ struct FeedView: View {
         return out
     }
 
-    /// ~**4:5** portrait tiles; one large card + sliver peek of the next — snap-scroll hero style.
+    /// Wide cards, roughly square — one per page with a sliver peek of the next.
     private func quietCuratorHottestCarouselTileSize(trackWidth: CGFloat, dropCount: Int) -> (w: CGFloat, h: CGFloat) {
         let side: CGFloat = 14
         let peek: CGFloat = 28
         let inner = max(1, trackWidth) - 2 * side
-        let aspect: CGFloat = 5.0 / 4.0
+        let aspect: CGFloat = 0.9   // ~square, noticeably shorter than previous 1.25
         if dropCount <= 1 {
             let w = min(max(280, inner * 0.96), inner)
             return (w, w * aspect)
@@ -1840,7 +1840,7 @@ private struct QuietCuratorHeroCard: View {
 
     private var effectiveHeight: CGFloat { layoutHeight ?? Self.heroH }
 
-    private var isCompactTile: Bool { (layoutHeight ?? .greatestFiniteMagnitude) < 300 }
+    private var isCompactTile: Bool { (layoutHeight ?? .greatestFiniteMagnitude) < 270 }
 
     /// Short tiles: one line + scaling avoids vertical overflow in the ZStack overlay.
     private var venueTitleLineLimit: Int { effectiveHeight < 248 ? 1 : 2 }
