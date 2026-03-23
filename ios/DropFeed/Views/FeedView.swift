@@ -1748,12 +1748,30 @@ private struct QuietCuratorHeroCard: View {
     }
 }
 
+/// Outlined **TAKEN** chip for inactive live-stream rows (no fill; brutalist sharp rect).
+private struct QuietCuratorStreamTakenGhost: View {
+    var body: some View {
+        Text("TAKEN")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(CreamEditorialTheme.takenText)
+            .tracking(0.4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .overlay(
+                Rectangle()
+                    .stroke(CreamEditorialTheme.exploreHairline, lineWidth: 1)
+            )
+    }
+}
+
 private struct QuietCuratorLiveStreamRow: View {
     let drop: Drop
     let preferredParty: Int
     let available: Bool
     let waitMinutesLabel: String
     let seatingLabel: String
+
+    private let accentBarWidth: CGFloat = 3
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
@@ -1775,6 +1793,7 @@ private struct QuietCuratorLiveStreamRow: View {
         UIApplication.shared.open(url)
     }
 
+    /// Bookable rows: **JUST OPENED** (burgundy) vs **OPENED** (black). Claimed inventory: **BOOKED** (grey) — same inactive chrome as “just missed”.
     private var statusPrimary: String {
         if !available { return "BOOKED" }
         if drop.secondsSinceDetected < 120 { return "JUST OPENED" }
@@ -1782,8 +1801,8 @@ private struct QuietCuratorLiveStreamRow: View {
     }
 
     private var statusPrimaryColor: Color {
-        if !available { return CreamEditorialTheme.textSecondary }
-        if drop.secondsSinceDetected < 120 { return CreamEditorialTheme.streamRed }
+        if !available { return CreamEditorialTheme.textTertiary }
+        if drop.secondsSinceDetected < 120 { return CreamEditorialTheme.burgundy }
         return CreamEditorialTheme.textPrimary
     }
 
@@ -1794,85 +1813,103 @@ private struct QuietCuratorLiveStreamRow: View {
         return "\(s / 3600)h ago"
     }
 
+    private var agoLabelColor: Color {
+        if available { return CreamEditorialTheme.textTertiary }
+        return CreamEditorialTheme.textTertiary.opacity(0.75)
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Group {
-                if let url = imageURL {
-                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+        HStack(spacing: 0) {
+            if available {
+                Rectangle()
+                    .fill(CreamEditorialTheme.burgundy)
+                    .frame(width: accentBarWidth)
+            }
+
+            HStack(alignment: .center, spacing: 10) {
+                Group {
+                    if let url = imageURL {
+                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                            Color(white: 0.9)
+                        }
+                    } else {
                         Color(white: 0.9)
                     }
-                } else {
-                    Color(white: 0.9)
                 }
-            }
-            .frame(width: 56, height: 56)
-            .clipped()
+                .frame(width: 56, height: 56)
+                .clipped()
+                .grayscale(available ? 0 : 1)
+                .opacity(available ? 1 : 0.72)
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 5) {
-                    Text(statusPrimary)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(statusPrimaryColor)
-                        .lineLimit(1)
-                    Text(agoLabel)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textTertiary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-                Text(drop.name.uppercased())
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.75)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: 5) {
-                    Text("⚡️")
-                        .font(.system(size: 11))
-                    Text("\(waitMinutesLabel) \(seatingLabel)")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textSecondary)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 5) {
+                        Text(statusPrimary)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(statusPrimaryColor)
+                            .lineLimit(1)
+                        Text(agoLabel)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(agoLabelColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    Text(drop.name.uppercased())
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(available ? CreamEditorialTheme.textPrimary : CreamEditorialTheme.textSecondary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.75)
-                }
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-            Group {
-                if available {
-                    Button(action: openResy) {
-                        Text("BOOK")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .tracking(0.45)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(CreamEditorialTheme.textPrimary)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if available {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("⚡️")
+                                .font(.system(size: 11))
+                            Text(waitMinutesLabel)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(CreamEditorialTheme.burgundy)
+                            Text(seatingLabel)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(CreamEditorialTheme.textSecondary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.75)
+                        }
+                    } else {
+                        Text("SOLD OUT")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(CreamEditorialTheme.textTertiary)
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    Text("TAKEN")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(CreamEditorialTheme.takenText)
-                        .tracking(0.4)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(CreamEditorialTheme.takenFill)
                 }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+                Group {
+                    if available {
+                        Button(action: openResy) {
+                            Text("BOOK")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                                .tracking(0.45)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(CreamEditorialTheme.textPrimary)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        QuietCuratorStreamTakenGhost()
+                    }
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
             }
-            .fixedSize(horizontal: true, vertical: false)
-            .layoutPriority(1)
+            .padding(.leading, 14)
+            .padding(.trailing, 14)
+            .padding(.vertical, 14)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .background(CreamEditorialTheme.cardWhite)
+        .background(available ? CreamEditorialTheme.cardWhite : CreamEditorialTheme.takenFill)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(CreamEditorialTheme.hairline)
                 .frame(height: 0.5)
-                .padding(.horizontal, 14)
         }
     }
 }
@@ -1917,7 +1954,7 @@ private struct QuietCuratorMissedStreamRow: View {
                         .lineLimit(1)
                     Text(agoLabel)
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textTertiary)
+                        .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }
@@ -1933,20 +1970,14 @@ private struct QuietCuratorMissedStreamRow: View {
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-            Text("TAKEN")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(CreamEditorialTheme.takenText)
-                .tracking(0.4)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(CreamEditorialTheme.takenFill)
+            QuietCuratorStreamTakenGhost()
                 .fixedSize(horizontal: true, vertical: false)
                 .layoutPriority(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
-        .background(CreamEditorialTheme.cardWhite)
+        .background(CreamEditorialTheme.takenFill)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(CreamEditorialTheme.hairline)
