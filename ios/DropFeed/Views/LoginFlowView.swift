@@ -28,59 +28,49 @@ struct LoginFlowView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .top) {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.26, green: 0.15, blue: 0.10),
-                        Color(red: 0.36, green: 0.22, blue: 0.15),
-                        Color(red: 0.30, green: 0.18, blue: 0.13),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+            ZStack {
+                Color.black.ignoresSafeArea()
 
+                LoginAnimatedSpotsHero()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, 8)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(spacing: 0) {
-                            LoginAnimatedSpotsHero()
-                                .padding(.top, 8)
-
-                            VStack(alignment: .leading, spacing: 0) {
-                                headerBlock
-                                    .padding(.horizontal, 22)
-                                    .padding(.top, 28)
-                                    .padding(.bottom, 22)
-
-                                Group {
-                                    switch step {
-                                    case .phone: phoneFields
-                                    case .code: codeFields
-                                    case .profile: profileFields
-                                    }
-                                }
+                        VStack(alignment: .leading, spacing: 0) {
+                            headerBlock
                                 .padding(.horizontal, 22)
-                                .padding(.bottom, 32)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                UnevenRoundedRectangle(
-                                    topLeadingRadius: 28,
-                                    bottomLeadingRadius: 0,
-                                    bottomTrailingRadius: 0,
-                                    topTrailingRadius: 28,
-                                    style: .continuous
-                                )
-                                .fill(Color.white)
-                            )
-                            .shadow(color: .black.opacity(0.12), radius: 24, y: -4)
-                            .id("loginCard")
+                                .padding(.top, 22)
+                                .padding(.bottom, 18)
 
-                            Color.clear.frame(height: 120)
+                            Group {
+                                switch step {
+                                case .phone: phoneFields
+                                case .code: codeFields
+                                case .profile: profileFields
+                                }
+                            }
+                            .padding(.horizontal, 22)
+                            .padding(.bottom, 28)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .id("loginCard")
                     }
+                    .frame(maxWidth: .infinity)
                     .scrollDismissesKeyboard(.interactively)
                     .scrollIndicators(.hidden)
+                    .background {
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 28,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 28,
+                            style: .continuous
+                        )
+                        .fill(Color.white)
+                    }
+                    .shadow(color: .black.opacity(0.22), radius: 20, y: -8)
                     .onChange(of: focus) { _, new in
                         guard let new else { return }
                         let id = "anchor-\(new.rawValue)"
