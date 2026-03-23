@@ -14,6 +14,17 @@ enum PremiumHeroFormatting {
         return String(format: "%02d : %02d", h, m)
     }
 
+    /// Reference hero: `19:45` (no extra spaces).
+    static func time24hCompact(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let p = t.split(separator: ":")
+        guard let h = p.first.flatMap({ Int($0) }) else {
+            return t.isEmpty ? "—" : String(t.prefix(5))
+        }
+        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+        return String(format: "%02d:%02d", h, m)
+    }
+
     static func reservationSubtitle(for drop: Drop) -> String {
         let t = drop.slots.first?.time ?? ""
         let p = t.split(separator: ":")
@@ -96,8 +107,12 @@ struct DSPremiumHeroCard: View {
     }
 
     private var timeDisplay: String {
-        let s = PremiumHeroFormatting.time24hSpaced(timeRaw)
-        return (timeRaw.isEmpty || s == "—") ? "-- : --" : s
+        if isCarouselTile {
+            let s = PremiumHeroFormatting.time24hSpaced(timeRaw)
+            return (timeRaw.isEmpty || s == "—") ? "-- : --" : s
+        }
+        let s = PremiumHeroFormatting.time24hCompact(timeRaw)
+        return (timeRaw.isEmpty || s == "—") ? "—" : s
     }
 
     private var titleSize: CGFloat {
@@ -110,7 +125,8 @@ struct DSPremiumHeroCard: View {
     private var timeSize: CGFloat {
         if isVeryCompact { return 22 }
         if isCompactTile { return 26 }
-        return 30
+        if isCarouselTile { return 30 }
+        return 36
     }
 
     private func openResy() {
@@ -211,8 +227,8 @@ struct DSPremiumHeroCard: View {
                             .minimumScaleFactor(0.75)
                             .padding(.horizontal, isCompactTile ? 8 : 10)
                             .padding(.vertical, isCompactTile ? 5 : 6)
-                            .background(DropFeedTokens.Semantic.premiumHeroBadgeFill)
-                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .background(CreamEditorialTheme.streamRed)
+                            .clipShape(Capsule())
                             .fixedSize(horizontal: true, vertical: false)
                             .layoutPriority(1)
 
@@ -228,7 +244,7 @@ struct DSPremiumHeroCard: View {
                     HStack(alignment: .bottom, spacing: 10) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(drop.name)
-                                .font(.system(size: titleSize, weight: .thin))
+                                .font(.system(size: titleSize, weight: .light, design: .serif))
                                 .foregroundColor(.white)
                                 .lineLimit(isVeryCompact ? 1 : 2)
                                 .minimumScaleFactor(0.55)
@@ -255,16 +271,16 @@ struct DSPremiumHeroCard: View {
                             // Reference: light pill, burgundy/dark text, hairline border
                             Text(PremiumHeroFormatting.paxLabel(for: drop))
                                 .font(.system(size: isCompactTile ? 9 : 10, weight: .bold))
-                                .foregroundColor(DropFeedTokens.Semantic.premiumHeroBadgeFill)
+                                .foregroundColor(.black)
                                 .tracking(0.35)
                                 .lineLimit(1)
                                 .padding(.horizontal, isCompactTile ? 8 : 10)
                                 .padding(.vertical, 5)
-                                .background(Color.white.opacity(0.92))
+                                .background(Color.white)
                                 .clipShape(Capsule())
                                 .overlay(
                                     Capsule()
-                                        .stroke(Color.black.opacity(0.22), lineWidth: 1)
+                                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
                                 )
                         }
                         .layoutPriority(2)
@@ -278,14 +294,14 @@ struct DSPremiumHeroCard: View {
                             Text("SECURE SEAT")
                                 .font(.system(size: isCompactTile ? 11 : 13, weight: .bold))
                                 .tracking(0.45)
-                                .foregroundColor(.white)
+                                .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: isCompactTile ? 44 : 50)
-                                .background(frostedCTAFill)
+                                .background(Color.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .stroke(Color.white.opacity(canBook ? 0.4 : 0.2), lineWidth: 1)
+                                        .stroke(Color.black.opacity(canBook ? 0.08 : 0.12), lineWidth: 1)
                                 )
                         }
                         .buttonStyle(ScaleButtonStyle())
@@ -300,11 +316,11 @@ struct DSPremiumHeroCard: View {
                                     .font(.system(size: isCompactTile ? 15 : 17, weight: .medium))
                                     .foregroundColor(.white)
                                     .frame(width: isCompactTile ? 44 : 52, height: isCompactTile ? 44 : 50)
-                                    .background(frostedCTAFill)
+                                    .background(Color.black)
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
                                     )
                             }
                             .buttonStyle(.plain)

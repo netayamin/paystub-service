@@ -35,49 +35,54 @@ private func padQuietCuratorStreamEntries(_ entries: inout [QuietStreamEntry], p
     }
 }
 
-/// Hairline rule with centered **LIVE STREAM**, then status row (pulse + label / local clock).
-private struct QuietCuratorLiveStreamDividerHeader: View {
-    var hasBookableLive: Bool
+/// Hairline rule with centered **LIVE STREAM** (reference: title only above the card).
+private struct QuietCuratorLiveStreamCenteredTitle: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
+            Text("LIVE STREAM")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(CreamEditorialTheme.textPrimary)
+                .tracking(0.85)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .background(CreamEditorialTheme.canvas)
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
+        }
+    }
+}
+
+/// Subsection row: colored dot + label + local clock (JUST OPENED / JUST MISSED).
+private struct QuietCuratorStreamSubsectionHeader: View {
+    var title: String
+    var dotColor: Color
+    var titleColor: Color
+    var clockColor: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(CreamEditorialTheme.hairline)
-                    .frame(height: 1)
-                Text("LIVE STREAM")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .tracking(0.85)
-                    .lineLimit(1)
-                    .padding(.horizontal, 12)
-                    .background(CreamEditorialTheme.canvas)
-                Rectangle()
-                    .fill(CreamEditorialTheme.hairline)
-                    .frame(height: 1)
+        HStack(alignment: .center, spacing: 0) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 6, height: 6)
+                Text(title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(titleColor)
+                    .tracking(0.35)
             }
-
-            HStack(alignment: .center, spacing: 0) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(hasBookableLive ? CreamEditorialTheme.liveStreamPulseGreen : CreamEditorialTheme.textTertiary)
-                        .frame(width: 6, height: 6)
-                    Text(hasBookableLive ? "JUST OPENED" : "LIVE")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(hasBookableLive ? CreamEditorialTheme.liveStreamPulseGreen : CreamEditorialTheme.textTertiary)
-                        .tracking(0.35)
-                }
-                Spacer(minLength: 12)
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text(Self.clockString(for: context.date))
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
+            Spacer(minLength: 12)
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                Text(Self.clockString(for: context.date))
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(clockColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
         }
-        .padding(.horizontal, 18)
     }
 
     private static func clockString(for date: Date) -> String {
@@ -637,20 +642,23 @@ struct FeedView: View {
     }
 
     private var quietCuratorHottestHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        let week = Calendar.current.component(.weekOfYear, from: Date())
+        return HStack(alignment: .center, spacing: 10) {
             Text("HOTTEST DROPS")
-                .font(.system(size: 22, weight: .heavy))
+                .font(.system(size: 13, weight: .heavy))
                 .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.15)
+                .tracking(1.0)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            Text("TOP 3 EXCLUSIVE")
-                .font(.system(size: 9, weight: .medium))
+            Text("WEEK \(week)")
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(CreamEditorialTheme.textTertiary)
-                .tracking(0.55)
-                .multilineTextAlignment(.trailing)
-                .fixedSize(horizontal: true, vertical: true)
+                .tracking(0.4)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(red: 0.93, green: 0.93, blue: 0.95))
+                .clipShape(Capsule())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
@@ -665,10 +673,21 @@ struct FeedView: View {
             if entries.isEmpty {
                 EmptyView()
             } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    QuietCuratorLiveStreamDividerHeader(hasBookableLive: !opens.isEmpty)
+                VStack(alignment: .leading, spacing: 12) {
+                    QuietCuratorLiveStreamCenteredTitle()
+                        .padding(.horizontal, 18)
 
-                    VStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if !opens.isEmpty {
+                            QuietCuratorStreamSubsectionHeader(
+                                title: "JUST OPENED",
+                                dotColor: CreamEditorialTheme.liveStreamPulseGreen,
+                                titleColor: CreamEditorialTheme.liveStreamPulseGreen,
+                                clockColor: CreamEditorialTheme.textSecondary
+                            )
+                            .padding(.horizontal, 4)
+                        }
+
                         if !opens.isEmpty {
                             LazyVGrid(
                                 columns: [
@@ -682,6 +701,7 @@ struct FeedView: View {
                                     LiveStreamOpenCard(
                                         drop: drop,
                                         preferredParty: mockPreferredParty(for: drop),
+                                        todayDateStr: vm.todayDateStr,
                                         onTap: { liveStreamOpenResy(drop) }
                                     )
                                     .staggeredAppear(index: idx, delayPerItem: 0.03)
@@ -690,7 +710,15 @@ struct FeedView: View {
                         }
 
                         if !closed.isEmpty {
-                            LiveStreamMissedSectionHeader()
+                            QuietCuratorStreamSubsectionHeader(
+                                title: "JUST MISSED",
+                                dotColor: CreamEditorialTheme.textTertiary.opacity(0.55),
+                                titleColor: CreamEditorialTheme.textTertiary,
+                                clockColor: CreamEditorialTheme.textTertiary
+                            )
+                            .padding(.horizontal, 4)
+                            .padding(.top, opens.isEmpty ? 0 : 4)
+
                             ForEach(Array(closed.enumerated()), id: \.offset) { idx, entry in
                                 Group {
                                     switch entry {
@@ -1871,34 +1899,38 @@ private struct QuietCuratorTacticalForecastPanel: View {
     let ctaTitle: String
     var onTapCTA: () -> Void
 
-    private var topVenues: [LikelyToOpenVenue] { Array(venues.prefix(3)) }
+    private var feature: LikelyToOpenVenue? { venues.first }
+    private var secondaryVenues: [LikelyToOpenVenue] { Array(venues.dropFirst().prefix(2)) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("TACTICAL FORECAST")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundColor(.white)
-                    .tracking(0.5)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                Text("HIGH PROBABILITY")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.streamRed)
-                    .tracking(0.35)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .padding(.bottom, 16)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("TACTICAL FORECAST")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .tracking(0.6)
+                    Text("PROBABILITY OF OPENINGS AT 19:00–21:00")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(CreamEditorialTheme.textSecondary)
+                        .tracking(0.25)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-            VStack(spacing: 0) {
-                ForEach(Array(topVenues.enumerated()), id: \.offset) { idx, v in
-                    tacticalDarkRow(v)
-                    if idx < topVenues.count - 1 {
-                        Rectangle()
-                            .fill(CreamEditorialTheme.tacticalDarkDivider)
-                            .frame(height: 1)
-                            .padding(.vertical, 12)
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+            }
+
+            if let v = feature {
+                tacticalFeatureHero(v)
+            }
+
+            if !secondaryVenues.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(Array(secondaryVenues.enumerated()), id: \.offset) { _, v in
+                        tacticalCompactTile(v)
                     }
                 }
             }
@@ -1906,94 +1938,193 @@ private struct QuietCuratorTacticalForecastPanel: View {
             Text("Forecast based on historical drop patterns and current cancellation velocity.")
                 .font(.system(size: 10, weight: .regular))
                 .italic()
-                .foregroundColor(CreamEditorialTheme.tacticalDarkMeta)
-                .padding(.top, 14)
+                .foregroundColor(CreamEditorialTheme.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onTapCTA) {
                 Text(ctaTitle)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
-                    .tracking(0.35)
+                    .tracking(0.4)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(CreamEditorialTheme.burgundy)
+                    .padding(.vertical, 14)
+                    .background(CreamEditorialTheme.canvas)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+                    )
             }
             .buttonStyle(.plain)
-            .padding(.top, 16)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(CreamEditorialTheme.tacticalDarkSurface)
+        .background(CreamEditorialTheme.cardWhite)
         .overlay(
             Rectangle()
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
         )
     }
 
-    private func tacticalDarkRow(_ v: LikelyToOpenVenue) -> some View {
+    private func chancePercent(for v: LikelyToOpenVenue) -> Int {
+        if let p = v.probability { return min(99, max(1, p)) }
+        let r = v.availabilityRate14d ?? 0.5
+        return min(99, max(5, Int(r * 100)))
+    }
+
+    private func tacticalFeatureHero(_ v: LikelyToOpenVenue) -> some View {
+        let imgURL: URL? = {
+            guard let s = v.imageUrl, !s.isEmpty else { return nil }
+            return URL(dropFeedMediaString: s) ?? URL(string: s)
+        }()
+        let chance = chancePercent(for: v)
+        let volatile = (v.trendPct ?? 0) > 10 || (v.availabilityRate14d ?? 0) > 0.35
+
+        return ZStack(alignment: .bottomLeading) {
+            Group {
+                if let url = imgURL {
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
+                        Color(white: 0.35)
+                    }
+                } else {
+                    LinearGradient(
+                        colors: [Color(white: 0.42), Color(white: 0.22)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 200, maxHeight: 200)
+            .clipped()
+
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.0), location: 0.0),
+                    .init(color: .black.opacity(0.55), location: 0.55),
+                    .init(color: .black.opacity(0.82), location: 1.0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 0) {
+                    Text("CHANCE: \(chance)%")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .tracking(0.3)
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 6) {
+                        if volatile {
+                            Text("HIGH VOLATILITY")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.white)
+                                .tracking(0.35)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(CreamEditorialTheme.liveStreamPulseGreen)
+                                .clipShape(Capsule())
+                        }
+                        Text("2-4 PAX")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.white)
+                            .tracking(0.25)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Text(v.name)
+                    .font(.system(size: 22, weight: .bold, design: .serif))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+
+                Text(expectedReleaseLine(for: v))
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.top, 6)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.88)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(height: 200)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+        )
+    }
+
+    private func expectedReleaseLine(for v: LikelyToOpenVenue) -> String {
+        let a = (v.predictedDropTime ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let b = (v.predictedDropHint ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !a.isEmpty, !b.isEmpty { return "Expected release: \(a) — \(b)" }
+        if !a.isEmpty { return "Expected release: \(a)" }
+        if !b.isEmpty { return "Expected release: \(b)" }
+        if let c = v.forecastMetricsCompact, !c.isEmpty { return c }
+        return "Watching tonight’s release window based on past drops."
+    }
+
+    private func tacticalCompactTile(_ v: LikelyToOpenVenue) -> some View {
         let imgURL: URL? = {
             guard let s = v.imageUrl, !s.isEmpty else { return nil }
             return URL(dropFeedMediaString: s) ?? URL(string: s)
         }()
 
-        return HStack(alignment: .center, spacing: 12) {
-            ZStack {
+        return VStack(alignment: .leading, spacing: 8) {
+            Group {
                 if let url = imgURL {
-                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
-                        Color(white: 0.28)
+                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                        Color(red: 0.92, green: 0.92, blue: 0.94)
                     }
                 } else {
-                    Color(white: 0.28)
+                    Color(red: 0.92, green: 0.92, blue: 0.94)
                 }
             }
-            .frame(width: 44, height: 44)
+            .frame(height: 72)
+            .frame(maxWidth: .infinity)
             .clipped()
-            .overlay(
-                Rectangle()
-                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(CreamEditorialTheme.streamRed)
-                    Text("SIGNAL: \(signalPhrase(for: v))")
-                        .font(.system(size: 9, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.tacticalDarkMeta)
-                        .tracking(0.4)
-                }
-                Text(venueForecastHeadline(v))
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Color.white.opacity(0.28))
+            Text(timePlusLabel(for: v))
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(CreamEditorialTheme.textPrimary)
+            Text("2 PAX")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(CreamEditorialTheme.textSecondary)
+            Text(v.name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(CreamEditorialTheme.textSecondary)
+                .lineLimit(1)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(red: 0.94, green: 0.94, blue: 0.96))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+        )
     }
 
-    private func signalPhrase(for v: LikelyToOpenVenue) -> String {
-        let p = v.probability ?? min(99, max(0, Int((v.availabilityRate14d ?? 0) * 100)))
-        if p >= 70 { return "JUST NOW" }
-        if p >= 45 { return "HIGH WATCH" }
-        return "WATCHING"
-    }
-
-    private func venueForecastHeadline(_ v: LikelyToOpenVenue) -> String {
-        let hint = (v.predictedDropTime ?? v.predictedDropHint ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let window = hint.isEmpty ? "TONIGHT" : hint.uppercased()
-        return "\(v.name.uppercased()): 2PPL \(window)"
+    private func timePlusLabel(for v: LikelyToOpenVenue) -> String {
+        let h = v.predictedDropTime ?? v.predictedDropHint ?? ""
+        if let range = h.range(of: #"\d{1,2}:\d{2}"#, options: .regularExpression) {
+            return String(h[range]) + "+"
+        }
+        return "19:00+"
     }
 }
 

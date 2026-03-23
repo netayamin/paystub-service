@@ -49,10 +49,12 @@ enum LiveStreamCardFormatting {
 
 // MARK: - Open tile (2-col grid)
 
-/// Reference: padded gray card, inset rounded image, **PAX** badge on image, bold name, gray detail line.
+/// Reference: top row (time + TODAY / date + PAX pill), square image, bold name + neighborhood line.
 struct LiveStreamOpenCard: View {
     let drop: Drop
     let preferredParty: Int
+    /// `YYYY-MM-DD` for “TODAY” vs other labels (from ``FeedViewModel/todayDateStr``).
+    let todayDateStr: String
     var onTap: () -> Void
 
     private let cardFill = Color(red: 0.94, green: 0.94, blue: 0.96)
@@ -63,40 +65,86 @@ struct LiveStreamOpenCard: View {
         return URL(string: s)
     }
 
+    private var slotDateStr: String? {
+        let s = drop.slots.first?.dateStr ?? drop.dateStr
+        guard let u = s?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty else { return nil }
+        return u
+    }
+
+    private var dayChinLabel: String {
+        guard let ds = slotDateStr else { return "SOON" }
+        if ds == todayDateStr { return "TODAY" }
+        let p = ds.split(separator: "-")
+        guard p.count == 3,
+              let y = Int(p[0]), let m = Int(p[1]), let d = Int(p[2]) else { return "UPCOMING" }
+        var c = DateComponents()
+        c.year = y; c.month = m; c.day = d
+        guard let date = Calendar.current.date(from: c) else { return "UPCOMING" }
+        let f = DateFormatter()
+        f.dateFormat = "EEE MMM d"
+        return f.string(from: date).uppercased()
+    }
+
+    private var footerDetailLine: String {
+        let n = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !n.isEmpty, !loc.isEmpty { return "\(n) • \(loc)" }
+        if !n.isEmpty { return n }
+        if !loc.isEmpty { return loc }
+        let kind = drop.liveStreamVelocityBadge ?? drop.exploreVenuePill ?? "Table"
+        return "\(kind) • \(LiveStreamCardFormatting.slotTime24hColon(drop))"
+    }
+
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(LiveStreamCardFormatting.slotTime24hColon(drop))
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(CreamEditorialTheme.textPrimary)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text(dayChinLabel)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(CreamEditorialTheme.textTertiary)
+                            .tracking(0.35)
+                            .lineLimit(1)
+                    }
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+                    Text("\(preferredParty) PAX")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .tracking(0.25)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.black)
+                        .clipShape(Capsule())
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
                 Color.clear
-                    .aspectRatio(1.08, contentMode: .fit)
+                    .aspectRatio(1.0, contentMode: .fit)
                     .frame(maxWidth: .infinity)
                     .overlay {
-                        ZStack(alignment: .topTrailing) {
-                            Group {
-                                if let u = imageURL {
-                                    CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
-                                        imagePlaceholder
-                                    }
-                                } else {
+                        Group {
+                            if let u = imageURL {
+                                CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
                                     imagePlaceholder
                                 }
+                            } else {
+                                imagePlaceholder
                             }
-                            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                            .clipped()
-
-                            Text("\(preferredParty) PAX")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.white)
-                                .tracking(0.2)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(Color.black.opacity(0.58))
-                                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                .padding(8)
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                        .clipped()
                     }
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .padding(.horizontal, 10)
-                    .padding(.top, 10)
 
                 Text(drop.name)
                     .font(.system(size: 15, weight: .bold))
@@ -108,7 +156,7 @@ struct LiveStreamOpenCard: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 10)
 
-                Text(LiveStreamCardFormatting.detailLine(drop: drop))
+                Text(footerDetailLine)
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(CreamEditorialTheme.textSecondary)
                     .lineLimit(2)
@@ -129,40 +177,6 @@ struct LiveStreamOpenCard: View {
     }
 }
 
-// MARK: - JUST MISSED subsection
-
-struct LiveStreamMissedSectionHeader: View {
-    var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Circle()
-                .fill(CreamEditorialTheme.textTertiary.opacity(0.55))
-                .frame(width: 6, height: 6)
-            Text("JUST MISSED")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(CreamEditorialTheme.textTertiary)
-                .tracking(0.35)
-            Spacer(minLength: 12)
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                Text(Self.clockString(for: context.date))
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-            }
-        }
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-    }
-
-    private static func clockString(for date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = .current
-        f.dateFormat = "HH:mm zzz"
-        return f.string(from: date).uppercased()
-    }
-}
-
 // MARK: - Full-width inactive rows
 
 struct LiveStreamJustMissedCard: View {
@@ -170,22 +184,38 @@ struct LiveStreamJustMissedCard: View {
 
     private let cardFill = Color(red: 0.94, green: 0.94, blue: 0.96)
 
+    private var timeColumn: String {
+        let t = venue.slotTime?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if t.isEmpty { return "—" }
+        let p = t.split(separator: ":")
+        if let h = p.first.flatMap({ Int($0) }) {
+            let mm = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+            return String(format: "%02d:%02d", h, mm)
+        }
+        return String(t.prefix(5))
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(LiveStreamCardFormatting.venueInitials(venue.name))
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(CreamEditorialTheme.textSecondary)
-                .frame(width: 48, height: 48)
-                .background(Color(red: 0.90, green: 0.90, blue: 0.93))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(timeColumn)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .monospacedDigit()
+                Text("2 PAX")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.9))
+            }
+            .frame(width: 52, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(venue.name)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .foregroundColor(Color(red: 0.45, green: 0.45, blue: 0.5))
                     .lineLimit(1)
-                Text(subtitle)
+                Text(claimedSubtitle)
                     .font(.system(size: 12, weight: .regular))
+                    .italic()
                     .foregroundColor(CreamEditorialTheme.textTertiary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.9)
@@ -193,24 +223,23 @@ struct LiveStreamJustMissedCard: View {
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
             Image(systemName: "lock.fill")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(CreamEditorialTheme.textTertiary)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardFill)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
         )
     }
 
-    private var subtitle: String {
-        let time = venue.slotTime?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let timePart = (time?.isEmpty == false) ? time! : "—"
+    private var claimedSubtitle: String {
         let ago = LiveStreamCardFormatting.missedAgoLabel(iso: venue.goneAt)
-        return "Table for 2 • \(timePart) · \(ago)"
+        return "Claimed · \(ago)"
     }
 }
 
@@ -222,21 +251,26 @@ struct LiveStreamSoldOutDropCard: View {
     private let cardFill = Color(red: 0.94, green: 0.94, blue: 0.96)
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(LiveStreamCardFormatting.venueInitials(drop.name))
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(CreamEditorialTheme.textSecondary)
-                .frame(width: 48, height: 48)
-                .background(Color(red: 0.90, green: 0.90, blue: 0.93))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(LiveStreamCardFormatting.slotTime24hColon(drop))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .monospacedDigit()
+                Text("\(preferredParty) PAX")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.9))
+            }
+            .frame(width: 52, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(drop.name)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .foregroundColor(Color(red: 0.45, green: 0.45, blue: 0.5))
                     .lineLimit(1)
                 Text(subtitle)
                     .font(.system(size: 12, weight: .regular))
+                    .italic()
                     .foregroundColor(CreamEditorialTheme.textTertiary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.9)
@@ -244,15 +278,16 @@ struct LiveStreamSoldOutDropCard: View {
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
             Image(systemName: "lock.fill")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(CreamEditorialTheme.textTertiary)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardFill)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
         )
     }

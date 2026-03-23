@@ -20,7 +20,7 @@
 | **`DSExploreDateChip`** | Calendar strip: weekday over date, maroon when selected. |
 | **`DSExploreInventoryCard`** | Explore grid tile: 1:1 image, date + time + PAX overlay, title + ↗, cuisine line, bolt status pill. |
 | **`DSPremiumHeroCard`** | Dark premium hero (feed TOP OPPORTUNITY + Hottest carousel). |
-| **`LiveStreamOpenCard` / `LiveStreamJustMissedCard` / `LiveStreamSoldOutDropCard`** | Home **LIVE STREAM**: 2-col open tiles (inset image + PAX chip) vs full-width missed/sold-out rows (initials + lock). |
+| **`LiveStreamOpenCard` / `LiveStreamJustMissedCard` / `LiveStreamSoldOutDropCard`** | Home **LIVE STREAM**: 2-col open tiles (time + day row, black PAX pill, image, name + area) vs low-contrast missed/sold-out rows (time + pax column, name, italic claimed line, lock). |
 
 Prefix new shared primitives with **`DS`** and keep them **stateless** where possible (pass data + closures in).
 
