@@ -125,6 +125,9 @@ struct DSPremiumHeroCard: View {
         UIApplication.shared.open(url)
     }
 
+    /// Full-width TOP OPPORTUNITY hero only — carousel tiles omit this (wide text broke ZStack layout / clipping).
+    private var isCarouselTile: Bool { layoutHeight != nil }
+
     var body: some View {
         let stack = ZStack(alignment: .bottom) {
             Group {
@@ -151,14 +154,19 @@ struct DSPremiumHeroCard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
 
-            // Watermark (very subtle)
-            Text("\(drop.name.uppercased()) · NYC")
-                .font(.system(size: isCompactTile ? 36 : 52, weight: .bold))
-                .foregroundColor(.white.opacity(0.05))
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .offset(y: isCompactTile ? -8 : -18)
-                .allowsHitTesting(false)
+            if !isCarouselTile {
+                // Watermark (very subtle) — only on tall hero; carousel must stay strictly bounded.
+                Text("\(drop.name.uppercased()) · NYC")
+                    .font(.system(size: isCompactTile ? 36 : 52, weight: .bold))
+                    .foregroundColor(.white.opacity(0.05))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .offset(y: isCompactTile ? -8 : -18)
+                    .allowsHitTesting(false)
+                    .layoutPriority(-1)
+            }
 
             VStack(alignment: .leading, spacing: 0) {
                 Spacer(minLength: 0)
@@ -170,23 +178,24 @@ struct DSPremiumHeroCard: View {
                             .foregroundColor(.white)
                             .tracking(0.4)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                            .minimumScaleFactor(0.75)
                             .padding(.horizontal, isCompactTile ? 8 : 10)
                             .padding(.vertical, isCompactTile ? 5 : 6)
                             .background(DropFeedTokens.Semantic.premiumHeroBadgeFill)
                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
 
                         Text(PremiumHeroFormatting.locationLine(for: drop))
                             .font(.system(size: isCompactTile ? 10 : 11, weight: .regular))
                             .italic()
                             .foregroundColor(.white.opacity(0.92))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-
-                        Spacer(minLength: 0)
+                            .minimumScaleFactor(0.7)
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
 
-                    HStack(alignment: .bottom, spacing: 12) {
+                    HStack(alignment: .bottom, spacing: 10) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(drop.name)
                                 .font(.system(size: titleSize, weight: .thin))
@@ -194,6 +203,7 @@ struct DSPremiumHeroCard: View {
                                 .lineLimit(isVeryCompact ? 1 : 2)
                                 .minimumScaleFactor(0.55)
                                 .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                             Text(PremiumHeroFormatting.reservationSubtitle(for: drop))
                                 .font(.system(size: isCompactTile ? 9 : 10, weight: .medium))
@@ -210,7 +220,7 @@ struct DSPremiumHeroCard: View {
                                 .foregroundColor(.white)
                                 .monospacedDigit()
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                                .minimumScaleFactor(0.65)
 
                             Text(PremiumHeroFormatting.paxLabel(for: drop))
                                 .font(.system(size: isCompactTile ? 9 : 10, weight: .bold))
@@ -222,6 +232,8 @@ struct DSPremiumHeroCard: View {
                                 .background(DropFeedTokens.Semantic.premiumHeroPaxFill)
                                 .clipShape(Capsule())
                         }
+                        .layoutPriority(2)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
 
                     HStack(spacing: isCompactTile ? 8 : 10) {
@@ -269,11 +281,14 @@ struct DSPremiumHeroCard: View {
             if let r = innerClipCornerRadius {
                 stack
                     .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
+                    .clipped()
+                    .compositingGroup()
                     .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
             } else {
                 stack
                     .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
                     .clipped()
+                    .compositingGroup()
             }
         }
         .overlay {
@@ -315,10 +330,12 @@ struct DSPremiumHeroCard: View {
             drop: .previewRare,
             layoutHeight: 240,
             useSharpRectangleBorder: false,
-            innerClipCornerRadius: 10,
+            innerClipCornerRadius: nil,
             isWatched: true,
             onToggleWatch: { _ in }
         )
         .frame(width: 280)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

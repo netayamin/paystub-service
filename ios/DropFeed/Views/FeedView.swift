@@ -594,15 +594,17 @@ struct FeedView: View {
                             drop: only,
                             layoutHeight: sz.h,
                             useSharpRectangleBorder: false,
-                            innerClipCornerRadius: 10,
+                            innerClipCornerRadius: nil,
                             isWatched: savedVM.isWatched(only.name),
                             onToggleWatch: { savedVM.toggleWatch($0) }
                         )
                         .frame(width: sz.w, height: sz.h)
+                        .clipped()
                     )
                     Spacer(minLength: 0)
                 }
                 .frame(width: trackW, height: sz.h, alignment: .top)
+                .clipped()
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: gap) {
@@ -612,11 +614,12 @@ struct FeedView: View {
                                     drop: drop,
                                     layoutHeight: sz.h,
                                     useSharpRectangleBorder: false,
-                                    innerClipCornerRadius: 10,
+                                    innerClipCornerRadius: nil,
                                     isWatched: savedVM.isWatched(drop.name),
                                     onToggleWatch: { savedVM.toggleWatch($0) }
                                 )
                                 .frame(width: sz.w, height: sz.h)
+                                .clipped()
                             )
                         }
                     }
@@ -626,6 +629,7 @@ struct FeedView: View {
                 }
                 .scrollTargetBehavior(.viewAligned)
                 .frame(width: trackW, height: sz.h, alignment: .top)
+                .clipped()
             }
         }
         .frame(height: outerH)
