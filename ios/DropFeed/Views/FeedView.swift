@@ -1547,70 +1547,82 @@ private struct FeedPredictWillOpenSection: View {
         let window = venue.predictedDropTime?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
                 Group {
                     if let url = imgURL {
                         CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
-                            SnagDesignSystem.darkElevated
+                            Color(white: 0.16)
                         }
                     } else {
-                        SnagDesignSystem.darkElevated
+                        Color(white: 0.16)
                     }
                 }
-                .frame(width: 148, height: 80)
+                .frame(width: 148, height: 188)
                 .clipped()
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.0), location: 0.0),
+                        .init(color: .black.opacity(0.35), location: 0.45),
+                        .init(color: .black.opacity(0.82), location: 1.0),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: 148, height: 188)
+                .allowsHitTesting(false)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center) {
                         Text("FORECAST")
                             .font(.system(size: 8, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .foregroundColor(Color.white.opacity(0.55))
                         Spacer()
                         if let s = score {
                             Text("\(s)")
-                                .font(.system(size: 16, weight: .black))
+                                .font(.system(size: 17, weight: .black))
                                 .foregroundColor(SnagDesignSystem.mint)
                         }
                     }
                     Text(venue.name)
                         .font(.system(size: 14, weight: .bold, design: .serif))
-                        .foregroundColor(SnagDesignSystem.darkTextPrimary)
+                        .foregroundColor(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.85)
+                        .shadow(color: .black.opacity(0.45), radius: 4, x: 0, y: 1)
                     if let h = hint, !h.isEmpty {
                         Text(h)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(SnagDesignSystem.mint)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if let w = window, !w.isEmpty, w != hint {
                         Text(w)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.78))
                             .lineLimit(2)
                     }
                     if (hint == nil || hint?.isEmpty == true), (window == nil || window?.isEmpty == true) {
                         if let d = venue.daysWithDrops {
                             Text("Tables \(d)× / 14d")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(Color.white.opacity(0.72))
                         } else {
                             Text("Watch for releases")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(SnagDesignSystem.darkTextMuted)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(Color.white.opacity(0.72))
                         }
                     }
                 }
                 .padding(10)
                 .frame(width: 148, alignment: .leading)
-                .background(Color(white: 0.12))
             }
-            .frame(width: 148, height: 188, alignment: .top)
+            .frame(width: 148, height: 188)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
             )
 
             Button {

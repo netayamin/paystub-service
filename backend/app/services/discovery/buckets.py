@@ -1068,6 +1068,31 @@ def get_likely_to_open_venues(db: Session, today: date, limit: int = LIKELY_TO_O
         except Exception:
             pass
 
+    # Fallback: slot_availability.image_url from live polls (DropEvent payload often missing for older rows).
+    if venue_ids:
+        try:
+            sa_rows = (
+                db.query(SlotAvailability.venue_id, SlotAvailability.image_url, SlotAvailability.last_seen_at)
+                .filter(
+                    SlotAvailability.venue_id.in_(venue_ids),
+                    SlotAvailability.image_url.isnot(None),
+                )
+                .order_by(SlotAvailability.last_seen_at.desc().nullslast())
+                .limit(500)
+                .all()
+            )
+            for vid, iurl, _ in sa_rows:
+                if not vid or not iurl or not str(iurl).strip():
+                    continue
+                vks = str(vid)
+                if vks in image_url_by_vid:
+                    continue
+                nu = normalize_http_url(str(iurl).strip())
+                if nu:
+                    image_url_by_vid[vks] = nu
+        except Exception:
+            pass
+
     venue_profile_by_id: dict[str, Venue] = {}
     if venue_ids:
         for vr in db.query(Venue).filter(Venue.venue_id.in_(venue_ids)).all():
