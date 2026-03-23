@@ -3,6 +3,14 @@ import SwiftUI
 private enum QuietStreamEntry {
     case live(Drop)
     case missed(JustMissedVenue)
+
+    /// Stable list identity when the row set rotates (`liveListShuffleToken`).
+    var streamRowIdentity: String {
+        switch self {
+        case .live(let d): return "live-\(d.id)"
+        case .missed(let v): return "missed-\(v.id)"
+        }
+    }
 }
 
 struct FeedView: View {
@@ -307,20 +315,71 @@ struct FeedView: View {
         return base.filter { seen.insert($0.id).inserted }.prefix(18).map { $0 }
     }
 
+    /// Full ranked board, deduped — live stream pulls **open** + **booked** from here so counts stay honest.
+    private var quietCuratorStreamPool: [Drop] {
+        var seen = Set<String>()
+        return vm.drops.filter { seen.insert($0.id).inserted }
+    }
+
+    /// Live stream: **up to 3 bookable** rows (rotating when the pool is larger) + **1–2 booked / just-missed** rows.
+    /// Depends on `liveListShuffleToken` (6s) and `lastRefreshed` so the strip refreshes between API polls.
     private var quietCuratorStreamEntries: [QuietStreamEntry] {
-        let lives = Array(editorialStreamDrops.prefix(8))
-        let missed = Array(vm.justMissed.prefix(1))
+        _ = vm.liveListShuffleToken
+        _ = vm.lastRefreshed
+
+        let pool = quietCuratorStreamPool
+        guard !pool.isEmpty else { return [] }
+
+        let availableDrops = pool
+            .filter { feedMealRowIsAvailable($0) }
+            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+        let bookedLiveDrops = pool
+            .filter { !feedMealRowIsAvailable($0) }
+            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+
+        let availTarget = 3
+        let pickedAvailable: [Drop] = {
+            guard !availableDrops.isEmpty else { return [] }
+            if availableDrops.count <= availTarget { return availableDrops }
+            let window = availableDrops.count - availTarget
+            let start = Int(vm.liveListShuffleToken % UInt64(window + 1))
+            return Array(availableDrops[start ..< (start + availTarget)])
+        }()
+
+        let availIds = Set(pickedAvailable.map(\.id))
+        let bookedCandidates = bookedLiveDrops.filter { !availIds.contains($0.id) }
+
+        var bookedEntries: [QuietStreamEntry] = []
+        if let m = vm.justMissed.first {
+            bookedEntries.append(.missed(m))
+        }
+
+        let bookedLiveSlots = max(0, 2 - bookedEntries.count)
+        if bookedLiveSlots > 0, !bookedCandidates.isEmpty {
+            if bookedCandidates.count <= bookedLiveSlots {
+                bookedEntries.append(contentsOf: bookedCandidates.map { .live($0) })
+            } else {
+                let n = bookedLiveSlots
+                let window = bookedCandidates.count - n
+                // Different phase than the open triple so booked rows don’t lock-step with available.
+                let start = Int((vm.liveListShuffleToken >> 1) % UInt64(window + 1))
+                bookedEntries.append(contentsOf: bookedCandidates[start ..< (start + n)].map { .live($0) })
+            }
+        }
+
         var out: [QuietStreamEntry] = []
-        if let first = lives.first {
-            out.append(.live(first))
+        out.append(contentsOf: pickedAvailable.map { .live($0) })
+
+        if out.isEmpty {
+            let fallback = Array(bookedCandidates.prefix(3))
+            if !fallback.isEmpty {
+                return fallback.map { .live($0) }
+            }
+            if let m = vm.justMissed.first { return [.missed(m)] }
+            return Array(pool.prefix(3).map { .live($0) })
         }
-        if let m = missed.first {
-            out.append(.missed(m))
-        }
-        for d in lives.dropFirst() {
-            out.append(.live(d))
-            if out.count >= 6 { break }
-        }
+
+        out.append(contentsOf: bookedEntries)
         return out
     }
 
@@ -431,7 +490,7 @@ struct FeedView: View {
                     .padding(.horizontal, 18)
 
                     VStack(spacing: 0) {
-                        ForEach(Array(entries.enumerated()), id: \.offset) { idx, entry in
+                        ForEach(Array(entries.enumerated()), id: \.element.streamRowIdentity) { idx, entry in
                             switch entry {
                             case .live(let drop):
                                 let party = mockPreferredParty(for: drop)
@@ -1851,42 +1910,44 @@ private struct QuietCuratorLiveStreamRow: View {
                 .grayscale(available ? 0 : 1)
                 .opacity(available ? 1 : 0.72)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 5) {
-                        Text(statusPrimary)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(statusPrimaryColor)
-                            .lineLimit(1)
-                        Text(agoLabel)
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(agoLabelColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
-                    Text(drop.name.uppercased())
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(available ? CreamEditorialTheme.textPrimary : CreamEditorialTheme.textSecondary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.75)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if available {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text("⚡️")
-                                .font(.system(size: 11))
-                            Text(waitMinutesLabel)
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 5) {
+                            Text(statusPrimary)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(statusPrimaryColor)
+                                .lineLimit(1)
+                            Text(agoLabel)
                                 .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(CreamEditorialTheme.burgundy)
-                            Text(seatingLabel)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(CreamEditorialTheme.textSecondary)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.75)
+                                .foregroundColor(agoLabelColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
-                    } else {
-                        Text("SOLD OUT")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(CreamEditorialTheme.textTertiary)
+                        Text(drop.name.uppercased())
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(available ? CreamEditorialTheme.textPrimary : CreamEditorialTheme.textSecondary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if available {
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text("⚡️")
+                                    .font(.system(size: 11))
+                                Text(waitMinutesLabel)
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(CreamEditorialTheme.burgundy)
+                                Text(seatingLabel)
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.75)
+                            }
+                        } else {
+                            Text("SOLD OUT")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(CreamEditorialTheme.textTertiary)
+                        }
                     }
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -1956,27 +2017,29 @@ private struct QuietCuratorMissedStreamRow: View {
             .grayscale(1.0)
             .opacity(0.75)
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 5) {
-                    Text("JUST MISSED")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(CreamEditorialTheme.textTertiary)
-                        .lineLimit(1)
-                    Text(agoLabel)
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 5) {
+                        Text("JUST MISSED")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(CreamEditorialTheme.textTertiary)
+                            .lineLimit(1)
+                        Text(agoLabel)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    Text(venue.name.uppercased())
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(CreamEditorialTheme.textSecondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("SOLD OUT")
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                        .foregroundColor(CreamEditorialTheme.textTertiary)
                 }
-                Text(venue.name.uppercased())
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.75)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("SOLD OUT")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 

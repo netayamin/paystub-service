@@ -196,7 +196,7 @@ final class FeedViewModel: ObservableObject {
         liveListRotationTask?.cancel()
         liveListRotationTask = Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
                 guard !drops.isEmpty else { continue }
                 liveListShuffleToken &+= 1
             }
