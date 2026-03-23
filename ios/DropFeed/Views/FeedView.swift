@@ -659,42 +659,55 @@ struct FeedView: View {
 
     private var quietCuratorLiveStreamSection: some View {
         let entries = quietCuratorStreamEntries
+        let opens = liveStreamOpenDrops(from: entries)
+        let closed = liveStreamClosedEntries(from: entries)
         return Group {
             if entries.isEmpty {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 14) {
-                    QuietCuratorLiveStreamDividerHeader(
-                        hasBookableLive: entries.contains {
-                            if case .live(let d, let primary) = $0 {
-                                return primary && feedDropIsBookable(d)
-                            }
-                            return false
-                        }
-                    )
+                    QuietCuratorLiveStreamDividerHeader(hasBookableLive: !opens.isEmpty)
 
-                    VStack(spacing: 0) {
-                        ForEach(Array(entries.enumerated()), id: \.element.streamRowIdentity) { idx, entry in
-                            switch entry {
-                            case .live(let drop, let isPrimaryTier):
-                                let party = mockPreferredParty(for: drop)
-                                QuietCuratorLiveStreamRow(
-                                    drop: drop,
-                                    preferredParty: party,
-                                    available: drop.effectiveResyBookingURL != nil || drop.exploreSnagAvailable != false,
-                                    waitMinutesLabel: quietCuratorWaitMinutesLabel(
-                                        drop,
-                                        requireExploreOpenForVanish: !isPrimaryTier
-                                    ),
-                                    seatingLabel: quietCuratorSeatingLabel(drop, party: party)
-                                )
-                                .staggeredAppear(index: idx, delayPerItem: 0.03)
-                            case .missed(let venue):
-                                QuietCuratorMissedStreamRow(venue: venue)
+                    VStack(spacing: 12) {
+                        if !opens.isEmpty {
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible(), spacing: 12, alignment: .top),
+                                    GridItem(.flexible(), spacing: 12, alignment: .top),
+                                ],
+                                alignment: .leading,
+                                spacing: 12
+                            ) {
+                                ForEach(Array(opens.enumerated()), id: \.offset) { idx, drop in
+                                    LiveStreamOpenCard(
+                                        drop: drop,
+                                        preferredParty: mockPreferredParty(for: drop),
+                                        onTap: { liveStreamOpenResy(drop) }
+                                    )
                                     .staggeredAppear(index: idx, delayPerItem: 0.03)
+                                }
+                            }
+                        }
+
+                        if !closed.isEmpty {
+                            LiveStreamMissedSectionHeader()
+                            ForEach(Array(closed.enumerated()), id: \.offset) { idx, entry in
+                                Group {
+                                    switch entry {
+                                    case .missed(let venue):
+                                        LiveStreamJustMissedCard(venue: venue)
+                                    case .live(let drop, _):
+                                        LiveStreamSoldOutDropCard(
+                                            drop: drop,
+                                            preferredParty: mockPreferredParty(for: drop)
+                                        )
+                                    }
+                                }
+                                .staggeredAppear(index: idx + opens.count, delayPerItem: 0.03)
                             }
                         }
                     }
+                    .padding(12)
                     .background(CreamEditorialTheme.cardWhite)
                     .overlay(
                         Rectangle()
@@ -705,6 +718,40 @@ struct FeedView: View {
                 .padding(.bottom, 20)
             }
         }
+    }
+
+    private func liveStreamOpenDrops(from entries: [QuietStreamEntry]) -> [Drop] {
+        entries.compactMap { e in
+            guard case .live(let d, _) = e else { return nil }
+            let open = d.effectiveResyBookingURL != nil || d.exploreSnagAvailable != false
+            return open ? d : nil
+        }
+    }
+
+    private func liveStreamClosedEntries(from entries: [QuietStreamEntry]) -> [QuietStreamEntry] {
+        entries.filter { e in
+            switch e {
+            case .missed:
+                return true
+            case .live(let d, _):
+                let open = d.effectiveResyBookingURL != nil || d.exploreSnagAvailable != false
+                return !open
+            }
+        }
+    }
+
+    private func liveStreamOpenResy(_ drop: Drop) {
+        guard let s = drop.effectiveResyBookingURL, let url = URL(string: s) else { return }
+        APIService.shared.trackBehaviorEvents(events: [
+            BehaviorTrackEvent(
+                eventType: "resy_opened",
+                venueId: drop.venueKey,
+                venueName: drop.name,
+                notificationId: nil,
+                market: drop.market
+            )
+        ])
+        UIApplication.shared.open(url)
     }
 
     private var quietCuratorExploreButton: some View {
@@ -771,25 +818,6 @@ struct FeedView: View {
             )
         ])
         UIApplication.shared.open(url)
-    }
-
-    private func quietCuratorWaitMinutesLabel(_ drop: Drop, requireExploreOpenForVanish: Bool = true) -> String {
-        if feedShouldShowVanishCountdown(drop, requireExploreOpen: requireExploreOpenForVanish) {
-            let r = feedVanishSecondsRemaining(for: drop)
-            let m = max(1, r / 60)
-            return "\(m)m"
-        }
-        let s = drop.secondsSinceDetected
-        if s < 120 { return "\(max(1, s))s" }
-        return "\(max(1, s / 60))m"
-    }
-
-    private func quietCuratorSeatingLabel(_ drop: Drop, party: Int) -> String {
-        let kind = drop.liveStreamVelocityBadge
-            ?? drop.exploreVenuePill
-            ?? drop.rowPrimaryMetric
-            ?? "Table"
-        return "\(kind) • \(party)ppl"
     }
 
     private func feedSectionHeader(eyebrow: String, title: String) -> some View {
@@ -1835,249 +1863,6 @@ private struct CuratorTopBar: View {
         if s < 3600 { return "Updated \(s / 60)m ago" }
         let u = lastScanFallback.trimmingCharacters(in: .whitespacesAndNewlines)
         return u.isEmpty ? "Updated" : "Updated \(u)"
-    }
-}
-
-/// Outlined **TAKEN** chip for inactive live-stream rows (no fill; brutalist sharp rect).
-private struct QuietCuratorStreamTakenGhost: View {
-    var body: some View {
-        Text("TAKEN")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(CreamEditorialTheme.takenText)
-            .tracking(0.4)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .overlay(
-                Rectangle()
-                    .stroke(CreamEditorialTheme.exploreHairline, lineWidth: 1)
-            )
-    }
-}
-
-private struct QuietCuratorLiveStreamRow: View {
-    let drop: Drop
-    let preferredParty: Int
-    let available: Bool
-    let waitMinutesLabel: String
-    let seatingLabel: String
-
-    private let accentBarWidth: CGFloat = 3
-
-    private var imageURL: URL? {
-        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private func openResy() {
-        let urlStr = drop.effectiveResyBookingURL ?? ""
-        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
-        APIService.shared.trackBehaviorEvents(events: [
-            BehaviorTrackEvent(
-                eventType: "resy_opened",
-                venueId: drop.venueKey,
-                venueName: drop.name,
-                notificationId: nil,
-                market: drop.market
-            )
-        ])
-        UIApplication.shared.open(url)
-    }
-
-    /// Bookable rows: **JUST OPENED** (burgundy) vs **OPENED** (black). Claimed inventory: **BOOKED** (grey) — same inactive chrome as “just missed”.
-    private var statusPrimary: String {
-        if !available { return "BOOKED" }
-        if drop.secondsSinceDetected < 120 { return "JUST OPENED" }
-        return "OPENED"
-    }
-
-    private var statusPrimaryColor: Color {
-        if !available { return CreamEditorialTheme.textTertiary }
-        if drop.secondsSinceDetected < 120 { return CreamEditorialTheme.burgundy }
-        return CreamEditorialTheme.textPrimary
-    }
-
-    private var agoLabel: String {
-        let s = drop.secondsSinceDetected
-        if s < 90 { return "\(max(1, s))s ago" }
-        if s < 3600 { return "\(max(1, s / 60))m ago" }
-        return "\(s / 3600)h ago"
-    }
-
-    private var agoLabelColor: Color {
-        if available { return CreamEditorialTheme.textTertiary }
-        return CreamEditorialTheme.textTertiary.opacity(0.75)
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            if available {
-                Rectangle()
-                    .fill(CreamEditorialTheme.burgundy)
-                    .frame(width: accentBarWidth)
-            }
-
-            HStack(alignment: .center, spacing: 10) {
-                Group {
-                    if let url = imageURL {
-                        CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
-                            Color(white: 0.9)
-                        }
-                    } else {
-                        Color(white: 0.9)
-                    }
-                }
-                .frame(width: 56, height: 56)
-                .clipped()
-                .grayscale(available ? 0 : 1)
-                .opacity(available ? 1 : 0.72)
-
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 5) {
-                            Text(statusPrimary)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(statusPrimaryColor)
-                                .lineLimit(1)
-                            Text(agoLabel)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(agoLabelColor)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                        Text(drop.name.uppercased())
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(available ? CreamEditorialTheme.textPrimary : CreamEditorialTheme.textSecondary)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.75)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        if available {
-                            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("⚡️")
-                                    .font(.system(size: 11))
-                                Text(waitMinutesLabel)
-                                    .font(.system(size: 11, weight: .regular))
-                                    .foregroundColor(CreamEditorialTheme.burgundy)
-                                Text(seatingLabel)
-                                    .font(.system(size: 11, weight: .regular))
-                                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                                    .lineLimit(2)
-                                    .minimumScaleFactor(0.75)
-                            }
-                        } else {
-                            Text("SOLD OUT")
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(CreamEditorialTheme.textTertiary)
-                        }
-                    }
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-                Group {
-                    if available {
-                        Button(action: openResy) {
-                            Text("BOOK")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                                .tracking(0.45)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .background(CreamEditorialTheme.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        QuietCuratorStreamTakenGhost()
-                    }
-                }
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 14)
-            .padding(.vertical, 14)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(available ? CreamEditorialTheme.cardWhite : CreamEditorialTheme.takenFill)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 0.5)
-        }
-    }
-}
-
-private struct QuietCuratorMissedStreamRow: View {
-    let venue: JustMissedVenue
-
-    private var imageURL: URL? {
-        guard let s = venue.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private var agoLabel: String {
-        guard let iso = venue.goneAt, let d = Drop.parseISO(iso) else { return "just now" }
-        let sec = max(0, Int(-d.timeIntervalSinceNow))
-        if sec < 90 { return "\(max(1, sec))s ago" }
-        if sec < 3600 { return "\(max(1, sec / 60))m ago" }
-        return "\(sec / 3600)h ago"
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Group {
-                if let url = imageURL {
-                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
-                        Color(white: 0.88)
-                    }
-                } else {
-                    Color(white: 0.88)
-                }
-            }
-            .frame(width: 56, height: 56)
-            .clipped()
-            .grayscale(1.0)
-            .opacity(0.75)
-
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 5) {
-                        Text("JUST MISSED")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(CreamEditorialTheme.textTertiary)
-                            .lineLimit(1)
-                        Text(agoLabel)
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
-                    Text(venue.name.uppercased())
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(CreamEditorialTheme.textSecondary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.75)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("SOLD OUT")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textTertiary)
-                }
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-            QuietCuratorStreamTakenGhost()
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .background(CreamEditorialTheme.takenFill)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 0.5)
-                .padding(.horizontal, 14)
-        }
     }
 }
 
