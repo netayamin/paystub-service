@@ -1,7 +1,13 @@
 # paystub-service – APM Implementation Plan
 **Memory Strategy:** Dynamic-MD
-**Last Modification:** Plan creation by the Setup Agent.
-**Project Overview:** Evolve DropFeed into a feed-first product built on a **credible “was fully booked, then opened”** signal, a **14-day** discovery horizon, rich **drop telemetry**, and **push**—with **Postgres schema and query performance as the foundation**, then FastAPI services, ranking/feed intelligence, and iOS aligned to the same truth. Success is measured by **correctness** (no false positives in the feed), **tests passing**, and implementation quality—not a separate documentation program or approval gates.
+**Last Modification:** Amended by Setup Agent: Snag product thesis vs search/convenience apps.
+**Project Overview:** Evolve **Snag** (DropFeed) as a **drop-first** product: it does **not** compete on search, filters, or “browse what’s available” convenience like typical aggregators. The premise is that the **best** places are **already fully booked**; Snag **tracks unavailability**, then surfaces a venue **only when** something **briefly** becomes possible that **was not** possible before. That transition is the **value signal**—if it appears in Snag, it is not because it was easy to find; it is because it **was not gettable** before. Technically this requires a **credible “was fully booked, then opened”** model, a **14-day** horizon of **ranked opportunities** (time and date agnostic at the UX level—**the system** prioritizes), rich **drop telemetry**, and **push**, with **Postgres schema and query performance as the foundation**, then FastAPI, ranking/feed intelligence, and iOS on the same truth. Success: **correctness** (no false positives), **tests passing**, solid implementation—not extra process or doc overhead.
+
+## Product principles (Snag vs search / convenience aggregators)
+
+- **Not the same job as TableOne-style apps:** Those products optimize for **user-specified criteria**, **search**, **filtering**, and **aggregation** of what is already available; their value is **convenience** for someone who knows what they want.
+- **Snag’s job:** The user opens the app to see **what just became possible**, not to query inventory. **Filtering and prioritization happen server-side**; the experience is **reactive** (act on opportunities), not **browsy** (construct a result set).
+- **Primary surface:** The home experience is a **ranked set of the best opportunities** across the **next 14 days**, not a neutral list of “results” or everything available. Implementation and APIs should reinforce **opportunity ranking** and **eligibility truth**, not generic catalog browsing as the hero loop.
 
 ---
 
@@ -100,6 +106,7 @@
 **Output:** Feed behavior consistent with gates; integration-style tests or fixture-driven tests where the repo already patterns them.
 **Guidance:**
 - Ensure the feed never contradicts stored eligibility (if flagged not qualified, must not appear as a “true drop”).
+- Shape the feed as **ranked opportunities** for Snag’s home loop—not a search-result or “available inventory” listing; ranking encodes **why this moment matters** (unavailable → briefly available).
 - **Depends on: Task 3.2 Output**
 
 ### Task 3.4 – Telemetry hooks for debugging false positives – Agent_Ranking_Intelligence
@@ -119,6 +126,7 @@
 **Output:** Updated Pydantic schemas/routes; contract matches Phase 3 outputs.
 **Guidance:**
 - Coordinate field names with **Task 5.1 Output by Agent_iOS** if strict coupling; otherwise choose stable names and document in OpenAPI.
+- Contract should reflect **one ranked opportunity stream** for the primary experience (Snag home), not an aggregator-style “query then browse” API as the core metaphor.
 - **Depends on: Task 3.3 Output by Agent_Ranking_Intelligence**
 
 ### Task 4.2 – Push notification eligibility – Agent_Backend_Services
@@ -140,9 +148,10 @@
 - **Depends on: Task 4.1 Output by Agent_Backend_Services**
 
 ### Task 5.2 – Feed UI and copy – Agent_iOS
-**Objective:** Present drops in a way that matches the product thesis (honest urgency, no claiming “was fully booked” without backend signal).
-**Output:** Updated `FeedView` (and related views) reflecting new fields; UX consistent with existing design language.
+**Objective:** Present the **home** experience as **ranked best opportunities** over the **14-day** window: user **reacts** to what became possible, not **searches** or **filters** as the primary loop. Copy and hierarchy communicate **was not gettable → now briefly is**, not generic availability.
+**Output:** Updated `FeedView` (and related views) reflecting new fields; UX consistent with existing design language and Snag principles above.
 **Guidance:**
+- Avoid treating the home surface like a **search results** or **filter-first** product; **prioritization is implicit** in ranking (background), aligned with backend order and signals.
 - **Depends on: Task 5.1 Output**
 
 ### Task 5.3 – Push handling – Agent_iOS
@@ -184,4 +193,4 @@
 **Phases:** 6  
 **Cross-agent dependencies:** Multiple explicit `Depends on: Task X.Y … by Agent_*` links above (feed/ranking/services/iOS boundary).
 
-**Context synthesis anchors embedded:** schema-first sequencing; full-stack scope; false-positive “fully booked” as primary correctness risk; ship when tests and quality are good; no mandatory external approvals or extra docs.
+**Context synthesis anchors embedded:** schema-first sequencing; full-stack scope; false-positive “fully booked” as primary correctness risk; ship when tests and quality are good; no mandatory external approvals or extra docs; **Snag ≠ search/convenience aggregator**—**unavailability → brief availability** as the core signal; **ranked 14-day opportunities** and **reactive** home loop.
