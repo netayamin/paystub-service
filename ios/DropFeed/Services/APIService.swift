@@ -40,6 +40,65 @@ final class APIService {
         session = URLSession(configuration: config)
         decoder = JSONDecoder()
     }
+
+    /// Wraps URLSession so sign-in shows setup hints instead of a generic “could not connect”.
+    private func dataForAuthRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: request)
+        } catch let urlError as URLError {
+            throw APIError.serverMessage(Self.connectionHint(for: urlError))
+        } catch {
+            throw error
+        }
+    }
+
+    private static func connectionHint(for error: URLError) -> String {
+        switch error.code {
+        case .cannotConnectToHost, .cannotFindHost, .timedOut, .networkConnectionLost, .dnsLookupFailed:
+            #if targetEnvironment(simulator)
+            return """
+            Can’t reach \(Self.sharedBaseURLDisplay) — nothing answered, or it’s not this API.
+
+            • In the backend folder: `poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000`
+            • Check port 8000 isn’t another app (you should get 200 from POST /chat/auth/request-code, not 404).
+            • Simulator uses `API_BASE_URL` from Info.plist (127.0.0.1 is correct for the Mac).
+            """
+            #else
+            return """
+            Can’t reach \(Self.sharedBaseURLDisplay).
+
+            On a real iPhone, 127.0.0.1 is the phone, not your Mac. Set Info.plist `API_BASE_URL` to your Mac’s Wi‑Fi address, e.g. http://192.168.1.12:8000, then run:
+
+            `poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000`
+
+            Phone and Mac must be on the same network.
+            """
+            #endif
+        case .notConnectedToInternet:
+            return "No internet connection. Check Wi‑Fi or cellular."
+        default:
+            return "Network error (\(error.code.rawValue)): \(error.localizedDescription)"
+        }
+    }
+
+    /// For error copy only (no secrets).
+    private static var sharedBaseURLDisplay: String {
+        let raw: String = {
+            if let url = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String, !url.isEmpty {
+                return url.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            #if targetEnvironment(simulator)
+            return "http://127.0.0.1:8000"
+            #else
+            return "http://18.118.55.231:8000"
+            #endif
+        }()
+        var s = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        while s.hasSuffix("/") { s.removeLast() }
+        if s.hasSuffix("/chat") { s = String(s.dropLast(5)) }
+        while s.hasSuffix("/") { s.removeLast() }
+        return s
+    }
     
     // MARK: - Feed
     
@@ -223,7 +282,7 @@ final class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         struct Body: Encodable { let phone_e164: String }
         request.httpBody = try JSONEncoder().encode(Body(phone_e164: phoneE164))
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await dataForAuthRequest(request)
         guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
         guard (200...299).contains(http.statusCode) else {
             throw Self.authFailure(status: http.statusCode, data: data, fallback: "Could not send code")
@@ -237,7 +296,7 @@ final class APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         struct Body: Encodable { let phone_e164: String; let code: String }
         request.httpBody = try JSONEncoder().encode(Body(phone_e164: phoneE164, code: code))
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await dataForAuthRequest(request)
         guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
         guard (200...299).contains(http.statusCode) else {
             throw Self.authFailure(status: http.statusCode, data: data, fallback: "Invalid code")
@@ -258,7 +317,7 @@ final class APIService {
             let email: String
         }
         request.httpBody = try JSONEncoder().encode(Body(first_name: firstName, last_name: lastName, email: email))
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await dataForAuthRequest(request)
         guard let http = response as? HTTPURLResponse else { throw APIError.httpError }
         guard (200...299).contains(http.statusCode) else {
             throw Self.authFailure(status: http.statusCode, data: data, fallback: "Could not save profile")
