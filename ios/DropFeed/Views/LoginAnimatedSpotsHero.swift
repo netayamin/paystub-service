@@ -172,11 +172,11 @@ private struct SpotScrollingColumn: View {
             let offset: CGFloat = upward ? -mod : mod
 
             VStack(spacing: spacing) {
-                ForEach(0..<2, id: \.self) { copy in
-                    ForEach(Array(tiles.enumerated()), id: \.offset) { index, tile in
-                        LoginSpotFeatureCard(tile: tile, width: width, tick: context.date)
-                            .id("\(copy)-\(index)-\(tile.id)")
-                    }
+                // One ForEach with flat indices so identities are never duplicated across the two
+                // duplicated strips (nested ForEach + id: \.offset reused 0..<n twice → reuse bugs).
+                ForEach(0..<(2 * tiles.count), id: \.self) { i in
+                    let tile = tiles[i % tiles.count]
+                    LoginSpotFeatureCard(tile: tile, width: width, tick: context.date)
                 }
             }
             .offset(y: offset)
