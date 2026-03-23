@@ -21,13 +21,13 @@ This doc maps our implementation to the standard algorithm for polling an extern
 
 3. **Compare**  
    - `curr_set` = set(slot_id for each row from this poll).  
-   - **Added** = `curr_set - prev_set`. **Drops (for feed)** = only added slots whose venue had **zero slots** in the previous poll (drops_venue_zero). We do not surface venues that already had other times and gained more.
+   - **Added** = `curr_set - prev_set` (new slot lines vs the previous poll).
 
-4. **TTL dedupe**  
-   Before creating a `DropEvent`, check: already have one for (bucket_id, slot_id) with `opened_at` within last `NOTIFIED_DEDUPE_MINUTES`? If yes, skip new DropEvent. All **added** still go to `SlotAvailability`; only **drops_venue_zero minus recently_notified** get a `DropEvent`.
+4. **TTL dedupe + dup guard**  
+   Before creating a `DropEvent`, skip if we already emitted for (bucket_id, slot_id) within `NOTIFIED_DEDUPE_MINUTES` (**recently_notified**), or if a `DropEvent` for that pair still joins an **open** `SlotAvailability` row (**dup_open** — avoids stacking duplicate events for the same live slot). All **added** still go to `SlotAvailability`.
 
 5. **Emit**  
-   All **added** go to `SlotAvailability`. Only **drops_venue_zero minus recently_notified** get a new `DropEvent`. The **just-opened** API returns only slots that have a `DropEvent` in the time window (and are still open in `SlotAvailability`), so the feed shows only venues that were **fully booked and suddenly had spots open up** — not venues that simply gained more time slots.
+   All **added** go to `SlotAvailability`. **Added − recently_notified − dup_open** get a new `DropEvent` (one row per newly appearing slot line, including when the venue already had another time last poll). `GET …/just-opened` builds **`just_opened`** from `DropEvent` rows in the time window that are still **open** in `SlotAvailability`, so omitting events for “second times at same venue” used to leave **`just_opened` empty** while **`just_missed`** still filled when those slots closed.
 
 6. **Update state**  
    `prev_slot_ids = curr`. Baseline only for first prev or explicit refresh.

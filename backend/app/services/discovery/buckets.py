@@ -555,31 +555,9 @@ def run_poll_for_bucket(
     added = curr_set - prev_set
     drops = added
 
-    # Only treat as "just opened" (DropEvent) venues that had ZERO slots in the previous poll.
-    # Venues that had availability at other times and gained more times are not "drops" for the feed.
     run_id = str(uuid.uuid4())
     time_bucket_val = _time_bucket_from_slot(time_slot)
     by_slot = {r["slot_id"]: r for r in rows}
-    prev_venue_ids: set[str] = set()
-    if prev_set:
-        prev_venue_ids = {
-            str(r[0])
-            for r in db.query(SlotAvailability.venue_id)
-            .filter(
-                SlotAvailability.bucket_id == bid,
-                SlotAvailability.slot_id.in_(list(prev_set)),
-                SlotAvailability.venue_id.isnot(None),
-            )
-            .distinct()
-            .all()
-            if r[0] is not None
-        }
-    drops_venue_zero = {
-        sid
-        for sid in drops
-        if str((by_slot.get(sid) or {}).get("venue_id") or "") not in prev_venue_ids
-    }
-
     # TTL dedupe: don't create DropEvent if we already notified for this (bucket_id, slot_id) recently
     cutoff = now - timedelta(minutes=NOTIFIED_DEDUPE_MINUTES)
     recently_notified = {
@@ -592,7 +570,7 @@ def run_poll_for_bucket(
     # One live DropEvent per (bucket, slot): TTL alone re-allows emits every NOTIFIED_DEDUPE_MINUTES when
     # the slot keeps reappearing in `added` without a clean close (Resy flicker / prev gaps), stacking rows.
     dup_open: set[str] = set()
-    if drops_venue_zero:
+    if drops:
         dup_open = {
             row[0]
             for row in db.query(DropEvent.slot_id)
@@ -604,13 +582,17 @@ def run_poll_for_bucket(
                     SlotAvailability.state == "open",
                 ),
             )
-            .filter(DropEvent.bucket_id == bid, DropEvent.slot_id.in_(list(drops_venue_zero)))
+            .filter(DropEvent.bucket_id == bid, DropEvent.slot_id.in_(list(drops)))
             .distinct()
             .all()
         }
-    drops_to_emit = drops_venue_zero - recently_notified - dup_open
+    # Emit DropEvent for **every** newly added slot, not only when the venue had zero slots last poll.
+    # `get_just_opened_from_buckets` joins DropEvent × open SlotAvailability; the old venue-zero gate
+    # left most real openings without events (venue already had another time) → empty `just_opened` while
+    # `just_missed` still populated when those slots closed. TTL + dup_open keep noise bounded.
+    drops_to_emit = set(drops) - recently_notified - dup_open
 
-    # --- Projection: all added go to SlotAvailability (feed); only drops_venue_zero get a DropEvent (venue had 0 before) ---
+    # --- Projection: all added go to SlotAvailability; drops_to_emit get a DropEvent (new slot lines this poll) ---
     slot_rows = [
         _build_slot_availability_row(bid, sid, by_slot.get(sid), date_str, now, time_bucket_val, provider, run_id, market=market)
         for sid in drops
