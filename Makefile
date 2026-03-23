@@ -1,4 +1,4 @@
-.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics
+.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics ios-phone
 
 setup: install
 	cp backend/.env.example backend/.env
@@ -23,6 +23,18 @@ ngrok:
 ngrok-ios:
 	@chmod +x scripts/ngrok-ios.sh 2>/dev/null || true
 	./scripts/ngrok-ios.sh
+
+# Print steps for testing the iOS app on a real phone against your Mac (ngrok URL is injected at Xcode build time).
+ios-phone:
+	@echo ""
+	@echo "iPhone + Mac API (sign-in flow)"
+	@echo "-------------------------------"
+	@echo "1) Terminal A (repo root):  make dev-backend"
+	@echo "2) Terminal B:               ngrok http 8000   (keep running)"
+	@echo "3) Xcode: Product → Run on your iPhone"
+	@echo "   Build injects ngrok HTTPS into the built app (source Info.plist unchanged)."
+	@echo "4) Use fixed OTP from backend/.env: AUTH_OTP_FIXED=123456"
+	@echo ""
 
 dev-backend:
 	@echo "Starting backend on http://127.0.0.1:8000 (use http://YOUR_MAC_IP:8000 on device)..."
