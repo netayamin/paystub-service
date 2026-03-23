@@ -216,57 +216,222 @@ struct ExploreView: View {
     @ViewBuilder
     private var likelyToDropCard: some View {
         if let venue = vm.likelyToOpen.first {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Image(systemName: "eye")
-                        .font(.system(size: 12))
-                    Text("LIKELY TO DROP")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(0.6)
-                }
-                .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+            let imgURL: URL? = {
+                guard let s = venue.imageUrl, !s.isEmpty else { return nil }
+                return URL(dropFeedMediaString: s) ?? URL(string: s)
+            }()
+            let score = venue.probability.map { min(99, max(1, $0)) }
+            let primaryWhen = exploreLikelyTimingPrimary(venue)
+            let secondaryWhen = exploreLikelyTimingSecondary(venue)
 
-                Text(venue.name)
-                    .font(.system(size: 18, weight: .bold, design: .serif))
-                    .foregroundColor(.white)
-
-                Text(likelySubtext(venue))
-                    .font(.system(size: 13))
-                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack {
-                    TimelineView(.animation(minimumInterval: 0.8)) { _ in
-                        Text("Scanning…")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack(alignment: .bottomLeading) {
+                    Group {
+                        if let url = imgURL {
+                            CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .darkCard) {
+                                Color(white: 0.14)
+                            }
+                        } else {
+                            Color(white: 0.14)
+                        }
                     }
-                    Spacer()
-                    Button {
-                        savedVM.toggleWatch(venue.name)
-                    } label: {
-                        Text(savedVM.isWatched(venue.name) ? "Watching" : "Watch")
-                            .font(.system(size: 12, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 152)
+                    .clipped()
+
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.0), location: 0.25),
+                            .init(color: .black.opacity(0.55), location: 0.72),
+                            .init(color: .black.opacity(0.88), location: 1.0),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 152)
+                    .allowsHitTesting(false)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "eye")
+                                    .font(.system(size: 11))
+                                Text("LIKELY TO DROP")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .tracking(0.6)
+                            }
+                            .foregroundColor(Color.white.opacity(0.65))
+                            Spacer()
+                            if let s = score {
+                                VStack(alignment: .trailing, spacing: 0) {
+                                    Text("SCORE")
+                                        .font(.system(size: 7, weight: .bold))
+                                        .foregroundColor(Color.white.opacity(0.5))
+                                    Text("\(s)")
+                                        .font(.system(size: 18, weight: .black))
+                                        .foregroundColor(SnagDesignSystem.mint)
+                                }
+                            }
+                        }
+                        Text(venue.name)
+                            .font(.system(size: 20, weight: .bold, design: .serif))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(SnagDesignSystem.exploreCoralSolid)
-                            .clipShape(Capsule())
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.88)
+                            .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 1)
+                        if let nb = venue.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines), !nb.isEmpty {
+                            Text(nb.uppercased())
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Color.white.opacity(0.72))
+                        }
                     }
-                    .buttonStyle(.plain)
+                    .padding(14)
                 }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("When")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                        .tracking(0.5)
+
+                    Text(primaryWhen)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(SnagDesignSystem.mint)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let sec = secondaryWhen {
+                        Text(sec)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.78))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    exploreLikelyMetricsRow(venue)
+
+                    if let compact = venue.forecastMetricsCompact?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !compact.isEmpty {
+                        Text(compact)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                            .lineLimit(2)
+                    }
+
+                    if let r = venue.reason?.trimmingCharacters(in: .whitespacesAndNewlines), !r.isEmpty {
+                        Text(r)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.white.opacity(0.72))
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack(alignment: .center) {
+                        Text(exploreLikelyLastUpdatedLine())
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                        Spacer()
+                        Button {
+                            savedVM.toggleWatch(venue.name)
+                        } label: {
+                            Text(savedVM.isWatched(venue.name) ? "Watching" : "Watch")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(SnagDesignSystem.exploreCoralSolid)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(white: 0.1))
             }
-            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(white: 0.12))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            )
         }
     }
 
-    private func likelySubtext(_ venue: LikelyToOpenVenue) -> String {
-        if let r = venue.reason, !r.isEmpty { return r }
-        if let d = venue.lastSeenDescription, !d.isEmpty { return d }
-        return "Pattern watch — we’ll surface when slots appear."
+    private func exploreLikelyTimingPrimary(_ venue: LikelyToOpenVenue) -> String {
+        if let h = venue.predictedDropHint?.trimmingCharacters(in: .whitespacesAndNewlines), !h.isEmpty {
+            return h
+        }
+        if let t = venue.predictedDropTime?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+            return t
+        }
+        return "We’re learning timing from live scans — check back as we collect more drops."
+    }
+
+    private func exploreLikelyTimingSecondary(_ venue: LikelyToOpenVenue) -> String? {
+        let h = venue.predictedDropHint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let t = venue.predictedDropTime?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !h.isEmpty && !t.isEmpty && h.caseInsensitiveCompare(t) != .orderedSame {
+            return t
+        }
+        return nil
+    }
+
+    private func exploreLikelyLastUpdatedLine() -> String {
+        guard let d = vm.lastUpdated else {
+            return vm.isRefreshing ? "Updating…" : "Live scans"
+        }
+        let s = Int(-d.timeIntervalSinceNow)
+        if s < 8 { return "Updated just now" }
+        if s < 120 { return "Updated \(s)s ago" }
+        if s < 3600 { return "Updated \(s / 60)m ago" }
+        return "Updated \(s / 3600)h ago"
+    }
+
+    @ViewBuilder
+    private func exploreLikelyMetricsRow(_ venue: LikelyToOpenVenue) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if let c = venue.confidence?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty {
+                    Text(c.uppercased())
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(exploreConfidenceColor(c))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+                if let d = venue.daysWithDrops {
+                    Text("\(d) active days / 14")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.75))
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Text(FeedMetricLabels.scarcityStatus(rate: venue.availabilityRate14d))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(SnagDesignSystem.exploreSecondaryLabel)
+                if venue.rarityScore != nil {
+                    Text(FeedMetricLabels.rarityHeadline(score: venue.rarityScore))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.7))
+                }
+                if let tp = venue.trendPct {
+                    let normalized = (tp >= -1 && tp <= 1) ? tp * 100 : tp
+                    Text(String(format: "%+.0f%% vs last week", normalized))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(normalized >= 1 ? SnagDesignSystem.mint : SnagDesignSystem.exploreSecondaryLabel)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func exploreConfidenceColor(_ raw: String) -> Color {
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "high": return SnagDesignSystem.mint
+        case "low": return SnagDesignSystem.exploreSecondaryLabel
+        default: return Color.white.opacity(0.85)
+        }
     }
 
     // MARK: - Hot areas
