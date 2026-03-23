@@ -11,10 +11,11 @@ struct ExploreView: View {
     @State private var showFilterSheet = false
     @State private var showExploreMenu = false
 
-    private let gridColumnSpacing: CGFloat = 12
-    private let gridRowSpacing: CGFloat = 16
-    /// Photo area height inside each inventory card (2-column width scales with screen).
-    private let gridImageHeight: CGFloat = 152
+    private let gridColumnSpacing: CGFloat = 14
+    private let gridRowSpacing: CGFloat = 20
+    /// Photo block — reference shows a tall hero image with bottom labels.
+    private let gridImageHeight: CGFloat = 178
+    private let exploreCardCorner: CGFloat = 8
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -26,9 +27,9 @@ struct ExploreView: View {
                         errorBanner(err).padding(.top, 12)
                     }
                     liveInventoryHeader
-                        .padding(.top, 20)
+                        .padding(.top, 18)
                     gridSection
-                        .padding(.top, 14)
+                        .padding(.top, 16)
                     Color.clear.frame(height: 88)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,28 +124,29 @@ struct ExploreView: View {
         return "NYC"
     }
 
-    // MARK: - Availability (horizontal date strip)
+    // MARK: - Availability (reference: weekday above date, maroon selection, hairline under strip)
 
     private var exploreAvailabilitySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Availability")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(CreamEditorialTheme.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Text(exploreSelectedMonthYearUppercased)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .tracking(0.4)
+                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(0.55)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.trailing)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
             }
             .padding(.horizontal, 16)
+            .padding(.bottom, 14)
 
-            // Do not wrap in `GeometryReader` — it can adopt the scroll content’s width and blow out the whole tab.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
                     ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
@@ -155,10 +157,15 @@ struct ExploreView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
-            .frame(height: 64, alignment: .center)
+            .frame(height: 72, alignment: .center)
+
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 4)
     }
 
     private var exploreSelectedMonthYearUppercased: String {
@@ -175,30 +182,25 @@ struct ExploreView: View {
 
     private func exploreDateChip(index idx: Int, opt: (dateStr: String, monthAbbrev: String, dayNum: String)) -> some View {
         let selected = idx == exploreDatePageIndex
+        let muted = CreamEditorialTheme.textTertiary
         return Button {
             exploreDatePageIndex = idx
             exploreApplyPageIndex(idx)
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 5) {
                 Text(weekdayAbbrev(for: opt.dateStr))
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(selected ? CreamEditorialTheme.burgundy : CreamEditorialTheme.textTertiary)
-                    .tracking(0.35)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(selected ? CreamEditorialTheme.burgundy : muted)
+                    .tracking(0.45)
+                    .textCase(.uppercase)
                 Text(opt.dayNum)
-                    .font(.system(size: 16, weight: selected ? .heavy : .semibold))
+                    .font(.system(size: selected ? 18 : 15, weight: selected ? .heavy : .semibold))
                     .foregroundColor(selected ? CreamEditorialTheme.burgundy : CreamEditorialTheme.textSecondary)
             }
-            .frame(minWidth: 44)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                Group {
-                    if selected {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(CreamEditorialTheme.burgundy.opacity(0.08))
-                    }
-                }
-            )
+            .frame(minWidth: 40)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -250,22 +252,26 @@ struct ExploreView: View {
 
     // MARK: - Live inventory
 
+    /// Reference: grey label + hairline to the right + maroon city on the far right.
     private var liveInventoryHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
             Text("LIVE INVENTORY")
-                .font(.system(size: 11, weight: .heavy))
-                .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.85)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundColor(CreamEditorialTheme.textSecondary)
+                .tracking(0.95)
+                .textCase(.uppercase)
+                .lineLimit(1)
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
+                .frame(maxWidth: .infinity)
+            Text(exploreMarketLabel == "NYC" ? "NEW YORK" : exploreMarketLabel)
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundColor(CreamEditorialTheme.burgundy)
+                .tracking(0.5)
+                .textCase(.uppercase)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-            Spacer(minLength: 8)
-            Text(exploreMarketLabel == "NYC" ? "NEW YORK" : exploreMarketLabel)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(CreamEditorialTheme.textTertiary)
-                .tracking(0.45)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(minWidth: 0, alignment: .trailing)
         }
         .frame(maxWidth: .infinity)
     }
@@ -335,49 +341,71 @@ struct ExploreView: View {
             if let url { UIApplication.shared.open(url) }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topTrailing) {
+                // Image + bottom gradient labels (reference: TONIGHT / date row, then time + PAX).
+                ZStack(alignment: .bottomLeading) {
                     gridThumb(drop)
                         .frame(maxWidth: .infinity)
                         .frame(height: gridImageHeight)
                         .clipped()
 
-                    Text(slotTimeOnly(drop))
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.black.opacity(0.78))
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .padding(8)
-                }
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 14,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 14,
-                        style: .continuous
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.0), location: 0.35),
+                            .init(color: .black.opacity(0.55), location: 0.78),
+                            .init(color: .black.opacity(0.82), location: 1.0),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
-                )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: gridImageHeight)
+                    .allowsHitTesting(false)
 
-                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(exploreImageNightLabel(for: drop))
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.92))
+                            .tracking(0.55)
+                            .textCase(.uppercase)
+
+                        HStack(alignment: .firstTextBaseline, spacing: 7) {
+                            Text(slotTimeOnly(drop))
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Text(explorePaxLabel(for: drop))
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(.white.opacity(0.88))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.bottom, 12)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, alignment: .bottomLeading)
+                }
+                .frame(height: gridImageHeight)
+                .clipped()
+
+                VStack(alignment: .leading, spacing: 7) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(drop.name)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(CreamEditorialTheme.textPrimary)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                             .minimumScaleFactor(0.85)
                             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundColor(CreamEditorialTheme.textSecondary)
                             .layoutPriority(1)
                     }
 
                     Text(exploreCuisineLine(drop))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(CreamEditorialTheme.textTertiary)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(CreamEditorialTheme.textSecondary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.88)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -385,22 +413,27 @@ struct ExploreView: View {
 
                     HStack(alignment: .center, spacing: 6) {
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(CreamEditorialTheme.burgundy)
-                        Text(exploreInventoryStatusLine(drop))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(CreamEditorialTheme.burgundy)
-                            .tracking(0.25)
+                        Text(exploreInventoryStatusLine(drop))
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(CreamEditorialTheme.burgundy)
+                            .tracking(0.35)
+                            .textCase(.uppercase)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.75)
+                            .minimumScaleFactor(0.72)
                             .multilineTextAlignment(.leading)
                             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(CreamEditorialTheme.peachBadgeFill)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .padding(.vertical, 9)
+                    .background(exploreStatusPillBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                    )
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -408,14 +441,55 @@ struct ExploreView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(CreamEditorialTheme.cardWhite)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: exploreCardCorner, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: exploreCardCorner, style: .continuous)
                     .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
             )
-            .shadow(color: CreamEditorialTheme.cardShadow, radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
+    }
+
+    private var exploreStatusPillBackground: Color {
+        Color(red: 0.97, green: 0.96, blue: 0.94)
+    }
+
+    /// "TONIGHT" when slot date matches selected explore day; else "FRI OCT 18" style.
+    private func exploreImageNightLabel(for drop: Drop) -> String {
+        let selected = vm.selectedDates.sorted().first
+        let slotDateOpt = drop.slots.first?.dateStr ?? drop.dateStr
+        guard let slotDate = slotDateOpt, !slotDate.isEmpty else { return "TONIGHT" }
+        if let selected, slotDate == selected { return "TONIGHT" }
+        return exploreFormatSlotHeaderDate(slotDate) ?? "TONIGHT"
+    }
+
+    private func exploreFormatSlotHeaderDate(_ dateStr: String) -> String? {
+        let parts = dateStr.split(separator: "-")
+        guard parts.count == 3,
+              let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return nil }
+        var c = DateComponents()
+        c.year = y
+        c.month = mo
+        c.day = d
+        guard let date = Calendar.current.date(from: c) else { return nil }
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "EEE MMM d"
+        return df.string(from: date).uppercased()
+    }
+
+    private func explorePaxLabel(for drop: Drop) -> String {
+        switch vm.explorePartySegment {
+        case .two:
+            return "2 PAX"
+        case .four:
+            return "4 PAX"
+        case .anyParty:
+            if let p = drop.partySizesAvailable.sorted().first, p > 0 {
+                return "\(p) PAX"
+            }
+            return "2 PAX"
+        }
     }
 
     @ViewBuilder
