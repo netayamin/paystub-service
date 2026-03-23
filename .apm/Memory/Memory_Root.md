@@ -1,0 +1,3 @@
+# paystub-service – APM Memory Root
+**Memory Strategy:** Dynamic-MD
+**Project Overview:** Snag (DropFeed) in **paystub-service**: drop-first reservations—surface **previously fully booked → just opened** opportunities, ranked for trust and freshness. **Product phase A** drives execution (technical Phases 1–6): Postgres → ingestion → eligibility + **ranking spec (3.1b)** → scoring/feed → API/push → iOS → QA. **Phases 7–9** gated until Phase A excellence. Constraints: no browse creep on home, enforced minimal UI, **no** consumer analytics UI (charts / % / dashboards). Manager coordinates task assignment, Memory Logs, and plan integrity; Implementation Agents execute tasks and fill logs.
