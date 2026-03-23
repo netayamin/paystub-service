@@ -47,6 +47,7 @@
 		A200001D /* ExploreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* ExploreView.swift */; };
 		A3000001 /* AuthSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000002 /* AuthSessionManager.swift */; };
 		A3000003 /* LoginFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000004 /* LoginFlowView.swift */; };
+		A3000007 /* LoginAnimatedSpotsHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000008 /* LoginAnimatedSpotsHero.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -93,6 +94,7 @@
 		A1000110 /* RestaurantImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantImageCache.swift; sourceTree = "<group>"; };
 		A3000002 /* AuthSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSessionManager.swift; sourceTree = "<group>"; };
 		A3000004 /* LoginFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginFlowView.swift; sourceTree = "<group>"; };
+		A3000008 /* LoginAnimatedSpotsHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginAnimatedSpotsHero.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -167,6 +169,7 @@
 				A2000009 /* PremiumPaywallView.swift */,
 				A200000A /* YouView.swift */,
 				A3000004 /* LoginFlowView.swift */,
+				A3000008 /* LoginAnimatedSpotsHero.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -316,6 +319,7 @@
 				A200001D /* ExploreView.swift in Sources */,
 				A3000001 /* AuthSessionManager.swift in Sources */,
 				A3000003 /* LoginFlowView.swift in Sources */,
+				A3000007 /* LoginAnimatedSpotsHero.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

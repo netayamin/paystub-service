@@ -31,9 +31,9 @@ struct LoginFlowView: View {
             ZStack(alignment: .top) {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.12, green: 0.18, blue: 0.32),
-                        Color(red: 0.25, green: 0.35, blue: 0.52),
-                        Color(red: 0.45, green: 0.55, blue: 0.72),
+                        Color(red: 0.26, green: 0.15, blue: 0.10),
+                        Color(red: 0.36, green: 0.22, blue: 0.15),
+                        Color(red: 0.30, green: 0.18, blue: 0.13),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -43,11 +43,8 @@ struct LoginFlowView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 0) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 44))
-                                .foregroundStyle(.white.opacity(0.35))
-                                .padding(.top, 52)
-                                .padding(.bottom, 28)
+                            LoginAnimatedSpotsHero()
+                                .padding(.top, 8)
 
                             VStack(alignment: .leading, spacing: 0) {
                                 headerBlock
