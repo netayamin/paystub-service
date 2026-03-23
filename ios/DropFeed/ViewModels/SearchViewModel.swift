@@ -181,8 +181,9 @@ final class SearchViewModel: ObservableObject {
         }
 
         do {
+            let dateQuery = selectedDates.isEmpty ? nil : Array(selectedDates)
             let resp = try await service.fetchJustOpened(
-                dates:      selectedDates.isEmpty ? nil : Array(selectedDates),
+                dates:      dateQuery,
                 partySizes: effectivePartySizesForAPI,
                 timeAfter:  nil,
                 timeBefore: nil
@@ -202,7 +203,9 @@ final class SearchViewModel: ObservableObject {
                 }
             }
 
-            if ranked.isEmpty {
+            // Do not replace date/party-scoped results with `/new-drops` (no date filter) — that breaks Explore.
+            let scopedToServerFilters = exploreTabActive || dateQuery != nil || effectivePartySizesForAPI != nil
+            if ranked.isEmpty && !scopedToServerFilters {
                 let fallback = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
                 ranked = fallback
             }
