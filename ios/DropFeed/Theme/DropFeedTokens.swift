@@ -24,5 +24,9 @@ enum DropFeedTokens {
     /// Named fills that are not yet on ``CreamEditorialTheme``.
     enum Semantic {
         static let exploreInventoryPillFill = Color(red: 0.97, green: 0.96, blue: 0.94)
+        /// Dark red hero badge (premium drop) — aligns with reference hero cards.
+        static let premiumHeroBadgeFill = Color(red: 74 / 255, green: 14 / 255, blue: 14 / 255)
+        /// Pax chip on dark hero — warm grey fill.
+        static let premiumHeroPaxFill = Color(red: 0.90, green: 0.88, blue: 0.84)
     }
 }

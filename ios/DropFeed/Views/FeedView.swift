@@ -590,10 +590,13 @@ struct FeedView: View {
                 HStack {
                     Spacer(minLength: 0)
                     quietCuratorHottestCarouselCardChrome(
-                        QuietCuratorHeroCard(
+                        DSPremiumHeroCard(
                             drop: only,
                             layoutHeight: sz.h,
-                            useSharpRectangleBorder: false
+                            useSharpRectangleBorder: false,
+                            innerClipCornerRadius: 10,
+                            isWatched: savedVM.isWatched(only.name),
+                            onToggleWatch: { savedVM.toggleWatch($0) }
                         )
                         .frame(width: sz.w, height: sz.h)
                     )
@@ -605,10 +608,13 @@ struct FeedView: View {
                     HStack(alignment: .top, spacing: gap) {
                         ForEach(drops, id: \.id) { drop in
                             quietCuratorHottestCarouselCardChrome(
-                                QuietCuratorHeroCard(
+                                DSPremiumHeroCard(
                                     drop: drop,
                                     layoutHeight: sz.h,
-                                    useSharpRectangleBorder: false
+                                    useSharpRectangleBorder: false,
+                                    innerClipCornerRadius: 10,
+                                    isWatched: savedVM.isWatched(drop.name),
+                                    onToggleWatch: { savedVM.toggleWatch($0) }
                                 )
                                 .frame(width: sz.w, height: sz.h)
                             )
@@ -1825,218 +1831,6 @@ private struct CuratorTopBar: View {
         if s < 3600 { return "Updated \(s / 60)m ago" }
         let u = lastScanFallback.trimmingCharacters(in: .whitespacesAndNewlines)
         return u.isEmpty ? "Updated" : "Updated \(u)"
-    }
-}
-
-private struct QuietCuratorHeroCard: View {
-    let drop: Drop
-    /// When set (carousel), drives card height and compact type; default tall hero for legacy layouts.
-    var layoutHeight: CGFloat?
-    /// Sharp 1pt `Rectangle` stroke; off when the carousel applies rounded chrome outside.
-    var useSharpRectangleBorder: Bool = true
-
-    /// Default height when `layoutHeight` is nil (single full-width hero elsewhere).
-    fileprivate static let heroH: CGFloat = 372
-
-    private var effectiveHeight: CGFloat { layoutHeight ?? Self.heroH }
-
-    private var isCompactTile: Bool { (layoutHeight ?? .greatestFiniteMagnitude) < 270 }
-
-    /// Short tiles: one line + scaling avoids vertical overflow in the ZStack overlay.
-    private var venueTitleLineLimit: Int { effectiveHeight < 248 ? 1 : 2 }
-
-    private var venueTitleSize: CGFloat {
-        if effectiveHeight < 248 { return 16 }
-        if isCompactTile { return 18 }
-        if effectiveHeight < 340 { return 22 }
-        return 28
-    }
-
-    private var imageURL: URL? {
-        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private var showHighDemand: Bool {
-        drop.feedHot == true || (drop.snagScore ?? 0) >= 78 || (drop.trendPct ?? 0) > 12
-    }
-
-    private var neighborhoodCaps: String {
-        (drop.neighborhood ?? drop.location ?? "NEW YORK").uppercased()
-    }
-
-    private var heroTimePill: String {
-        let t = drop.slots.first?.time ?? ""
-        let formatted = feedFormatTime12h(t)
-        return formatted == "—" || formatted.isEmpty ? "EVENING" : formatted.uppercased()
-    }
-
-    private func openResy() {
-        let urlStr = drop.effectiveResyBookingURL ?? ""
-        guard !urlStr.isEmpty, let url = URL(string: urlStr) else { return }
-        APIService.shared.trackBehaviorEvents(events: [
-            BehaviorTrackEvent(
-                eventType: "resy_opened",
-                venueId: drop.venueKey,
-                venueName: drop.name,
-                notificationId: nil,
-                market: drop.market
-            )
-        ])
-        UIApplication.shared.open(url)
-    }
-
-    var body: some View {
-        let stack = ZStack(alignment: .bottom) {
-            Group {
-                if let url = imageURL {
-                    CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .heroMuted) {
-                        Color(white: 0.22)
-                    }
-                } else {
-                    Color(white: 0.22)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .clipped()
-
-            LinearGradient(
-                stops: [
-                    .init(color: .black.opacity(0.0), location: 0.0),
-                    .init(color: .black.opacity(0.15), location: 0.35),
-                    .init(color: .black.opacity(0.72), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(false)
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 0) {
-                    if showHighDemand {
-                        Text("HIGH DEMAND")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white)
-                            .tracking(0.5)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(CreamEditorialTheme.burgundy)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                .padding(.top, isCompactTile ? 10 : 14)
-                .padding(.horizontal, isCompactTile ? 10 : 14)
-
-                Spacer(minLength: 0)
-
-                Text(neighborhoodCaps)
-                    .font(.system(size: isCompactTile ? 9 : 11, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.heroNeighborhoodRed)
-                    .tracking(0.55)
-                    .lineLimit(effectiveHeight < 248 ? 1 : 2)
-                    .minimumScaleFactor(0.85)
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, isCompactTile ? 10 : 14)
-
-                Text(drop.name.uppercased())
-                    .font(.system(size: venueTitleSize, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(venueTitleLineLimit)
-                    .minimumScaleFactor(0.5)
-                    .multilineTextAlignment(.leading)
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, isCompactTile ? 10 : 14)
-                    .padding(.top, 4)
-                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
-
-                heroBottomChrome
-                    .padding(.horizontal, isCompactTile ? 10 : 14)
-                    .padding(.top, isCompactTile ? 8 : 14)
-                    .padding(.bottom, isCompactTile ? 10 : 16)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-
-        return Group {
-            if useSharpRectangleBorder {
-                stack
-                    .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
-                    .clipped()
-            } else {
-                stack
-                    .frame(maxWidth: .infinity, maxHeight: effectiveHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-        }
-        .overlay {
-            if useSharpRectangleBorder {
-                Rectangle()
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
-            }
-        }
-    }
-
-    /// Pills + BOOK: reflow when the carousel page is narrow so nothing clips past the card.
-    @ViewBuilder
-    private var heroBottomChrome: some View {
-        let pills = HStack(alignment: .center, spacing: 6) {
-            Text("TONIGHT")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 6)
-                .background(Color.black.opacity(0.5))
-                .overlay(
-                    Rectangle()
-                        .stroke(Color.white.opacity(0.45), lineWidth: 1)
-                )
-            Text(heroTimePill)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 6)
-                .background(Color.black.opacity(0.5))
-                .overlay(
-                    Rectangle()
-                        .stroke(Color.white.opacity(0.45), lineWidth: 1)
-                )
-        }
-
-        let book = Button(action: openResy) {
-            Text("BOOK")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.55)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-                .background(Color.white)
-        }
-        .buttonStyle(.plain)
-
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 8) {
-                pills
-                Spacer(minLength: 6)
-                book
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 10) {
-                pills
-                book
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 }
 
