@@ -55,12 +55,20 @@ struct ExploreView: View {
             vm.exploreTabActive = false
             vm.stopPolling()
         }
-        .onChange(of: exploreDatePageIndex) { _, newIdx in
-            exploreApplyPageIndex(newIdx)
-        }
         .onChange(of: vm.selectedDates) { _, _ in
             syncExploreDatePageWithSelection()
         }
+    }
+
+    /// Drives the date pager; setter runs on every swipe so we always sync `selectedDates` and refetch (TabView + `onChange` is unreliable).
+    private var exploreDatePageSelection: Binding<Int> {
+        Binding(
+            get: { exploreDatePageIndex },
+            set: { newIdx in
+                exploreDatePageIndex = newIdx
+                exploreApplyPageIndex(newIdx)
+            }
+        )
     }
 
     // MARK: - Swipeable date header
@@ -73,7 +81,7 @@ struct ExploreView: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(SnagDesignSystem.exploreCoralSolid)
                 } else {
-                    TabView(selection: $exploreDatePageIndex) {
+                    TabView(selection: exploreDatePageSelection) {
                         ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
                             Text(exploreSwipeDateTitle(for: opt))
                                 .font(.system(size: 16, weight: .bold))
@@ -170,7 +178,7 @@ struct ExploreView: View {
         guard vm.dateOptions.indices.contains(idx) else { return }
         let ds = vm.dateOptions[idx].dateStr
         if vm.selectedDates == Set([ds]) { return }
-        vm.selectedDates = [ds]
+        vm.selectedDates = Set([ds])
         Task { await vm.loadResults() }
     }
 

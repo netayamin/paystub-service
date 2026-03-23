@@ -70,6 +70,8 @@ final class SearchViewModel: ObservableObject {
 
     private let service  = APIService.shared
     private var pollTask: Task<Void, Never>?
+    /// Bumps on each `loadResults()` start so stale in-flight responses (e.g. poll vs date swipe) cannot overwrite newer data.
+    private var loadResultsGeneration: Int = 0
 
     // Quick-pick venue chips (subset of NYC top priority)
     static let suggestedVenues = [
@@ -165,10 +167,18 @@ final class SearchViewModel: ObservableObject {
     // MARK: - Load
 
     func loadResults() async {
+        loadResultsGeneration &+= 1
+        let generation = loadResultsGeneration
+
         hasSearched  = true
         if results.isEmpty { isLoading = true } else { isRefreshing = true }
         error = nil
-        defer { isLoading = false; isRefreshing = false }
+        defer {
+            if generation == loadResultsGeneration {
+                isLoading = false
+                isRefreshing = false
+            }
+        }
 
         do {
             let resp = try await service.fetchJustOpened(
@@ -197,6 +207,8 @@ final class SearchViewModel: ObservableObject {
                 ranked = fallback
             }
 
+            guard generation == loadResultsGeneration else { return }
+
             results     = ranked
             lastUpdated = Date()
 
@@ -206,6 +218,7 @@ final class SearchViewModel: ObservableObject {
             }
         } catch is CancellationError {
         } catch {
+            guard generation == loadResultsGeneration else { return }
             self.error = Self.userFacingError(error)
             results = []
         }
