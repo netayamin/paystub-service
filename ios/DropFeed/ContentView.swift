@@ -33,11 +33,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(tabBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            CustomTabBar(
-                selectedTab: $selectedTab,
-                alertBadgeCount: alertsVM.unreadCount,
-                useLightChrome: selectedTab == 0
-            )
+            AppTabBar(selectedTab: $selectedTab, alertBadgeCount: alertsVM.unreadCount)
         }
         .task {
             await savedVM.loadAll()

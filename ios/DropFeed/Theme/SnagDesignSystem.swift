@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Snag reference UI — primary red accent, white canvas, mint success, soft gray cards.
+/// Legacy / shared palette (coral, dark mock colors, explore badge red).
+/// **App chrome:** prefer `CreamEditorialTheme` + `DropFeedTokens` for new work.
 enum SnagDesignSystem {
 
     // MARK: - Colors (mockup)

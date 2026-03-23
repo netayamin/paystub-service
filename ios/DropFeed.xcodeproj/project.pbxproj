@@ -30,7 +30,12 @@
 		A1000103 /* SnagDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000104 /* SnagDesignSystem.swift */; };
 		A1000044 /* DateTimeFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000045 /* DateTimeFilterSheet.swift */; };
 		A1000048 /* ProfilePlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000049 /* ProfilePlaceholderView.swift */; };
-		A100004A /* CustomTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004B /* CustomTabBar.swift */; };
+		A1000191 /* DropFeedTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000190 /* DropFeedTokens.swift */; };
+		A1000193 /* AppTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000192 /* AppTabBar.swift */; };
+		A1000195 /* DSHairline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000194 /* DSHairline.swift */; };
+		A1000197 /* DSSectionTitleRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000196 /* DSSectionTitleRow.swift */; };
+		A1000199 /* DSLabeledRuleRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000198 /* DSLabeledRuleRow.swift */; };
+		A10001F1 /* DSExploreDateChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001F0 /* DSExploreDateChip.swift */; };
 		A100004C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004D /* AppDelegate.swift */; };
 		A100004E /* LocalNotificationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100004F /* LocalNotificationHelper.swift */; };
 		A2000011 /* SavedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001 /* SavedViewModel.swift */; };
@@ -76,7 +81,12 @@
 		A1000104 /* SnagDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnagDesignSystem.swift; sourceTree = "<group>"; };
 		A1000045 /* DateTimeFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateTimeFilterSheet.swift; sourceTree = "<group>"; };
 		A1000049 /* ProfilePlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePlaceholderView.swift; sourceTree = "<group>"; };
-		A100004B /* CustomTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomTabBar.swift; sourceTree = "<group>"; };
+		A1000190 /* DropFeedTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropFeedTokens.swift; sourceTree = "<group>"; };
+		A1000192 /* AppTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabBar.swift; sourceTree = "<group>"; };
+		A1000194 /* DSHairline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHairline.swift; sourceTree = "<group>"; };
+		A1000196 /* DSSectionTitleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSSectionTitleRow.swift; sourceTree = "<group>"; };
+		A1000198 /* DSLabeledRuleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSLabeledRuleRow.swift; sourceTree = "<group>"; };
+		A10001F0 /* DSExploreDateChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSExploreDateChip.swift; sourceTree = "<group>"; };
 		A100004D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A100004F /* LocalNotificationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationHelper.swift; sourceTree = "<group>"; };
 		A1000050 /* DropFeed.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DropFeed.entitlements; sourceTree = "<group>"; };
@@ -164,7 +174,7 @@
 				A1000045 /* DateTimeFilterSheet.swift */,
 				A2000006 /* LikelyToOpenSection.swift */,
 				A1000049 /* ProfilePlaceholderView.swift */,
-				A100004B /* CustomTabBar.swift */,
+				A10001F2 /* Components */,
 				A1000016 /* FeedView.swift */,
 				A200001E /* ExploreView.swift */,
 				A2000007 /* SavedView.swift */,
@@ -202,8 +212,21 @@
 				A1000041 /* AppTheme.swift */,
 				A1000101 /* FeedPalette.swift */,
 				A1000104 /* SnagDesignSystem.swift */,
+				A1000190 /* DropFeedTokens.swift */,
 			);
 			path = Theme;
+			sourceTree = "<group>";
+		};
+		A10001F2 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A1000192 /* AppTabBar.swift */,
+				A1000194 /* DSHairline.swift */,
+				A1000196 /* DSSectionTitleRow.swift */,
+				A1000198 /* DSLabeledRuleRow.swift */,
+				A10001F0 /* DSExploreDateChip.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		A100010A /* Helpers */ = {
@@ -338,7 +361,12 @@
 				A1000103 /* SnagDesignSystem.swift in Sources */,
 				A1000044 /* DateTimeFilterSheet.swift in Sources */,
 				A1000048 /* ProfilePlaceholderView.swift in Sources */,
-				A100004A /* CustomTabBar.swift in Sources */,
+				A1000191 /* DropFeedTokens.swift in Sources */,
+				A1000193 /* AppTabBar.swift in Sources */,
+				A1000195 /* DSHairline.swift in Sources */,
+				A1000197 /* DSSectionTitleRow.swift in Sources */,
+				A1000199 /* DSLabeledRuleRow.swift in Sources */,
+				A10001F1 /* DSExploreDateChip.swift in Sources */,
 				A2000011 /* SavedViewModel.swift in Sources */,
 				A2000012 /* AlertsViewModel.swift in Sources */,
 				A2000013 /* PremiumManager.swift in Sources */,

@@ -36,6 +36,12 @@ MyApp/ ├── App/ # App entry point, App delegate ├── Features/ # Feat
 - Prefer `NavigationStack` over deprecated `NavigationView`
 - Use `@Bindable` for bindings to @Observable objects
 
+### Design system
+- **`DropFeedTokens`** (`Theme/DropFeedTokens.swift`) — spacing, radii, semantic fills; avoid magic numbers.
+- **`CreamEditorialTheme`** — primary colors for light editorial UI.
+- **Reusable UI** — `Views/Components/` (`AppTabBar`, `DSHairline`, `DSSectionTitleRow`, `DSLabeledRuleRow`, `DSExploreDateChip`). New shared pieces: prefix **`DS`**, keep stateless when possible.
+- **Tab bar** — only **`AppTabBar`** (white canvas). See `DESIGN_SYSTEM.md`.
+
 ### Navigation Pattern
 ```swift
 // Use NavigationStack with type-safe routing

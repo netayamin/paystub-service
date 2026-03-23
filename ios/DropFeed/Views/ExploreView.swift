@@ -11,11 +11,10 @@ struct ExploreView: View {
     @State private var showFilterSheet = false
     @State private var showExploreMenu = false
 
-    private let gridColumnSpacing: CGFloat = 14
-    private let gridRowSpacing: CGFloat = 20
-    /// Photo block — reference shows a tall hero image with bottom labels.
-    private let gridImageHeight: CGFloat = 178
-    private let exploreCardCorner: CGFloat = 8
+    private var gridColumnSpacing: CGFloat { DropFeedTokens.Layout.gridColumnSpacing }
+    private var gridRowSpacing: CGFloat { DropFeedTokens.Layout.gridRowSpacing }
+    private var gridImageHeight: CGFloat { DropFeedTokens.Layout.exploreCardImageHeight }
+    private var exploreCardCorner: CGFloat { DropFeedTokens.Layout.exploreCardCornerRadius }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -33,7 +32,7 @@ struct ExploreView: View {
                     Color.clear.frame(height: 88)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, DropFeedTokens.Layout.screenPadding)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -112,7 +111,7 @@ struct ExploreView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(exploreMarketLabel), system online")
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, DropFeedTokens.Layout.screenPadding)
         .padding(.top, 6)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -127,42 +126,32 @@ struct ExploreView: View {
     // MARK: - Availability (reference: weekday above date, maroon selection, hairline under strip)
 
     private var exploreAvailabilitySection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Availability")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text(exploreSelectedMonthYearUppercased)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .textCase(.uppercase)
-                    .tracking(0.55)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .multilineTextAlignment(.trailing)
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
+        let pad = DropFeedTokens.Layout.screenPadding
+        return VStack(alignment: .leading, spacing: 0) {
+            DSSectionTitleRow(title: "Availability", trailing: exploreSelectedMonthYearUppercased)
+                .padding(.horizontal, pad)
+                .padding(.bottom, 14)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
                     ForEach(Array(vm.dateOptions.enumerated()), id: \.element.dateStr) { idx, opt in
-                        exploreDateChip(index: idx, opt: opt)
+                        DSExploreDateChip(
+                            weekday: weekdayAbbrev(for: opt.dateStr),
+                            dayNumber: opt.dayNum,
+                            isSelected: idx == exploreDatePageIndex
+                        ) {
+                            exploreDatePageIndex = idx
+                            exploreApplyPageIndex(idx)
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, pad)
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
             .frame(height: 72, alignment: .center)
 
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
-                .padding(.horizontal, 16)
+            DSHairline(horizontalPadding: pad)
                 .padding(.top, 10)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -178,31 +167,6 @@ struct ExploreView: View {
                       "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"]
         let name = months[(mo - 1).clamped(to: 0 ... 11)]
         return "\(name) \(y)"
-    }
-
-    private func exploreDateChip(index idx: Int, opt: (dateStr: String, monthAbbrev: String, dayNum: String)) -> some View {
-        let selected = idx == exploreDatePageIndex
-        let muted = CreamEditorialTheme.textTertiary
-        return Button {
-            exploreDatePageIndex = idx
-            exploreApplyPageIndex(idx)
-        } label: {
-            VStack(spacing: 5) {
-                Text(weekdayAbbrev(for: opt.dateStr))
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(selected ? CreamEditorialTheme.burgundy : muted)
-                    .tracking(0.45)
-                    .textCase(.uppercase)
-                Text(opt.dayNum)
-                    .font(.system(size: selected ? 18 : 15, weight: selected ? .heavy : .semibold))
-                    .foregroundColor(selected ? CreamEditorialTheme.burgundy : CreamEditorialTheme.textSecondary)
-            }
-            .frame(minWidth: 40)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private func weekdayAbbrev(for dateStr: String) -> String {
@@ -252,28 +216,11 @@ struct ExploreView: View {
 
     // MARK: - Live inventory
 
-    /// Reference: grey label + hairline to the right + maroon city on the far right.
     private var liveInventoryHeader: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Text("LIVE INVENTORY")
-                .font(.system(size: 10, weight: .heavy))
-                .foregroundColor(CreamEditorialTheme.textSecondary)
-                .tracking(0.95)
-                .textCase(.uppercase)
-                .lineLimit(1)
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
-                .frame(maxWidth: .infinity)
-            Text(exploreMarketLabel == "NYC" ? "NEW YORK" : exploreMarketLabel)
-                .font(.system(size: 10, weight: .heavy))
-                .foregroundColor(CreamEditorialTheme.burgundy)
-                .tracking(0.5)
-                .textCase(.uppercase)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-        }
-        .frame(maxWidth: .infinity)
+        DSLabeledRuleRow(
+            leadingLabel: "LIVE INVENTORY",
+            trailingLabel: exploreMarketLabel == "NYC" ? "NEW YORK" : exploreMarketLabel
+        )
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -428,7 +375,7 @@ struct ExploreView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 9)
-                    .background(exploreStatusPillBackground)
+                    .background(DropFeedTokens.Semantic.exploreInventoryPillFill)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -448,10 +395,6 @@ struct ExploreView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    private var exploreStatusPillBackground: Color {
-        Color(red: 0.97, green: 0.96, blue: 0.94)
     }
 
     /// "TONIGHT" when slot date matches selected explore day; else "FRI OCT 18" style.
