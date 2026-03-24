@@ -17,7 +17,6 @@ struct ExploreView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            exploreTopBar
             exploreAvailabilitySection
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -60,63 +59,6 @@ struct ExploreView: View {
         }
     }
 
-    // MARK: - Top bar
-
-    /// Two rows: avoids one ultra-wide `HStack` inflating past the screen on Pro-size phones.
-    private var exploreTopBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
-                Button {
-                    showExploreMenu = true
-                } label: {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
-                }
-                .buttonStyle(.plain)
-
-                Text("EXPLORE")
-                    .font(.system(size: 18, weight: .heavy))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button {
-                    showFilterSheet = true
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            HStack(spacing: 6) {
-                Text(exploreMarketLabel)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .lineLimit(1)
-                Circle()
-                    .fill(Color(red: 52 / 255, green: 199 / 255, blue: 147 / 255))
-                    .frame(width: 5, height: 5)
-                Text("SYSTEM ONLINE")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Spacer(minLength: 0)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(exploreMarketLabel), system online")
-        }
-        .padding(.horizontal, DropFeedTokens.Layout.screenPadding)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var exploreMarketLabel: String { "NYC" }
 
     // MARK: - Availability (reference: weekday above date, maroon selection, hairline under strip)
 
