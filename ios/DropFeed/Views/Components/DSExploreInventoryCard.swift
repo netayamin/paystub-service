@@ -215,41 +215,37 @@ struct DSExploreInventoryCard: View {
                     .layoutPriority(1)
             }
 
-            Text(ExploreCardFormatting.cuisineLine(drop: drop))
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(CreamEditorialTheme.textSecondary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.88)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            if let cuisine = cuisineLineIfMeaningful {
+                Text(cuisine)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.88)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Spacer(minLength: 0)
-
-            HStack(alignment: .center, spacing: 6) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.burgundy)
-                Text(ExploreCardFormatting.inventoryStatusLine(drop: drop))
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.burgundy)
-                    .tracking(0.4)
-                    .textCase(.uppercase)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.72)
-                    .multilineTextAlignment(.leading)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(DropFeedTokens.Semantic.exploreInventoryPillFill)
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
-            )
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Returns the cuisine/neighborhood line only when there's real data — never the generic fallback.
+    private var cuisineLineIfMeaningful: String? {
+        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            if !nb.isEmpty, s.count < 36 { return "\(s) • \(nb)" }
+            return s
+        }
+        if let line = drop.topOpportunitySubtitleLine?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !line.isEmpty, line.count < 42 {
+            if !nb.isEmpty { return "\(line) • \(nb)" }
+            return line
+        }
+        if !nb.isEmpty { return nb }
+        return nil
     }
 }
 
