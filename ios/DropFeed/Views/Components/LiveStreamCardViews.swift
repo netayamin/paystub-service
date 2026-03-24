@@ -87,36 +87,36 @@ struct LiveStreamOpenCard: View {
                         Color(red: 0.91, green: 0.91, blue: 0.93)
                     }
                 }
-                .frame(width: 66, height: 66)
+                .frame(width: 78, height: 78)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 // Text stack
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         Text("JUST OPENED")
-                            .font(.system(size: 10, weight: .heavy))
+                            .font(.system(size: 11, weight: .heavy))
                             .foregroundColor(CreamEditorialTheme.burgundy)
-                            .tracking(0.3)
+                            .tracking(0.4)
                         Text(agoLabel)
-                            .font(.system(size: 10, weight: .regular))
+                            .font(.system(size: 11, weight: .regular))
                             .foregroundColor(CreamEditorialTheme.textTertiary)
                     }
 
                     Text(drop.name)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundColor(CreamEditorialTheme.textPrimary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.82)
+                        .minimumScaleFactor(0.80)
 
                     HStack(spacing: 4) {
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.0))
                         Text(claimTimeLabel)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.0))
                         Text(detailLine)
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.system(size: 13, weight: .regular))
                             .foregroundColor(CreamEditorialTheme.textSecondary)
                             .lineLimit(1)
                     }
@@ -125,16 +125,16 @@ struct LiveStreamOpenCard: View {
 
                 // BOOK button
                 Text("BOOK")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
-                    .tracking(0.5)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
+                    .tracking(0.6)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
                     .background(Color.black)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(CreamEditorialTheme.cardWhite)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -180,40 +180,40 @@ struct LiveStreamSoldOutDropCard: View {
                     Color(red: 0.88, green: 0.88, blue: 0.90)
                 }
             }
-            .frame(width: 66, height: 66)
+            .frame(width: 78, height: 78)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             // Text stack
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
                     Text("JUST DROPPED")
-                        .font(.system(size: 10, weight: .heavy))
+                        .font(.system(size: 11, weight: .heavy))
                         .foregroundColor(mutedText)
-                        .tracking(0.3)
+                        .tracking(0.4)
                     Text(agoLabel)
-                        .font(.system(size: 10, weight: .regular))
+                        .font(.system(size: 11, weight: .regular))
                         .foregroundColor(CreamEditorialTheme.textTertiary)
                 }
 
                 Text(drop.name)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(mutedText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .minimumScaleFactor(0.80)
 
                 Text("Sold Out")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundColor(CreamEditorialTheme.textTertiary)
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
             // TAKEN button (outline)
             Text("TAKEN")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundColor(mutedText)
-                .tracking(0.5)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .tracking(0.6)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
                 .background(Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
@@ -221,8 +221,8 @@ struct LiveStreamSoldOutDropCard: View {
                         .stroke(mutedText.opacity(0.4), lineWidth: 1.5)
                 )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardFill)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
