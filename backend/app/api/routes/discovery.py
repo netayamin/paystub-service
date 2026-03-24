@@ -350,10 +350,10 @@ def _parse_ints(value: str | None) -> list[int] | None:
 async def list_drops(
     request: Request,
     response: Response,
-    db: Session = Depends(get_db),
     dates: str,
     party_sizes: str | None = None,
     market: str | None = None,
+    db: Session = Depends(get_db),
 ):
     """
     **Explore tab:** all bookable inventory for the given calendar days.
