@@ -57,6 +57,7 @@
 		A3000003 /* LoginFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000004 /* LoginFlowView.swift */; };
 		A3000007 /* LoginAnimatedSpotsHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3000008 /* LoginAnimatedSpotsHero.swift */; };
 		B1000201 /* URL+DropFeedMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000200 /* URL+DropFeedMedia.swift */; };
+		B3BABD9CE4B3F0226C30C6D5 /* ManropeFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3AAA8A55986320387F8AF81 /* ManropeFont.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -113,6 +114,8 @@
 		A3000004 /* LoginFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginFlowView.swift; sourceTree = "<group>"; };
 		A3000008 /* LoginAnimatedSpotsHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginAnimatedSpotsHero.swift; sourceTree = "<group>"; };
 		B1000200 /* URL+DropFeedMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+DropFeedMedia.swift"; sourceTree = "<group>"; };
+		B3AAA8A55986320387F8AF81 /* ManropeFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManropeFont.swift; path = Theme/ManropeFont.swift; sourceTree = "<group>"; };
+		C588CAC5D79BD70A716AECDA /* Manrope-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "Manrope-Variable.ttf"; path = "Fonts/Manrope-Variable.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -234,6 +237,7 @@
 				A10001F4 /* DSPremiumHeroCard.swift */,
 				A10001F6 /* DSExploreInventoryCard.swift */,
 				A10001FC /* LiveStreamCardViews.swift */,
+							B3AAA8A55986320387F8AF81 /* ManropeFont.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -396,6 +400,7 @@
 				A3000003 /* LoginFlowView.swift in Sources */,
 				A3000007 /* LoginAnimatedSpotsHero.swift in Sources */,
 				B1000201 /* URL+DropFeedMedia.swift in Sources */,
+							B3BABD9CE4B3F0226C30C6D5 /* ManropeFont.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
