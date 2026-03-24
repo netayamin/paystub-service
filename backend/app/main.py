@@ -140,6 +140,9 @@ async def lifespan(app: FastAPI):
     print("  BACKEND READY  http://127.0.0.1:8000")
     print("  API docs       http://127.0.0.1:8000/docs")
     print("  Health         http://127.0.0.1:8000/health")
+    print("  — Open those URLs in a browser ON THIS MACHINE (not iPhone).")
+    print("  — Or run:  curl -s http://127.0.0.1:8000/health")
+    print("  — Leave this terminal running; Ctrl+C stops the API.")
     print("=" * 60 + "\n")
     logger.info("Backend ready at http://127.0.0.1:8000")
     yield

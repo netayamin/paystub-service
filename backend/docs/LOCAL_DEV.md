@@ -42,6 +42,18 @@
 
    `status` should be `ok` and `database.connected` should be `true`.
 
+## `/health` won’t open in the browser
+
+1. **Is the server running?** After `make dev-backend` you must see **`Uvicorn running on http://0.0.0.0:8000`** (or `127.0.0.1:8000`). If that terminal exited or shows a Python traceback, fix that first — the site only works while that process is alive.
+
+2. **iPhone vs Mac:** `http://127.0.0.1:8000` means “this device.” On your **phone**, that’s the phone itself, not your Mac — it will fail. Use **Safari/Chrome on the Mac** where uvicorn runs, or use **ngrok / your Mac’s LAN IP** from the phone (`ios/README.md`).
+
+3. **Port in use / wrong app:** Check what holds 8000: `lsof -iTCP:8000 -sTCP:LISTEN`. You should see `Python`/`uvicorn`. If something else is there, stop it or change the port in `make dev-backend`.
+
+4. **Quick test (Mac Terminal):**  
+   `curl -s http://127.0.0.1:8000/health`  
+   If this works but the browser doesn’t, try **`http://localhost:8000/health`** or disable VPN/proxy for localhost.
+
 ## Repo helper
 
 From **repo root**:
