@@ -192,25 +192,31 @@ final class FeedViewModel: ObservableObject {
         startLiveListRotation()
     }
 
-    /// Quality-ranked pool for live stream, covering all days returned by the API.
-    /// Tier 1: hot-list (`feedHot`)
-    /// Tier 2: hotspot / popular venue (`isHotspot`)
-    /// Tier 3: everything else
-    /// Within each tier: higher `snagScore` → higher `resyPopularityScore` → freshest first.
+    /// Quality-ranked pool for the live stream, covering all days from the API.
+    ///
+    /// Tier 1 — curated hotspot list AND currently hot (`isHotspot && feedHot`)
+    /// Tier 2 — curated hotspot list (`isHotspot`)
+    /// Tier 3 — data-signal hot only (`feedHot`, not on curated list)
+    /// Tier 4 — everything else
+    ///
+    /// Within each tier: snagScore → resyPopularityScore → trendPct → freshest first.
     private var liveStreamPool: [Drop] {
         func score(_ d: Drop) -> Double {
-            let snag    = Double(d.snagScore ?? 0)
-            let pop     = d.resyPopularityScore ?? 0
-            let recency = max(0, 3600 - Double(d.secondsSinceDetected)) / 3600 // 0–1, 1 = just now
-            return snag * 10 + pop + recency * 5
+            let snag    = Double(d.snagScore ?? 0) * 10
+            let pop     = (d.resyPopularityScore ?? 0) * 100
+            let trend   = min(d.trendPct ?? 0, 50) * 0.5
+            let recency = max(0.0, 3600.0 - Double(d.secondsSinceDetected)) / 3600.0 * 5
+            return snag + pop + trend + recency
         }
-        let hot      = drops.filter { $0.feedHot == true }
-                            .sorted { score($0) > score($1) }
-        let hotspot  = drops.filter { $0.feedHot != true && $0.isHotspot == true }
-                            .sorted { score($0) > score($1) }
-        let rest     = drops.filter { $0.feedHot != true && $0.isHotspot != true }
-                            .sorted { score($0) > score($1) }
-        return hot + hotspot + rest
+        let hotspot    = drops.filter { $0.isHotspot == true && $0.feedHot == true }
+                              .sorted { score($0) > score($1) }
+        let hotspotOnly = drops.filter { $0.isHotspot == true && $0.feedHot != true }
+                               .sorted { score($0) > score($1) }
+        let dataHot    = drops.filter { $0.isHotspot != true && $0.feedHot == true }
+                              .sorted { score($0) > score($1) }
+        let rest       = drops.filter { $0.isHotspot != true && $0.feedHot != true }
+                              .sorted { score($0) > score($1) }
+        return hotspot + hotspotOnly + dataHot + rest
     }
 
     /// Seeds all 5 slots from the top of the pool; called on first load and refresh.

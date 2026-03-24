@@ -265,26 +265,31 @@ struct FeedView: View {
 
     /// Trending / hot / rare venues from the live board.
     private var trendingHotCarouselDrops: [Drop] {
+        func score(_ d: Drop) -> Double {
+            let snag  = Double(d.snagScore ?? 0) * 10
+            let pop   = (d.resyPopularityScore ?? 0) * 100
+            let trend = min(d.trendPct ?? 0, 50) * 0.5
+            return snag + pop + trend
+        }
+        // Tier 1: on the curated hotspot list AND hot right now
+        // Tier 2: on the curated hotspot list
+        // Tier 3: data-hot only (strong signals but not on curated list)
+        // Fill to 10 max; fallback to topDrops if still under 3.
         var out: [Drop] = []
         var seen = Set<String>()
-        let scored = vm.drops.sorted { ($0.snagScore ?? 0) > ($1.snagScore ?? 0) }
-        for d in scored {
-            guard !seen.contains(d.id) else { continue }
-            if d.feedHot == true
-                || (d.snagScore ?? 0) >= 78
-                || (d.trendPct ?? 0) > 12
-                || d.feedsRareCarousel == true
-            {
+        func add(_ drops: [Drop]) {
+            for d in drops where out.count < 10 && seen.insert(d.id).inserted {
                 out.append(d)
-                seen.insert(d.id)
             }
-            if out.count >= 10 { break }
         }
+        add(vm.drops.filter { $0.isHotspot == true && $0.feedHot == true }
+                    .sorted { score($0) > score($1) })
+        add(vm.drops.filter { $0.isHotspot == true && $0.feedHot != true }
+                    .sorted { score($0) > score($1) })
+        add(vm.drops.filter { $0.isHotspot != true && ($0.feedHot == true || ($0.snagScore ?? 0) >= 78 || ($0.trendPct ?? 0) > 12 || $0.feedsRareCarousel == true) }
+                    .sorted { score($0) > score($1) })
         if out.count < 3 {
-            for d in vm.topDrops where out.count < 10 && !seen.contains(d.id) {
-                out.append(d)
-                seen.insert(d.id)
-            }
+            add(vm.topDrops.sorted { score($0) > score($1) })
         }
         return out
     }
