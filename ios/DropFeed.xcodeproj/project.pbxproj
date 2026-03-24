@@ -114,7 +114,7 @@
 		A3000004 /* LoginFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginFlowView.swift; sourceTree = "<group>"; };
 		A3000008 /* LoginAnimatedSpotsHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginAnimatedSpotsHero.swift; sourceTree = "<group>"; };
 		B1000200 /* URL+DropFeedMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+DropFeedMedia.swift"; sourceTree = "<group>"; };
-		B3AAA8A55986320387F8AF81 /* ManropeFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ManropeFont.swift; path = Theme/ManropeFont.swift; sourceTree = "<group>"; };
+		B3AAA8A55986320387F8AF81 /* ManropeFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManropeFont.swift; sourceTree = "<group>"; };
 		C588CAC5D79BD70A716AECDA /* Manrope-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "Manrope-Variable.ttf"; path = "Fonts/Manrope-Variable.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
