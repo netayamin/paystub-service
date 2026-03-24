@@ -103,7 +103,7 @@ struct LiveStreamOpenCard: View {
                     }
 
                     Text(drop.name)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 20, weight: .bold, design: .serif))
                         .foregroundColor(CreamEditorialTheme.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.80)
