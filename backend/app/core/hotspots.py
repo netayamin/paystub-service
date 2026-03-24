@@ -1,7 +1,7 @@
 """
 Market-aware hotspot (hotlist) venues: hard-to-get restaurants we treat as special for notifications and ranking.
 
-- NYC: Alex Reichek top list + Resy classics.
+- NYC: ~200 of NYC's most desirable / hardest-to-book restaurants across all neighborhoods.
 - Miami: Curated Miami Beach & Miami popular / tough-to-get spots.
 Match by normalized venue name (case-insensitive); substring match for display names.
 """
@@ -11,9 +11,10 @@ import re
 import unicodedata
 
 # ---------------------------------------------------------------------------
-# NYC (same as legacy nyc_hotspots)
+# NYC — ~200 of the city's most desirable / hardest-to-book restaurants
 # ---------------------------------------------------------------------------
 NYC_HOTSPOT_NAMES = sorted({
+    # ── Original core list ──────────────────────────────────────────────────
     "Theodora", "The Corner Store", "Zou Zou", "Thai Diner", "Lilia", "Russ & Daughters",
     "Ha's Snack Bar", "Via Carota", "Rule of Thirds", "Coqodaq", "Ippudo", "Di An Di",
     "Leo", "Balthazar", "Laser Wolf", "Gupshup", "Planta Queen", "Bangkok Supper Club",
@@ -22,16 +23,93 @@ NYC_HOTSPOT_NAMES = sorted({
     "Misi", "Twin Tails", "Dame", "Babbo", "Wu's Wonton", "Miss Ada",
     "Carbone", "Cote", "Le Bernardin", "I Sodi", "Tatiana", "Atomix",
     "4 Charles Prime Rib", "Eleven Madison Park", "Per Se",
+
+    # ── Fine dining & Michelin ───────────────────────────────────────────────
+    "Daniel", "Jean-Georges", "Gabriel Kreuther", "Aquavit", "Le Coucou",
+    "The Modern", "Gramercy Tavern", "Union Square Cafe", "Craft", "Aureole",
+    "Ai Fiori", "Marea", "Casa Mono", "Tocqueville", "Blue Hill",
+    "Aldea", "Dovetail", "Atera", "Blanca", "Chef's Table at Brooklyn Fare",
+    "Masa", "Sushi Nakazawa", "Sushi Yasuda", "15 East", "Kappo Masa",
+    "Sushi Ginza Onodera", "Sushi Amane", "Shuko", "Neta", "Jewel Bako",
+    "Kajitsu", "Kyo Ya", "Soto", "En Japanese Brasserie",
+    "Crown Shy", "Manhatta", "Eleven Madison Park",
+
+    # ── Italian & pasta-focused ──────────────────────────────────────────────
+    "L'Artusi", "Perla", "Café Altro Paradiso", "Vic's", "Il Buco",
+    "Il Buco Alimentari", "Locanda Verde", "Bar Primi", "Maialino",
+    "Sant Ambroeus", "Scarpetta", "Peasant", "Raoul's", "Frankies 457",
+    "Prime Meats", "Roman's", "Lupa", "Osteria Morini", "Noodle Pudding",
+
+    # ── French ──────────────────────────────────────────────────────────────
+    "Buvette", "Bar Boulud", "Boulud Sud", "Café Boulud", "db Bistro Moderne",
+    "Frenchette", "Dirty French", "Le Crocodile", "Benoit",
+    "Lucien", "Tartine", "Bar Marseille",
+
+    # ── Steak & American ────────────────────────────────────────────────────
+    "Peter Luger", "Keens Steakhouse", "Wolfgang's Steakhouse", "Sparks Steakhouse",
+    "Porter House Bar and Grill", "Quality Meats", "The Grill", "The Pool",
+    "Crown Shy", "St. Anselm", "M. Wells Steakhouse", "Marlow Bistro",
+
+    # ── Seafood ─────────────────────────────────────────────────────────────
+    "Lure Fishbar", "Flex Mussels", "Greenpoint Fish & Lobster", "Neptune Oyster",
+    "Blue Ribbon Brasserie", "Grand Banks", "Cull & Pistol",
+
+    # ── Modern American / New American ──────────────────────────────────────
+    "Estela", "Charlie Bird", "Prune", "Hearth", "Upland",
+    "Jack's Wife Freda", "Casa Lever", "The NoMad", "Olmsted",
+    "Sunday in Brooklyn", "Francie", "Aska", "Oxalis", "Faro",
+    "The Four Horsemen", "Maison Premiere", "Achilles Heel",
+    "Vinegar Hill House", "Colonie", "Walter's", "Popina",
+    "Bar Corvo", "Sauvage", "Celestine", "Stevie", "Bar Pisellino",
+    "Emmett's", "Rucola", "Loulou",
+
+    # ── Asian ───────────────────────────────────────────────────────────────
+    "Nobu", "Nobu Downtown", "Cosme", "Oxomoco", "Llama Inn", "Llama San",
+    "Casa Enrique", "Oxalis", "Mu Ramen", "Ivan Ramen", "Totto Ramen",
+    "Hide-Chan Ramen", "Momofuku Ko", "Momofuku Noodle Bar", "Momofuku Ssäm Bar",
+    "Nakamura", "Ichiran", "Okonomi", "Ki Sushi", "Tanoshi Sushi",
+    "Cafe China", "Hutong", "Hao Noodle", "RedFarm", "Decoy",
+    "Jeepney", "Pig & Khao", "Fish Cheeks", "Ugly Baby", "Somtum Der",
+    "Wayla", "Ugly Baby", "Khe-Yo", "Hanoi House", "Nam Son",
+
+    # ── Pizza ────────────────────────────────────────────────────────────────
+    "Roberta's", "Emily", "Lucali", "Una Pizza Napoletana", "Kesté",
+    "Paulie Gee's", "Ops", "Speedy Romeo", "Motorino", "Rubirosa",
+    "Corner Slice", "Barboncino", "San Matteo",
+
+    # ── Wine bars & casual fine ──────────────────────────────────────────────
+    "Wildair", "Ten Bells", "Compagnie des Vins Surnaturels", "Pijiu Belly",
+    "June Wine Bar", "Chambers Street Wines", "Tertulia",
+
+    # ── Brunch / all-day ────────────────────────────────────────────────────
+    "Russ & Daughters Cafe", "Egg Shop", "Dimes", "Rosemary's",
+    "Cookshop", "Buttermilk Channel", "Marlow & Sons",
+
+    # ── Latino / Caribbean ───────────────────────────────────────────────────
+    "Cosme", "Atla", "La Contenta", "Calle Dao", "Malecon",
+    "Amor Cubano", "La Loncheria", "Lupe",
+
+    # ── Middle Eastern & Mediterranean ──────────────────────────────────────
+    "Bavel", "Nur", "Gazala's", "Nish Nush", "Au Za'atar", "Dagon",
+    "Lilia" , "Zaytinya",
+
+    # ── Bars with great food ─────────────────────────────────────────────────
+    "Employees Only", "Attaboy", "Death & Co", "Please Don't Tell",
+    "Amor y Amargo", "Cienfuegos",
 })
 
 # Top-priority names for "Top Drops" — the absolute hardest to get in NYC.
-# Ordered by prestige / scarcity. Matched as substrings (case-insensitive).
+# Ordered by prestige / demand. Matched as substrings (case-insensitive).
 NYC_TOP_OPPORTUNITY_PRIORITY = (
     "don angie", "lilia", "i sodi", "via carota", "tatiana",
     "carbone", "le bernardin", "atomix", "four charles", "4 charles",
     "eleven madison", "per se", "minetta tavern", "cote", "babbo",
     "laser wolf", "coqodaq", "rule of thirds", "chez ma tante", "misi",
     "cafe spaghetti", "gupshup", "balthazar", "pastis", "dame",
+    "sushi nakazawa", "masa", "chef's table", "blanca", "atera",
+    "gabriel kreuther", "le coucou", "crown shy", "estela", "frenchette",
+    "gramercy tavern", "daniel", "jean-georges", "cosme", "olmsted",
+    "aska", "francie", "maison premiere", "the four horsemen",
 )
 
 # ---------------------------------------------------------------------------
