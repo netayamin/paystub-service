@@ -398,30 +398,19 @@ struct FeedView: View {
         return vm.drops.filter { seen.insert($0.id).inserted }
     }
 
-    /// Live stream entries: most-recently-detected drops from the ranked pool, padded to ≥5 rows.
-    /// Depends on `liveListShuffleToken` and `lastRefreshed`.
+    /// Live stream entries: the 5 quality-ranked slots managed by FeedViewModel.
+    /// Rotates one slot at a time every ~6 s for a dynamic feel.
     private var quietCuratorStreamEntries: [QuietStreamEntry] {
-        _ = vm.liveListShuffleToken
-        _ = vm.lastRefreshed
-
-        let pool = quietCuratorStreamPool
-        guard !pool.isEmpty else { return [] }
-
-        // Sort by freshness; prefer drops with a booking URL first, then fill from the rest.
-        let withURL = pool
-            .filter { feedDropIsBookable($0) }
-            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
-        let withoutURL = pool
-            .filter { !feedDropIsBookable($0) }
-            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
-
-        var ordered = withURL + withoutURL
-        var entries = ordered.prefix(minQuietCuratorStreamRows).map {
-            QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0))
+        _ = vm.liveListShuffleToken   // subscribe to rotation ticks for animation
+        let slots = vm.liveStreamSlots
+        guard !slots.isEmpty else {
+            // Fallback while slots are seeding: show top 5 from pool
+            let pool = quietCuratorStreamPool
+            guard !pool.isEmpty else { return [] }
+            return Array(pool.prefix(minQuietCuratorStreamRows))
+                .map { QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0)) }
         }
-        var built = Array(entries)
-        padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
-        return built
+        return slots.map { QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0)) }
     }
 
     /// Up to three hot / trending drops for the Quiet Curator hero carousel (“TOP 3 EXCLUSIVE”).
@@ -578,14 +567,17 @@ struct FeedView: View {
 
                     // Single bordered container, rows separated by dividers
                     VStack(spacing: 0) {
-                        ForEach(Array(drops.enumerated()), id: \.offset) { idx, drop in
+                        ForEach(Array(drops.enumerated()), id: \.element.id) { idx, drop in
                             LiveStreamOpenCard(
                                 drop: drop,
                                 preferredParty: mockPreferredParty(for: drop),
                                 todayDateStr: vm.todayDateStr,
                                 onTap: { liveStreamOpenResy(drop) }
                             )
-                            .staggeredAppear(index: idx, delayPerItem: 0.03)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal:   .opacity
+                            ))
 
                             if idx < drops.count - 1 {
                                 Divider()
@@ -594,6 +586,7 @@ struct FeedView: View {
                             }
                         }
                     }
+                    .animation(.easeInOut(duration: 0.4), value: drops.map(\.id))
                     .background(CreamEditorialTheme.cardWhite)
                     .overlay(
                         Rectangle()

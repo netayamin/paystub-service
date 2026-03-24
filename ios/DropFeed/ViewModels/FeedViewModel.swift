@@ -24,6 +24,9 @@ final class FeedViewModel: ObservableObject {
     @Published var tickerDrops: [Drop] = []
     /// Bumps on a timer so the home “live drops” list can rotate order between API refreshes.
     @Published private(set) var liveListShuffleToken: UInt64 = 0
+    /// The 5 live-stream slots shown on the home feed â one slot rotates at a time.
+    @Published private(set) var liveStreamSlots: [Drop] = []
+    private var liveStreamSlotIndex: Int = 0
 
     @Published var selectedDates: Set<String> = []
     @Published var selectedPartySizes: Set<Int> = []
@@ -189,14 +192,57 @@ final class FeedViewModel: ObservableObject {
         startLiveListRotation()
     }
 
-    /// Rotates the visible ordering of the live list so it feels active even between polls.
+    /// Quality-ranked pool for live stream: snag-qualified first, then bookable, then rest.
+    /// Covers all days returned by the API.
+    private var liveStreamPool: [Drop] {
+        let qualified  = drops.filter { $0.snagFeedQualified == true }
+        let bookable   = drops.filter { $0.snagFeedQualified != true && $0.effectiveResyBookingURL != nil }
+        let rest       = drops.filter { $0.snagFeedQualified != true && $0.effectiveResyBookingURL == nil }
+        // Within each tier, freshest first
+        func byFreshness(_ a: Drop, _ b: Drop) -> Bool { a.secondsSinceDetected < b.secondsSinceDetected }
+        return qualified.sorted(by: byFreshness) + bookable.sorted(by: byFreshness) + rest.sorted(by: byFreshness)
+    }
+
+    /// Seeds all 5 slots from the top of the pool; called on first load and refresh.
+    func seedLiveStreamSlots() {
+        let pool = liveStreamPool
+        guard !pool.isEmpty else { return }
+        liveStreamSlots = Array(pool.prefix(5))
+        liveStreamSlotIndex = 0
+    }
+
+    /// Swaps one slot (round-robin 0→1→2→3→4→0) with the next best drop not already on screen.
+    private func rotateOneLiveStreamSlot() {
+        let pool = liveStreamPool
+        guard pool.count > 1 else { return }
+
+        if liveStreamSlots.count < min(5, pool.count) {
+            seedLiveStreamSlots()
+            return
+        }
+
+        let slotCount = liveStreamSlots.count
+        let idx = liveStreamSlotIndex % slotCount
+        liveStreamSlotIndex += 1
+
+        let currentIds = Set(liveStreamSlots.map(\.id))
+        // Pick the next-best drop not currently showing
+        if let next = pool.first(where: { !currentIds.contains($0.id) }) {
+            liveStreamSlots[idx] = next
+        }
+        liveListShuffleToken &+= 1   // keep FeedView animation trigger alive
+    }
+
+    /// Rotates the live stream: one slot swaps every ~6 s (staggered jitter so it never feels robotic).
     private func startLiveListRotation() {
         liveListRotationTask?.cancel()
+        seedLiveStreamSlots()
         liveListRotationTask = Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                let jitter = UInt64(5_500_000_000) + UInt64.random(in: 0..<1_000_000_000)
+                try? await Task.sleep(nanoseconds: jitter)
                 guard !drops.isEmpty else { continue }
-                liveListShuffleToken &+= 1
+                rotateOneLiveStreamSlot()
             }
         }
     }
@@ -309,6 +355,7 @@ final class FeedViewModel: ObservableObject {
             drops = ranked
             liveListShuffleToken = 0
             rotateTickerDrops()   // seed ticker immediately on each refresh
+            seedLiveStreamSlots() // re-seed live stream with freshest best drops
             topOpportunities = top.isEmpty ? nil : top
             hotRightNow = hot.isEmpty ? nil : hot
             totalVenuesScanned = scanned
