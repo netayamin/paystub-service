@@ -200,7 +200,6 @@ async def follows_status(
     request: Request,
     db: Session = Depends(get_db),
     recent_within_hours: float = Query(48, ge=1, le=168),
-    market: str = Query("nyc"),
 ):
     """
     Per venue on the effective notify list (hotlist ∪ saved − excludes): last drop_events time
@@ -208,7 +207,7 @@ async def follows_status(
     """
     rid = _recipient_id(request)
     return follow_status_for_recipient(
-        db, rid, recent_within_hours=float(recent_within_hours), market=market.strip().lower() or "nyc"
+        db, rid, recent_within_hours=float(recent_within_hours), market="nyc"
     )
 
 
@@ -256,18 +255,14 @@ def _parse_since(since: str | None) -> datetime | None:
 @router.get("/feed/new-drops")
 async def new_drops(
     db: Session = Depends(get_db),
-    within_minutes: int | None = None,
     since: str | None = None,
 ):
     """
     New restaurants (just opened) across all buckets for notifications.
     Returns only drops detected *after* `since` (ISO8601) so clients get "new the moment they happen".
-    If `since` is omitted, returns all in the time window (backward compatible).
-    Poll every 10–15s and pass the previous response's `at` as `since` for the next request.
+    If `since` is omitted, returns all drops in the configured window (``JUST_OPENED_WITHIN_MINUTES``).
+    Poll every 10–15 s and pass the previous response's `at` as `since` for the next request.
     """
-    minutes = within_minutes if within_minutes is not None else JUST_OPENED_WITHIN_MINUTES
-    if minutes < 1 or minutes > 120:
-        minutes = JUST_OPENED_WITHIN_MINUTES
     since_dt = _parse_since(since)
     # If client sent since= but we couldn't parse it, return no drops (avoid leaking full list)
     if since is not None and since.strip() and since_dt is None:
@@ -282,7 +277,7 @@ async def new_drops(
                 db,
                 limit_events=500,
                 date_filter=None,
-                opened_within_minutes=minutes,
+                opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
             )
         drops = []
         for day in just_opened:
@@ -356,7 +351,6 @@ async def list_drops(
     """
     date_filter = [s.strip() for s in dates.split(",") if s.strip()]
     party_size_list = _parse_ints(party_sizes)
-    market_list = None
     try:
         if not date_filter:
             raise HTTPException(
@@ -369,7 +363,6 @@ async def list_drops(
                 snap,
                 date_filter=date_filter,
                 party_sizes=party_size_list,
-                market_filter=market_list,
             )
             payload["next_scan_at"] = _next_scan_iso(request)
             return Response(
@@ -427,27 +420,24 @@ async def list_just_opened(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    dates: str | None = None,
-    time_slots: str | None = None,
     party_sizes: str | None = None,
     debug: str | None = None,
     mobile: str | None = None,
 ):
     """**Home feed (live):** slots that **opened** in the last ``LIVE_FEED_WINDOW_MINUTES`` (default 10).
 
-    ``still_open`` is always empty here — full calendar inventory for Explore is
+    ``still_open`` is always empty — full calendar inventory for Explore is at
     ``GET /explore/drops?dates=YYYY-MM-DD,...``.
 
     Serves from pre-computed snapshot when possible.
 
-    **`debug=1`:** Bypasses snapshot; hits DB. Adds `_debug` for staging — not a stable contract.
+    **`debug=1`:** Bypasses snapshot; hits DB directly. Adds `_debug` key — not a stable contract.
     """
     try:
         is_debug = debug and str(debug).strip() in ("1", "true", "yes")
         is_mobile = bool(mobile and str(mobile).strip() in ("1", "true", "yes"))
-        date_filter = [s.strip() for s in dates.split(",") if s.strip()] if dates else None
         party_size_list = _parse_ints(party_sizes)
-        has_filters = date_filter or party_size_list
+        has_filters = bool(party_size_list)
 
         # Mobile fast path: compact pre-serialized snapshot (zero DB queries, ~10x smaller)
         if is_mobile and not has_filters and not is_debug:
@@ -473,7 +463,7 @@ async def list_just_opened(
         # Filtered path: lightweight in-memory filtering on shared snapshot (no deepcopy)
         snap = get_snapshot()
         if snap is not None and not is_debug:
-            filtered = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list)
+            filtered = filter_snapshot_for_request(snap, party_sizes=party_size_list)
             filtered["next_scan_at"] = _next_scan_iso(request)
             if (filtered.get("total_venues_scanned") or 0) == 0:
                 filtered["zero_venues_hint"] = (
@@ -489,7 +479,6 @@ async def list_just_opened(
 
         # Fallback: first startup before snapshot is built, or debug mode — query DB directly
         today = window_start_date()
-        time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         response.headers["X-Discovery-Today"] = today.isoformat()
         info = get_last_scan_info_buckets(db, today)
         # Full inventory for just_missed exclusions (same as snapshot /drops).
@@ -509,12 +498,12 @@ async def list_just_opened(
             party_sizes=None,
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
-        # Home feed: only very recent opens; Explore uses GET /watches/drops.
+        # Home feed: only very recent opens; Explore uses GET /explore/drops.
         just_opened = get_just_opened_from_buckets(
             db,
             limit_events=DISCOVERY_JUST_OPENED_LIMIT,
-            date_filter=date_filter,
-            time_slots=time_slot_list,
+            date_filter=None,
+            time_slots=None,
             party_sizes=party_size_list,
             opened_within_minutes=LIVE_FEED_WINDOW_MINUTES,
         )
@@ -564,26 +553,6 @@ async def list_just_opened(
             today_calendar = date.today()
         attach_likely_open_labels(ranked_board, today_calendar)
         likely_to_open = get_likely_to_open_venues(db, today)
-
-        # Tables dropped in last 60 min (for "X TABLES DROPPED IN THE LAST HOUR" legend)
-        tables_dropped_last_hour = 0
-        try:
-            now = datetime.now(timezone.utc)
-            cutoff = now - timedelta(minutes=60)
-            for day in just_opened:
-                for v in day.get("venues") or []:
-                    det = v.get("detected_at")
-                    if det:
-                        try:
-                            dt = datetime.fromisoformat(det.replace("Z", "+00:00"))
-                            if dt.tzinfo is None:
-                                dt = dt.replace(tzinfo=timezone.utc)
-                            if dt >= cutoff:
-                                tables_dropped_last_hour += 1
-                        except (ValueError, TypeError):
-                            pass
-        except Exception:
-            pass
 
         for i, item in enumerate(likely_to_open):
             item["name"] = item.get("venue_name") or item.get("name") or ""
@@ -655,10 +624,6 @@ async def list_just_opened(
             "feed_meta": snag_feed_meta(),
             "likely_to_open": likely_to_open,
             "just_missed": just_missed,
-            "likely_open_today": [],
-            "likely_open_tomorrow": [],
-            "likely_open_soon": [],
-            "tables_dropped_last_hour": tables_dropped_last_hour,
             **info,
             "next_scan_at": _next_scan_iso(request),
         }
@@ -669,7 +634,6 @@ async def list_just_opened(
             )
         if debug and str(debug).strip() in ("1", "true", "yes"):
             just_opened_by_date = {d["date_str"]: len(d.get("venues") or []) for d in just_opened}
-            still_open_by_date = {d["date_str"]: len(d.get("venues") or []) for d in still_open}
             bucket_ids = [bid for bid, _d, _t, _m in all_bucket_ids(today)]
             rows = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id.in_(bucket_ids)).all()
             def _baseline_empty(js: str | None) -> bool:
@@ -682,11 +646,8 @@ async def list_just_opened(
                     return True
             empty_baseline_buckets = [r.bucket_id for r in rows if _baseline_empty(r.baseline_slot_ids_json)]
             payload["_debug"] = {
-                "date_filter_sent": date_filter,
                 "just_opened_dates": list(just_opened_by_date.keys()),
-                "still_open_dates": list(still_open_by_date.keys()),
                 "just_opened_per_date": just_opened_by_date,
-                "still_open_per_date": still_open_by_date,
                 "buckets_with_empty_baseline": len(empty_baseline_buckets),
                 "buckets_with_empty_baseline_ids": empty_baseline_buckets[:5],
             }

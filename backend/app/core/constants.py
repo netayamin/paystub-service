@@ -24,7 +24,7 @@ DISCOVERY_POLL_INTERVAL_SECONDS = DISCOVERY_TICK_SECONDS
 import os as _os
 JUST_OPENED_WITHIN_MINUTES: int = int(_os.environ.get("JUST_OPENED_WITHIN_MINUTES", "30") or "30")
 
-# Home feed (`GET /chat/watches/just-opened`): only slots that **opened** (new DropEvent) in this window.
+# Home feed (`GET /feed/live`): only slots that **opened** (new DropEvent) in this window.
 # Closures in the same window come from `just_missed` (see recent_missed + LIVE_FEED_WINDOW_MINUTES).
 LIVE_FEED_WINDOW_MINUTES: int = int(_os.environ.get("LIVE_FEED_WINDOW_MINUTES", "10") or "10")
 

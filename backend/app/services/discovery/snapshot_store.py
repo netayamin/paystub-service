@@ -31,6 +31,7 @@ from app.core.constants import (
 )
 from app.core.discovery_config import DISCOVERY_DATE_TIMEZONE
 from app.core.nyc_hotspots import is_hotspot
+from app.services.discovery.feed import sanitize_feed_cards_for_client
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,6 @@ def rebuild_snapshot(db: Session) -> None:
     from app.services.discovery.feed import (
         attach_likely_open_labels,
         build_feed,
-        sanitize_feed_cards_for_client,
         snag_feed_meta,
     )
     from app.services.discovery.feed_display import attach_feed_card_display_fields
@@ -334,12 +334,8 @@ def rebuild_snapshot(db: Session) -> None:
             "hot_right_now": hot_right_now,
             "likely_to_open": likely_to_open,
             "just_missed": just_missed,
-            "likely_open_today": [],
-            "likely_open_tomorrow": [],
-            "likely_open_soon": [],
             "feed_meta": feed_meta,
             "bucket_health": bucket_health,
-            "rolling_by_name": rolling_by_name,
             **info,
             "computed_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -348,7 +344,6 @@ def rebuild_snapshot(db: Session) -> None:
         # The no-filter fast path returns these bytes directly — zero per-request work.
         api_payload = {k: v for k, v in snap.items()
                        if k not in (
-                           "rolling_by_name",
                            "bucket_health",
                            "computed_at",
                            "ticker_board",
@@ -374,9 +369,6 @@ def rebuild_snapshot(db: Session) -> None:
             "hot_right_now":     hot_right_now,
             "likely_to_open":    likely_to_open,
             "just_missed":       just_missed,
-            "likely_open_today": [],
-            "likely_open_tomorrow": [],
-            "likely_open_soon":  [],
         }
         mobile_payload.update({k: v for k, v in info.items()})
         mobile_bytes = _json.dumps(mobile_payload, separators=(",", ":"), default=str).encode()
@@ -404,11 +396,8 @@ def filter_snapshot_for_request(
     snap: dict,
     date_filter: list[str] | None = None,
     party_sizes: list[int] | None = None,
-    market_filter: list[str] | None = None,
 ) -> dict:
-    """Build a filtered response dict from the shared snapshot (non-mutating).
-    Pass market_filter=["nyc"] or ["miami"] to return only one city's data.
-    """
+    """Build a filtered response dict from the shared snapshot (non-mutating)."""
     def _calendar_day_key(s: str | None) -> str | None:
         if not s:
             return None
@@ -421,12 +410,6 @@ def filter_snapshot_for_request(
     date_set.discard(None)
     date_set = date_set or None
     ps_set = set(party_sizes) if party_sizes else None
-    mkt_set = set(market_filter) if market_filter else None
-
-    def _venue_matches_market(v: dict) -> bool:
-        if not mkt_set:
-            return True
-        return (v.get("market") or "nyc") in mkt_set
 
     def _filter_days(days: list[dict]) -> list[dict]:
         out = []
@@ -437,10 +420,8 @@ def filter_snapshot_for_request(
             venues = day.get("venues") or []
             if ps_set:
                 venues = [v for v in venues if _venue_matches_party(v, ps_set)]
-            if mkt_set:
-                venues = [v for v in venues if _venue_matches_market(v)]
-            if not venues and (ps_set or mkt_set):
-                continue
+                if not venues:
+                    continue
             day = {**day, "venues": venues}
             out.append(day)
         return out
@@ -453,20 +434,8 @@ def filter_snapshot_for_request(
                 continue
             if ps_set and not _venue_matches_party(c, ps_set):
                 continue
-            if mkt_set and not _venue_matches_market(c):
-                continue
             out.append(c)
         return out
-
-    def _filter_likely_to_open(items: list[dict]) -> list[dict]:
-        if not mkt_set:
-            return items
-        return [x for x in items if (x.get("market") or "nyc") in mkt_set]
-
-    def _filter_just_missed(items: list[dict]) -> list[dict]:
-        if not mkt_set:
-            return items
-        return [x for x in items if (x.get("market") or "nyc") in mkt_set]
 
     rb = _filter_cards(snap["ranked_board"])
     top = _filter_cards(snap["top_opportunities"])
@@ -481,11 +450,8 @@ def filter_snapshot_for_request(
         "ranked_board": rb,
         "top_opportunities": top,
         "hot_right_now": hrn,
-        "likely_to_open": _filter_likely_to_open(snap.get("likely_to_open", [])),
-        "just_missed": _filter_just_missed(snap.get("just_missed", [])),
-        "likely_open_today": [],
-        "likely_open_tomorrow": [],
-        "likely_open_soon": [],
+        "likely_to_open": snap.get("likely_to_open", []),
+        "just_missed": snap.get("just_missed", []),
         "feed_meta": snap.get("feed_meta"),
         "last_scan_at": snap.get("last_scan_at"),
         "total_venues_scanned": snap.get("total_venues_scanned", 0),
@@ -496,7 +462,6 @@ def filter_inventory_for_drops(
     snap: dict,
     date_filter: list[str],
     party_sizes: list[int] | None = None,
-    market_filter: list[str] | None = None,
 ) -> dict:
     """Explore inventory: full just_opened + still_open for selected dates (in-memory filter)."""
     pseudo = {
@@ -505,18 +470,13 @@ def filter_inventory_for_drops(
         "ranked_board": [],
         "top_opportunities": [],
         "hot_right_now": [],
-        "likely_to_open": snap.get("likely_to_open", []),
+        "likely_to_open": [],
         "just_missed": [],
         "feed_meta": snap.get("feed_meta"),
         "last_scan_at": snap.get("last_scan_at"),
         "total_venues_scanned": snap.get("total_venues_scanned", 0),
     }
-    out = filter_snapshot_for_request(
-        pseudo,
-        date_filter=date_filter,
-        party_sizes=party_sizes,
-        market_filter=market_filter,
-    )
+    out = filter_snapshot_for_request(pseudo, date_filter=date_filter, party_sizes=party_sizes)
     return {
         "just_opened": out["just_opened"],
         "still_open": out["still_open"],

@@ -288,14 +288,15 @@ def _priority_score(card: dict, is_hot: bool) -> float:
     """
     General ranked-board score: freshness × scarcity × availability × popularity.
 
-    rarity_score is stored 0-100; normalised to 0-1 before use so the
-    hotspot bonus (2.5) and popularity multiplier remain meaningful.
+    rarity_score is stored 0-100; normalised to 0-1 before use.
+    Hotspot bonus is additive so it is never cancelled out when rarity data exists.
+    A curated hotspot with rarity=0.05 used to get scarcity=1.15 (worse than 2.5 fallback);
+    now it gets 1.15 + 1.5 = 2.65 regardless of whether rarity data is present.
     """
     rarity = _normalize_rarity(card.get("rarity_score"))
-    if rarity > 0:
-        scarcity = 1.0 + rarity * 3.0  # range 1.0 – 4.0
-    else:
-        scarcity = 2.5 if is_hot else 1.0
+    rarity_scarcity = 1.0 + rarity * 3.0  # 1.0–4.0 data-driven, always computed
+    hotspot_bonus = 1.5 if is_hot else 0.0
+    scarcity = rarity_scarcity + hotspot_bonus
 
     availability = 1.0 if card.get("slots") else 0.01
 
@@ -528,30 +529,25 @@ def build_feed(
     #   2. Fill remaining slots from quality_ranked (best score first, no freshness bias)
     priority_picks = []
     used_ids: set[str] = set()
-    for market in ("nyc", "miami"):
+    for pname in top_priority_names("nyc"):
         if len(priority_picks) >= TOP_OPPORTUNITIES_MAX:
             break
-        for pname in top_priority_names(market):
-            if len(priority_picks) >= TOP_OPPORTUNITIES_MAX:
+        # Find the highest quality-scored match for this priority name.
+        # Use word-level matching to avoid "misi" matching "misipasta" etc.
+        for d in quality_ranked:
+            if d.get("id") in used_ids:
+                continue
+            n = _normalize_name(d.get("name"))
+            n_words = set(n.split())
+            p_words = set(pname.split())
+            # Match if all priority words appear as whole words in the venue name,
+            # or the full priority string is a prefix/suffix of the venue name.
+            word_match = p_words.issubset(n_words)
+            phrase_match = (n == pname or n.startswith(pname + " ") or n.endswith(" " + pname))
+            if word_match or phrase_match:
+                priority_picks.append(d)
+                used_ids.add(d["id"])
                 break
-            # Find the highest quality-scored match for this priority name.
-            # Use word-level matching to avoid "misi" matching "misipasta" etc.
-            for d in quality_ranked:
-                if d.get("id") in used_ids:
-                    continue
-                if (d.get("market") or "nyc") != market:
-                    continue
-                n = _normalize_name(d.get("name"))
-                n_words = set(n.split())
-                p_words = set(pname.split())
-                # Match if all priority words appear as whole words in the venue name,
-                # or the full priority string is a prefix/suffix of the venue name.
-                word_match = p_words.issubset(n_words)
-                phrase_match = (n == pname or n.startswith(pname + " ") or n.endswith(" " + pname))
-                if word_match or phrase_match:
-                    priority_picks.append(d)
-                    used_ids.add(d["id"])
-                    break
 
     seen_ids = {d["id"] for d in priority_picks}
     top_list = list(priority_picks)
