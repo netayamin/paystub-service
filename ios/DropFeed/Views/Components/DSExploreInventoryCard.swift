@@ -223,6 +223,8 @@ struct DSExploreInventoryCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
 
+            Spacer(minLength: 0)
+
             HStack(alignment: .center, spacing: 6) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 11, weight: .bold))
@@ -247,7 +249,7 @@ struct DSExploreInventoryCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

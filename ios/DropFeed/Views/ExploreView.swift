@@ -270,6 +270,7 @@ struct ExploreView: View {
             cornerRadius: exploreCardCorner,
             onTap: { exploreOpenBooking(for: drop) }
         )
+        .frame(maxHeight: .infinity)
     }
 
     private func exploreOpenBooking(for drop: Drop) {
