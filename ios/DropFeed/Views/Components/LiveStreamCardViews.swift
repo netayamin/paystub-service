@@ -12,6 +12,18 @@ enum LiveStreamCardFormatting {
         return String(format: "%02d:%02d", h, mm)
     }
 
+    /// Slot time formatted as "7:30P" / "11:15A" for the availability button.
+    static func slotTimeShort(_ drop: Drop) -> String {
+        let raw = drop.slots.first?.time?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !raw.isEmpty else { return "BOOK" }
+        let p = raw.split(separator: ":")
+        guard let h = p.first.flatMap({ Int($0) }) else { return "BOOK" }
+        let mm = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+        let suffix = h >= 12 ? "P" : "A"
+        let h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h)
+        return mm == 0 ? "\(h12)\(suffix)" : "\(h12):\(String(format: "%02d", mm))\(suffix)"
+    }
+
     static func venueInitials(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "??" }
@@ -97,7 +109,7 @@ struct LiveStreamOpenCard: View {
 
                     // Restaurant name — primary anchor
                     Text(drop.name.uppercased())
-                        .font(Manrope.title(12))
+                        .font(Manrope.title(14))
                         .foregroundColor(Color(red: 0.08, green: 0.08, blue: 0.10))
                         .lineLimit(1)
                         .minimumScaleFactor(0.80)
@@ -119,11 +131,11 @@ struct LiveStreamOpenCard: View {
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-                // BOOK button
-                Text("BOOK")
+                // Availability time button — tapping opens Resy URL
+                Text(LiveStreamCardFormatting.slotTimeShort(drop))
                     .font(Manrope.button(11))
                     .foregroundColor(hasURL ? .white : Color(red: 0.60, green: 0.60, blue: 0.62))
-                    .tracking(2.0)
+                    .tracking(1.5)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 13)
                     .background(hasURL ? Color(red: 0.08, green: 0.08, blue: 0.10) : Color(red: 0.90, green: 0.90, blue: 0.92))
