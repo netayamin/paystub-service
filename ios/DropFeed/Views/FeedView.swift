@@ -452,46 +452,18 @@ struct FeedView: View {
 
         let primaryIds = Set(primaryTriple.map(\.id))
 
-        let takenSlots = 2
-
-        var tailLiveTaken: [QuietStreamEntry] = []
-        if takenSlots > 0 {
-            let takenOnly = exploreTaken.filter { !primaryIds.contains($0.id) }
-            if !takenOnly.isEmpty {
-                if takenOnly.count <= takenSlots {
-                    tailLiveTaken.append(contentsOf: takenOnly.map { QuietStreamEntry.live($0, isPrimaryTier: false) })
-                } else {
-                    let w = takenOnly.count - takenSlots
-                    let s = Int((vm.liveListShuffleToken >> 1) % UInt64(w + 1))
-                    tailLiveTaken.append(
-                        contentsOf: takenOnly[s ..< (s + takenSlots)].map { QuietStreamEntry.live($0, isPrimaryTier: false) }
-                    )
-                }
-            }
-        }
-
         var out: [QuietStreamEntry] = []
         out.append(contentsOf: primaryTriple.map { QuietStreamEntry.live($0, isPrimaryTier: true) })
 
         if out.isEmpty {
-            // Do not treat undecoded/missing URLs as primary “BOOK” rows (was all TAKEN / BOOKED).
             let raw = Array(pool.filter { feedDropIsBookable($0) }.prefix(primaryTarget))
             if !raw.isEmpty {
                 var built = raw.map { QuietStreamEntry.live($0, isPrimaryTier: true) }
-                let rawIds = Set(raw.map(\.id))
-                built.append(contentsOf: tailLiveTaken.filter { entry in
-                    if case .live(let d, _) = entry { return !rawIds.contains(d.id) }
-                    return true
-                })
                 padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
                 return built
             }
-            // Board has venues but none currently Resy-bookable — show up to 5 rows, preserving real tier per drop.
             return Array(pool.prefix(minQuietCuratorStreamRows)).map { QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0)) }
         }
-
-        out.append(contentsOf: tailLiveTaken)
-        padQuietCuratorStreamEntries(&out, pool: pool, minimumRows: minQuietCuratorStreamRows)
         return out
     }
 
@@ -637,9 +609,8 @@ struct FeedView: View {
     private var quietCuratorLiveStreamSection: some View {
         let entries = quietCuratorStreamEntries
         let opens = liveStreamOpenDrops(from: entries)
-        let closed = liveStreamClosedEntries(from: entries)
         return Group {
-            if entries.isEmpty {
+            if opens.isEmpty {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 12) {
@@ -647,48 +618,23 @@ struct FeedView: View {
                         .padding(.horizontal, 18)
 
                     VStack(alignment: .leading, spacing: 12) {
-                        if !opens.isEmpty {
-                            QuietCuratorStreamSubsectionHeader(
-                                title: "JUST OPENED",
-                                dotColor: CreamEditorialTheme.liveStreamPulseGreen,
-                                titleColor: CreamEditorialTheme.liveStreamPulseGreen,
-                                clockColor: CreamEditorialTheme.textSecondary
-                            )
-                            .padding(.horizontal, 4)
-                        }
+                        QuietCuratorStreamSubsectionHeader(
+                            title: "JUST OPENED",
+                            dotColor: CreamEditorialTheme.liveStreamPulseGreen,
+                            titleColor: CreamEditorialTheme.liveStreamPulseGreen,
+                            clockColor: CreamEditorialTheme.textSecondary
+                        )
+                        .padding(.horizontal, 4)
 
-                        if !opens.isEmpty {
-                            VStack(spacing: 10) {
-                                ForEach(Array(opens.enumerated()), id: \.offset) { idx, drop in
-                                    LiveStreamOpenCard(
-                                        drop: drop,
-                                        preferredParty: mockPreferredParty(for: drop),
-                                        todayDateStr: vm.todayDateStr,
-                                        onTap: { liveStreamOpenResy(drop) }
-                                    )
-                                    .staggeredAppear(index: idx, delayPerItem: 0.03)
-                                }
-                            }
-                        }
-
-                        if !closed.isEmpty {
-                            QuietCuratorStreamSubsectionHeader(
-                                title: "JUST DROPPED",
-                                dotColor: CreamEditorialTheme.textTertiary.opacity(0.55),
-                                titleColor: CreamEditorialTheme.textTertiary,
-                                clockColor: CreamEditorialTheme.textTertiary
-                            )
-                            .padding(.horizontal, 4)
-                            .padding(.top, opens.isEmpty ? 0 : 4)
-
-                            ForEach(Array(closed.enumerated()), id: \.offset) { idx, entry in
-                                if case .live(let drop, _) = entry {
-                                    LiveStreamSoldOutDropCard(
-                                        drop: drop,
-                                        preferredParty: mockPreferredParty(for: drop)
-                                    )
-                                    .staggeredAppear(index: idx + opens.count, delayPerItem: 0.03)
-                                }
+                        VStack(spacing: 10) {
+                            ForEach(Array(opens.enumerated()), id: \.offset) { idx, drop in
+                                LiveStreamOpenCard(
+                                    drop: drop,
+                                    preferredParty: mockPreferredParty(for: drop),
+                                    todayDateStr: vm.todayDateStr,
+                                    onTap: { liveStreamOpenResy(drop) }
+                                )
+                                .staggeredAppear(index: idx, delayPerItem: 0.03)
                             }
                         }
                     }
@@ -710,14 +656,6 @@ struct FeedView: View {
             guard case .live(let d, _) = e else { return nil }
             let open = d.effectiveResyBookingURL != nil || d.exploreSnagAvailable != false
             return open ? d : nil
-        }
-    }
-
-    private func liveStreamClosedEntries(from entries: [QuietStreamEntry]) -> [QuietStreamEntry] {
-        entries.filter { e in
-            guard case .live(let d, _) = e else { return false }
-            let open = d.effectiveResyBookingURL != nil || d.exploreSnagAvailable != false
-            return !open
         }
     }
 
