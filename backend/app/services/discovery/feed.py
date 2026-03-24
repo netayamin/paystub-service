@@ -389,27 +389,17 @@ def _snag_include_in_live_segments(card: dict) -> bool:
 def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
     """
     Returns True if a venue deserves to appear in the Real-Time Ticker.
-    Hotspot restaurants always qualify. Others must pass at least one
-    quality signal so unknown low-demand restaurants are filtered out.
-    rarity_score thresholds use the 0-100 stored scale (not normalised).
+    Curated hotspot list always qualifies. Otherwise requires a strong
+    Resy popularity signal — we don't use our own collected metrics
+    to judge desirability.
     """
     if not card.get("slots"):
         return False
     if is_hot:
-        return True  # our curated list always qualifies
+        return True  # curated list + resy_hot always qualifies
 
     pop = card.get("resy_popularity_score")
     if isinstance(pop, (int, float)) and pop >= 0.25:
-        return True
-
-    # rarity_score stored 0-100; threshold 20/100 = 0.20 normalised
-    rarity = card.get("rarity_score")
-    if isinstance(rarity, (int, float)) and rarity >= 20:
-        return True
-
-    rating = card.get("rating_average") or 0
-    count  = card.get("rating_count") or 0
-    if float(rating) >= 4.3 and count >= 80:
         return True
 
     return False
@@ -501,18 +491,13 @@ def build_feed(
 
     for c in cards:
         mkt = c.get("market") or "nyc"
-        # Hybrid feedHot: curated editorial list OR strong data signals.
-        # This means unlisted restaurants with proven Resy demand also surface.
+        # feedHot: curated editorial list OR strong Resy popularity signal.
+        # We deliberately exclude our own collected metrics (rarity, snag_score, etc.)
+        # since they measure scarcity, not whether a place is actually desirable.
         curated = is_hot_restaurant(c.get("name"), mkt)
         pop = c.get("resy_popularity_score")
-        rarity = c.get("rarity_score")
-        rating = c.get("rating_average") or 0
-        count = c.get("rating_count") or 0
-        data_hot = (
-            (isinstance(pop, (int, float)) and pop >= 0.65)
-            or (isinstance(rarity, (int, float)) and rarity >= 70 and float(rating) >= 4.3 and count >= 100)
-        )
-        is_hot = curated or data_hot
+        resy_hot = isinstance(pop, (int, float)) and pop >= 0.65
+        is_hot = curated or resy_hot
         c["feedHot"] = is_hot
         c["_priority"] = _priority_score(c, is_hot) * _rank_evidence_multiplier(c)
 

@@ -194,20 +194,18 @@ final class FeedViewModel: ObservableObject {
 
     /// Quality-ranked pool for the live stream, covering all days from the API.
     ///
-    /// Tier 1 — curated hotspot list AND currently hot (`isHotspot && feedHot`)
-    /// Tier 2 — curated hotspot list (`isHotspot`)
-    /// Tier 3 — data-signal hot only (`feedHot`, not on curated list)
+    /// Tier 1 — curated hotspot list AND resy-hot (`isHotspot && feedHot`)
+    /// Tier 2 — curated hotspot list only (`isHotspot`)
+    /// Tier 3 — resy-popularity hot only (`feedHot`, not on curated list)
     /// Tier 4 — everything else
     ///
-    /// Within each tier: snagScore → resyPopularityScore → trendPct → freshest first.
+    /// Within each tier: resyPopularityScore → freshest first → bookable preferred.
     private var liveStreamPool: [Drop] {
         func score(_ d: Drop) -> Double {
-            let snag    = Double(d.snagScore ?? 0) * 10
             let pop     = (d.resyPopularityScore ?? 0) * 100
-            let trend   = min(d.trendPct ?? 0, 50) * 0.5
             let recency = max(0.0, 3600.0 - Double(d.secondsSinceDetected)) / 3600.0 * 5
-            let hasURL  = d.effectiveResyBookingURL != nil ? 20.0 : 0.0  // prefer bookable
-            return snag + pop + trend + recency + hasURL
+            let hasURL  = d.effectiveResyBookingURL != nil ? 20.0 : 0.0
+            return pop + recency + hasURL
         }
         let hotspot    = drops.filter { $0.isHotspot == true && $0.feedHot == true }
                               .sorted { score($0) > score($1) }

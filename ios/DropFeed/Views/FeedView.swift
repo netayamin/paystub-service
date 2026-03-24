@@ -258,23 +258,22 @@ struct FeedView: View {
             if a.secondsSinceDetected != b.secondsSinceDetected {
                 return a.secondsSinceDetected < b.secondsSinceDetected
             }
-            return (a.snagScore ?? 0) > (b.snagScore ?? 0)
+            return (a.resyPopularityScore ?? 0) > (b.resyPopularityScore ?? 0)
         }
         return Array(sorted.prefix(14))
     }
 
-    /// Trending / hot / rare venues from the live board.
+    /// Hot drops carousel: curated hotspot list first, then resy-popular venues.
     private var trendingHotCarouselDrops: [Drop] {
         func score(_ d: Drop) -> Double {
-            let snag  = Double(d.snagScore ?? 0) * 10
-            let pop   = (d.resyPopularityScore ?? 0) * 100
-            let trend = min(d.trendPct ?? 0, 50) * 0.5
-            return snag + pop + trend
+            let pop = (d.resyPopularityScore ?? 0) * 100
+            let hasURL = d.effectiveResyBookingURL != nil ? 10.0 : 0.0
+            return pop + hasURL
         }
-        // Tier 1: on the curated hotspot list AND hot right now
-        // Tier 2: on the curated hotspot list
-        // Tier 3: data-hot only (strong signals but not on curated list)
-        // Fill to 10 max; fallback to topDrops if still under 3.
+        // Tier 1: curated hotspot list AND resy-hot
+        // Tier 2: curated hotspot list only
+        // Tier 3: resy-popular (feedHot) but not on curated list
+        // Fallback to topDrops if still under 3.
         var out: [Drop] = []
         var seen = Set<String>()
         func add(_ drops: [Drop]) {
@@ -286,7 +285,7 @@ struct FeedView: View {
                     .sorted { score($0) > score($1) })
         add(vm.drops.filter { $0.isHotspot == true && $0.feedHot != true }
                     .sorted { score($0) > score($1) })
-        add(vm.drops.filter { $0.isHotspot != true && ($0.feedHot == true || ($0.snagScore ?? 0) >= 78 || ($0.trendPct ?? 0) > 12 || $0.feedsRareCarousel == true) }
+        add(vm.drops.filter { $0.isHotspot != true && $0.feedHot == true }
                     .sorted { score($0) > score($1) })
         if out.count < 3 {
             add(vm.topDrops.sorted { score($0) > score($1) })
@@ -1448,7 +1447,7 @@ private func feedClaimUrgencyProgress(for drop: Drop) -> CGFloat {
 
 private func signalStreamRowTags(for drop: Drop, bookable: Bool) -> [MockFeedBadge] {
     var list: [MockFeedBadge] = []
-    if drop.feedHot == true || (drop.snagScore ?? 0) >= 85 {
+    if drop.feedHot == true {
         list.append(MockFeedBadge(text: "HOT SIGNAL", style: .hot))
     }
     if drop.brandNewDrop == true || drop.showNewBadge == true {
