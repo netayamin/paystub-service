@@ -26,6 +26,8 @@ If ngrok is **not** running when you build for a device, the app falls back to t
 
 **Optional:** `make ngrok-ios` still patches `ios/DropFeed/Info.plist` in the repo; the build-time inject above is usually enough.
 
+**Timeouts / “can’t reach server” on device:** Free ngrok URLs change every time you restart ngrok. If `Info.plist` in git still has an old `https://….ngrok-free.app`, either run **`make ios-phone`** / build with ngrok’s API up so the URL is injected, or paste the **current** tunnel URL into `API_BASE_URL` and rebuild. Keep **`make dev-backend`** (or uvicorn) running on the Mac.
+
 **Same Wi‑Fi only:** set `API_BASE_URL` in `Info.plist` to `http://YOUR_MAC_IP:8000` and rebuild.
 
 ## Build & run from Cursor (Sweetpad)

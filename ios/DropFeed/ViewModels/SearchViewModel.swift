@@ -189,10 +189,10 @@ final class SearchViewModel: ObservableObject {
             // ranked_board on date-string mismatches and show an empty grid.
             if exploreTabActive {
                 if let inv = resp.dayInventory, !inv.isEmpty {
-                    let allowedNorm = Set(selectedDates.map { Self.normalizeISODateString($0) })
+                    let allowedNorm = Set(selectedDates.map { Drop.normalizeCalendarDayKey($0) })
                     let filtered = inv.filter { drop in
                         guard let ds = drop.dateStr, !ds.isEmpty else { return false }
-                        let dn = Self.normalizeISODateString(ds)
+                        let dn = Drop.normalizeCalendarDayKey(ds)
                         return selectedDates.isEmpty || allowedNorm.contains(dn)
                     }
                     if !filtered.isEmpty {
@@ -233,37 +233,10 @@ final class SearchViewModel: ObservableObject {
         } catch is CancellationError {
         } catch {
             guard generation == loadResultsGeneration else { return }
-            self.error = Self.userFacingError(error)
+            self.error = APIService.userFacingRequestError(error)
             results = []
         }
     }
 
     // MARK: - Helpers
-
-    /// Calendar day key `YYYY-MM-DD` from API values that may include time (`2026-03-23T00:00:00Z`).
-    private static func normalizeISODateString(_ raw: String) -> String {
-        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard t.count >= 10 else { return t }
-        let head = String(t.prefix(10))
-        let parts = head.split(separator: "-")
-        guard parts.count == 3, parts[0].count == 4, parts[1].count == 2, parts[2].count == 2 else {
-            return t
-        }
-        return head
-    }
-
-    private static func userFacingError(_ e: Error) -> String {
-        if let u = e as? URLError {
-            switch u.code {
-            case .notConnectedToInternet, .networkConnectionLost:
-                return "You're offline. Check your connection and try again."
-            case .timedOut:
-                return "Request timed out — the server or tunnel (e.g. ngrok) may be slow or asleep. Try again, or confirm uvicorn is running and ngrok points at it."
-            case .cannotFindHost, .cannotConnectToHost:
-                return "Can't reach the server. Try again later."
-            default: break
-            }
-        }
-        return e.localizedDescription
-    }
 }

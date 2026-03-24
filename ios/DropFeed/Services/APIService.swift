@@ -135,8 +135,16 @@ final class APIService {
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
-        let (data, response) = try await session.data(from: url)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(from: url)
+        } catch let urlError as URLError {
+            throw APIError.serverMessage(Self.connectionHint(for: urlError))
+        } catch {
+            throw error
+        }
         
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw APIError.httpError
@@ -393,6 +401,20 @@ final class APIService {
     private static func parseErrorDetail(_ data: Data) -> String? {
         struct E: Decodable { let detail: String? }
         return (try? JSONDecoder().decode(E.self, from: data))?.detail
+    }
+
+    /// Use for feed / explore errors so timeouts and ngrok hints match auth flows.
+    static func userFacingRequestError(_ error: Error) -> String {
+        if let api = error as? APIError {
+            switch api {
+            case .serverMessage(let s): return s
+            default: return api.errorDescription ?? "Request failed."
+            }
+        }
+        if let u = error as? URLError {
+            return Self.connectionHint(for: u)
+        }
+        return error.localizedDescription
     }
 }
 

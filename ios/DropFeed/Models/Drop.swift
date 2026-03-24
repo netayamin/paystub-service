@@ -197,6 +197,18 @@ struct Drop: Codable, Identifiable {
         if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(d.rounded()) }
         return nil
     }
+
+    /// `YYYY-MM-DD` key for matching date chips to API `date_str` (handles `2026-03-23T00:00:00Z`-style values).
+    static func normalizeCalendarDayKey(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.count >= 10 else { return t }
+        let head = String(t.prefix(10))
+        let parts = head.split(separator: "-")
+        guard parts.count == 3, parts[0].count == 4, parts[1].count == 2, parts[2].count == 2 else {
+            return t
+        }
+        return head
+    }
     
     /// Memberwise init for previews and tests.
     init(

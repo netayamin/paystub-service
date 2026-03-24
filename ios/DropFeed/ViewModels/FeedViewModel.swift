@@ -283,6 +283,20 @@ final class FeedViewModel: ObservableObject {
             let hot = resp.hotRightNow ?? []
             let scanned = resp.totalVenuesScanned ?? 0
 
+            // Curated `ranked_board` can be empty while `just_opened`/`still_open` still have bookable rows.
+            if ranked.isEmpty, let inv = resp.dayInventory, !inv.isEmpty {
+                if selectedDates.isEmpty {
+                    ranked = inv
+                } else {
+                    let allowed = Set(selectedDates.map { Drop.normalizeCalendarDayKey($0) })
+                    let filtered = inv.filter { drop in
+                        guard let ds = drop.dateStr, !ds.isEmpty else { return false }
+                        return allowed.contains(Drop.normalizeCalendarDayKey(ds))
+                    }
+                    ranked = filtered.isEmpty ? inv : filtered
+                }
+            }
+
             if ranked.isEmpty {
                 let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
                 if !newDrops.isEmpty { ranked = newDrops }
@@ -320,26 +334,11 @@ final class FeedViewModel: ObservableObject {
             }
         } catch is CancellationError {
         } catch {
-            self.error = Self.userFacingError(error)
+            self.error = APIService.userFacingRequestError(error)
         }
     }
 
     func acknowledgeNewDrops() {
         newDropsCount = 0
-    }
-
-    private static func userFacingError(_ error: Error) -> String {
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost:
-                return "You're offline. Check your connection and try again."
-            case .timedOut:
-                return "Request timed out. The server may be busy — try again in a moment."
-            case .cannotFindHost, .cannotConnectToHost:
-                return "Can't reach the server. Check your connection or try again later."
-            default: break
-            }
-        }
-        return error.localizedDescription
     }
 }
