@@ -908,29 +908,6 @@ struct FollowActivityItem: Codable, Identifiable {
     }
 }
 
-struct HotlistResponse: Codable {
-    let names: [String]
-    let hotlist: [String]?
-    
-    // Backend returns { "hotlist": [...] }; accept both keys for forwards compatibility
-    var allNames: [String] { names.isEmpty ? (hotlist ?? []) : names }
-    
-    enum CodingKeys: String, CodingKey {
-        case names, hotlist
-    }
-    
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        names = (try? c.decodeIfPresent([String].self, forKey: .names)) ?? []
-        hotlist = try? c.decodeIfPresent([String].self, forKey: .hotlist)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(names, forKey: .names)
-        try c.encodeIfPresent(hotlist, forKey: .hotlist)
-    }
-}
 
 // MARK: - Preview helpers
 

@@ -35,7 +35,6 @@ FastAPI auto-generates API UIs when the server is running:
 |--------|------|---------|
 | GET | `/feed/live` | Slots that **opened** in the last ~10 min (`LIVE_FEED_WINDOW_MINUTES`); `still_open` is always empty here |
 | GET | `/feed/new-drops` | Lightweight "new since" list used by push alerts |
-| GET | `/feed/hotlist` | Curated NYC hotspot restaurant names |
 | GET | `/feed/follows/status` | Per-venue last-drop hints (Saved tab) |
 | GET | `/feed/follows/activity` | Activity timeline (Saved tab) |
 
@@ -60,7 +59,7 @@ Windows: `live_feed_window_minutes` (default 10) and `just_opened_inventory_minu
 | GET | `/watches` | Saved watches + excluded list |
 | POST | `/watches` | Add a venue watch |
 | DELETE | `/watches/{watch_id}` | Remove a watch |
-| POST | `/watches/exclude` | Exclude a venue from hotlist notifications |
+| POST | `/watches/exclude` | Exclude a venue from push notifications |
 | DELETE | `/watches/exclude/{exclude_id}` | Remove an exclusion |
 
 Headers: `X-Recipient-Id` (optional; defaults to `default` for dev).

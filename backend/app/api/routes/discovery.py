@@ -19,7 +19,7 @@ from app.core.constants import (
     LIVE_FEED_WINDOW_MINUTES,
 )
 from app.core.discovery_config import DISCOVERY_DATE_TIMEZONE
-from app.core.hotspots import is_hotspot, list_hotspots
+from app.core.hotspots import is_hotspot
 from app.db.session import get_db
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.notify_preference import NotifyPreference
@@ -69,11 +69,6 @@ def _next_scan_iso(request: Request) -> str:
         pass
     return (datetime.now(timezone.utc) + timedelta(seconds=DISCOVERY_POLL_INTERVAL_SECONDS)).isoformat()
 
-
-@router.get("/feed/hotlist")
-async def hotlist():
-    """Hotlist (hotspot) restaurant names. Push notifications fire for any drop at these venues plus your saved watches."""
-    return {"hotlist": list_hotspots("nyc"), "market": "nyc"}
 
 
 def _normalize_venue(name: str | None) -> str:

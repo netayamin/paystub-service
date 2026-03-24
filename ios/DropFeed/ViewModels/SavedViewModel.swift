@@ -4,7 +4,6 @@ import Foundation
 final class SavedViewModel: ObservableObject {
     @Published var watchedVenues: Set<String> = []
     @Published var excludedVenues: Set<String> = []
-    @Published var hotlist: [String] = []
     @Published var searchText: String = ""
     @Published var isLoading = false
     /// Normalized venue name → server follow status (last drop from `drop_events`).
@@ -18,30 +17,18 @@ final class SavedViewModel: ObservableObject {
     
     private let service = APIService.shared
     
-    var searchSuggestions: [String] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard q.count >= 1 else { return [] }
-        return hotlist
-            .filter { $0.lowercased().contains(q) && !watchedVenues.contains($0.lowercased()) }
-            .prefix(6)
-            .map { $0 }
-    }
-    
+    var searchSuggestions: [String] { [] }
+
     var showFreeTextAdd: Bool {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return q.count >= 2
-            && !watchedVenues.contains(q)
-            && !searchSuggestions.contains(where: { $0.lowercased() == q })
+        return q.count >= 2 && !watchedVenues.contains(q)
     }
-    
-    /// All venues that get notifications: hotlist (minus excluded) + manually saved
+
+    /// All venues the user has manually saved for notifications.
     var notifyVenues: [(name: String, isSaved: Bool)] {
-        let hotActive = hotlist.filter { !excludedVenues.contains($0.trimmingCharacters(in: .whitespaces).lowercased()) }
-            .map { (name: $0.trimmingCharacters(in: .whitespaces), isSaved: false) }
-        let savedOnly = watchedVenues
-            .filter { n in !hotlist.contains(where: { $0.trimmingCharacters(in: .whitespaces).lowercased() == n }) }
+        watchedVenues
             .map { (name: $0, isSaved: true) }
-        return (hotActive + savedOnly).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
     func loadAll() async {
@@ -49,7 +36,6 @@ final class SavedViewModel: ObservableObject {
         defer { isLoading = false }
         
         async let watchesTask = service.fetchWatches()
-        async let hotlistTask = service.fetchHotlist()
         async let followStatusTask = service.fetchFollowStatus()
         async let activityTask = service.fetchFollowActivity(limit: 40)
         
@@ -67,12 +53,6 @@ final class SavedViewModel: ObservableObject {
             excludedVenues = Set(excluded.map { $0.venueName.lowercased() })
         } catch {
             // Silently fail; user can retry
-        }
-        
-        do {
-            hotlist = try await hotlistTask
-        } catch {
-            // Keep existing
         }
 
         do {

@@ -313,18 +313,6 @@ final class APIService {
         return try decoder.decode(FollowActivityResponse.self, from: data)
     }
 
-    func fetchHotlist() async throws -> [String] {
-        guard let url = URL(string: "\(baseURL)/feed/hotlist") else {
-            throw APIError.invalidURL
-        }
-        let (data, response) = try await session.data(from: url)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError
-        }
-        let decoded = try decoder.decode(HotlistResponse.self, from: data)
-        return decoded.allNames
-    }
-    
     // MARK: - Push
     
     func registerPushToken(deviceToken: String) async {
