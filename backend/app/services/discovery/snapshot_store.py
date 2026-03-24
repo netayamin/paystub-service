@@ -282,25 +282,6 @@ def rebuild_snapshot(db: Session) -> None:
             item["name"] = item.get("venue_name") or item.get("name") or ""
             enrich_likely_open_item(item, i)
 
-        from app.services.discovery.recent_missed import (
-            build_just_missed_payload,
-            collect_bookable_venue_keys,
-            collect_live_open_venue_keys,
-        )
-
-        # Missed strip: exclude venues that are still bookable.
-        # Union inventory-derived keys with a live slot_availability query so that venues
-        # whose slot_id changed between scans (API variance) are never shown as missed.
-        _bookable_keys = (
-            collect_bookable_venue_keys(just_opened_inventory, still_open_inventory)
-            | collect_live_open_venue_keys(db)
-        )
-        just_missed = build_just_missed_payload(
-            db,
-            now=now_utc,
-            exclude_bookable_keys=_bookable_keys,
-            within_minutes=LIVE_FEED_WINDOW_MINUTES,
-        )
 
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:
@@ -339,7 +320,6 @@ def rebuild_snapshot(db: Session) -> None:
             "top_opportunities": top_opportunities,
             "hot_right_now": hot_right_now,
             "likely_to_open": likely_to_open,
-            "just_missed": just_missed,
             "feed_meta": feed_meta,
             "bucket_health": bucket_health,
             **info,
@@ -374,7 +354,6 @@ def rebuild_snapshot(db: Session) -> None:
             "top_opportunities": top_opportunities,
             "hot_right_now":     hot_right_now,
             "likely_to_open":    likely_to_open,
-            "just_missed":       just_missed,
         }
         mobile_payload.update({k: v for k, v in info.items()})
         mobile_bytes = _json.dumps(mobile_payload, separators=(",", ":"), default=str).encode()
@@ -457,7 +436,6 @@ def filter_snapshot_for_request(
         "top_opportunities": top,
         "hot_right_now": hrn,
         "likely_to_open": snap.get("likely_to_open", []),
-        "just_missed": snap.get("just_missed", []),
         "feed_meta": snap.get("feed_meta"),
         "last_scan_at": snap.get("last_scan_at"),
         "total_venues_scanned": snap.get("total_venues_scanned", 0),
@@ -477,7 +455,6 @@ def filter_inventory_for_drops(
         "top_opportunities": [],
         "hot_right_now": [],
         "likely_to_open": [],
-        "just_missed": [],
         "feed_meta": snap.get("feed_meta"),
         "last_scan_at": snap.get("last_scan_at"),
         "total_venues_scanned": snap.get("total_venues_scanned", 0),

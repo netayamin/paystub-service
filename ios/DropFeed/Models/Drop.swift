@@ -601,41 +601,13 @@ extension LikelyToOpenVenue: Codable {
     }
 }
 
-// MARK: - Just missed (slots that recently closed)
 
-struct JustMissedVenue: Codable, Identifiable, Hashable {
-    let venueId: String?
-    let name: String
-    let imageUrl: String?
-    let neighborhood: String?
-    let goneAt: String?
-    let slotTime: String?
-    let market: String?
-
-    enum CodingKeys: String, CodingKey {
-        case venueId = "venue_id"
-        case name
-        case imageUrl = "image_url"
-        case neighborhood
-        case goneAt = "gone_at"
-        case slotTime = "slot_time"
-        case market
-    }
-
-    var id: String {
-        let v = (venueId ?? "").trimmingCharacters(in: .whitespaces)
-        if !v.isEmpty { return v }
-        return name.trimmingCharacters(in: .whitespaces).lowercased()
-    }
-}
-
-/// Response from GET /chat/watches/just-opened or GET /chat/watches/drops (``decodeLenient`` — not direct JSON decode).
+/// Response from GET /feed/live or GET /explore/drops (``decodeLenient`` — not direct JSON decode).
 struct JustOpenedResponse {
     let rankedBoard: [Drop]?
     let topOpportunities: [Drop]?
     let hotRightNow: [Drop]?
     let likelyToOpen: [LikelyToOpenVenue]?
-    let justMissed: [JustMissedVenue]?
     /// Merged `just_opened` + `still_open` venue rows for the requested dates — used by Explore (by-date inventory).
     let dayInventory: [Drop]?
     let lastScanAt: String?
@@ -666,14 +638,6 @@ struct JustOpenedResponse {
                 return v
             }
         }
-        var missedVenues: [JustMissedVenue] = []
-        if let arr = json["just_missed"] as? [[String: Any]] {
-            missedVenues = arr.compactMap { item in
-                guard let d = try? JSONSerialization.data(withJSONObject: item),
-                      let v = try? decoder.decode(JustMissedVenue.self, from: d) else { return nil }
-                return v
-            }
-        }
         var rankedBoard = decodeDrops("ranked_board")
         if rankedBoard.isEmpty, let justOpenedDays = json["just_opened"] as? [[String: Any]] {
             rankedBoard = Self.dropsFromVenueDayBuckets(justOpenedDays)
@@ -686,7 +650,6 @@ struct JustOpenedResponse {
             topOpportunities: decodeDrops("top_opportunities"),
             hotRightNow: decodeDrops("hot_right_now"),
             likelyToOpen: likelyVenues.isEmpty ? nil : likelyVenues,
-            justMissed: missedVenues.isEmpty ? nil : missedVenues,
             dayInventory: mergedInventory.isEmpty ? nil : mergedInventory,
             lastScanAt: json["last_scan_at"] as? String,
             totalVenuesScanned: intValue("total_venues_scanned"),

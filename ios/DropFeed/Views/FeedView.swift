@@ -3,13 +3,11 @@ import SwiftUI
 private enum QuietStreamEntry {
     /// Home stream: primary rows always offer **BOOK** when a Resy URL exists (Explore’s `explore_snag_available` is ignored there).
     case live(Drop, isPrimaryTier: Bool)
-    case missed(JustMissedVenue)
 
     /// Stable list identity when the row set rotates (`liveListShuffleToken`).
     var streamRowIdentity: String {
         switch self {
         case .live(let d, let primary): return primary ? "live-p-\(d.id)" : "live-t-\(d.id)"
-        case .missed(let v): return "missed-\(v.id)"
         }
     }
 }
@@ -24,7 +22,6 @@ private func padQuietCuratorStreamEntries(_ entries: inout [QuietStreamEntry], p
     for e in entries {
         switch e {
         case .live(let d, _): used.insert(d.id)
-        case .missed(let v): used.insert(v.id)
         }
     }
     for d in pool where !used.contains(d.id) {
@@ -455,9 +452,7 @@ struct FeedView: View {
 
         let primaryIds = Set(primaryTriple.map(\.id))
 
-        /// One “slot” reserved when we show a just-missed row so the tail doesn’t balloon.
-        let hasJustMissed = vm.justMissed.first != nil
-        let takenSlots = max(0, 2 - (hasJustMissed ? 1 : 0))
+        let takenSlots = 2
 
         var tailLiveTaken: [QuietStreamEntry] = []
         if takenSlots > 0 {
@@ -483,10 +478,6 @@ struct FeedView: View {
             let raw = Array(pool.filter { feedDropIsBookable($0) }.prefix(primaryTarget))
             if !raw.isEmpty {
                 var built = raw.map { QuietStreamEntry.live($0, isPrimaryTier: true) }
-                if let m = vm.justMissed.first {
-                    let at = min(1, built.count)
-                    built.insert(QuietStreamEntry.missed(m), at: at)
-                }
                 let rawIds = Set(raw.map(\.id))
                 built.append(contentsOf: tailLiveTaken.filter { entry in
                     if case .live(let d, _) = entry { return !rawIds.contains(d.id) }
@@ -495,32 +486,10 @@ struct FeedView: View {
                 padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
                 return built
             }
-            if let m = vm.justMissed.first {
-                // Never lead with only JUST MISSED — surface 1–2 board rows first, then missed (mixed strip).
-                var built: [QuietStreamEntry] = []
-                let skipIds: Set<String> = [m.id]
-                let lead = pool.filter { !skipIds.contains($0.id) }.prefix(2)
-                for d in lead {
-                    built.append(QuietStreamEntry.live(d, isPrimaryTier: false))
-                }
-                if built.isEmpty {
-                    built.append(QuietStreamEntry.missed(m))
-                } else {
-                    built.insert(QuietStreamEntry.missed(m), at: min(1, built.count))
-                }
-                built.append(contentsOf: tailLiveTaken)
-                padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
-                return built
-            }
             // Board has venues but none currently Resy-bookable — show up to 5 rows, preserving real tier per drop.
             return Array(pool.prefix(minQuietCuratorStreamRows)).map { QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0)) }
         }
 
-        // Mix: first OPEN row, then JUST MISSED, then remaining primaries + taken tail (matches reference strip).
-        if let m = vm.justMissed.first {
-            let at = min(1, out.count)
-            out.insert(QuietStreamEntry.missed(m), at: at)
-        }
         out.append(contentsOf: tailLiveTaken)
         padQuietCuratorStreamEntries(&out, pool: pool, minimumRows: minQuietCuratorStreamRows)
         return out
@@ -711,7 +680,7 @@ struct FeedView: View {
 
                         if !closed.isEmpty {
                             QuietCuratorStreamSubsectionHeader(
-                                title: "JUST MISSED",
+                                title: "JUST DROPPED",
                                 dotColor: CreamEditorialTheme.textTertiary.opacity(0.55),
                                 titleColor: CreamEditorialTheme.textTertiary,
                                 clockColor: CreamEditorialTheme.textTertiary
@@ -720,18 +689,13 @@ struct FeedView: View {
                             .padding(.top, opens.isEmpty ? 0 : 4)
 
                             ForEach(Array(closed.enumerated()), id: \.offset) { idx, entry in
-                                Group {
-                                    switch entry {
-                                    case .missed(let venue):
-                                        LiveStreamJustMissedCard(venue: venue)
-                                    case .live(let drop, _):
-                                        LiveStreamSoldOutDropCard(
-                                            drop: drop,
-                                            preferredParty: mockPreferredParty(for: drop)
-                                        )
-                                    }
+                                if case .live(let drop, _) = entry {
+                                    LiveStreamSoldOutDropCard(
+                                        drop: drop,
+                                        preferredParty: mockPreferredParty(for: drop)
+                                    )
+                                    .staggeredAppear(index: idx + opens.count, delayPerItem: 0.03)
                                 }
-                                .staggeredAppear(index: idx + opens.count, delayPerItem: 0.03)
                             }
                         }
                     }
@@ -758,13 +722,9 @@ struct FeedView: View {
 
     private func liveStreamClosedEntries(from entries: [QuietStreamEntry]) -> [QuietStreamEntry] {
         entries.filter { e in
-            switch e {
-            case .missed:
-                return true
-            case .live(let d, _):
-                let open = d.effectiveResyBookingURL != nil || d.exploreSnagAvailable != false
-                return !open
-            }
+            guard case .live(let d, _) = e else { return false }
+            let open = d.effectiveResyBookingURL != nil || d.exploreSnagAvailable != false
+            return !open
         }
     }
 
@@ -973,40 +933,6 @@ struct FeedView: View {
             vm.selectedPartySizes = [size]
         }
         vm.applyFiltersAndRefresh()
-    }
-
-    private var mockJustMissedSection: some View {
-        let items = vm.justMissed
-        return Group {
-            if items.isEmpty {
-                EmptyView()
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("⏱ JUST MISSED")
-                            .font(.system(size: 13, weight: .heavy))
-                            .foregroundColor(.white)
-                            .tracking(0.6)
-                        Spacer()
-                        Text("GONE")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundColor(SnagDesignSystem.darkTextMuted)
-                            .tracking(0.8)
-                    }
-                    .padding(.horizontal, 16)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(items) { venue in
-                                MockJustMissedCard(venue: venue)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
-                }
-                .padding(.top, 28)
-            }
-        }
     }
 
     private var mockPredictWillOpenSection: some View {
@@ -1619,8 +1545,6 @@ private func feedMealMetricsLine(for drop: Drop, preferredParty: Int) -> String 
     return "\(t) · \(party) · \(score)"
 }
 
-private func feedRelativeMissedLabel(_ iso: String?) -> String {
-    guard let iso, let d = Drop.parseISO(iso) else { return "JUST NOW" }
     let sec = max(0, Int(-d.timeIntervalSinceNow))
     if sec < 90 { return "JUST NOW" }
     if sec < 3600 { return "\(max(1, sec / 60))M AGO" }
@@ -2294,68 +2218,6 @@ private struct MarketLeaderHeroCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-    }
-}
-
-private struct MockJustMissedCard: View {
-    let venue: JustMissedVenue
-    var editorialCream: Bool = false
-
-    private var imageURL: URL? {
-        guard let s = venue.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private let cardW: CGFloat = 118
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Group {
-                if let url = imageURL {
-                    CardAsyncImage(
-                        url: url,
-                        contentMode: .fill,
-                        skeletonTone: editorialCream ? .lightOnLight : .darkCard
-                    ) {
-                        editorialCream ? CreamEditorialTheme.canvas : SnagDesignSystem.darkElevated
-                    }
-                } else {
-                    editorialCream ? CreamEditorialTheme.canvas : SnagDesignSystem.darkElevated
-                }
-            }
-            .frame(width: cardW, height: 86)
-            .clipped()
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(venue.name)
-                    .font(.system(size: 13, weight: .bold, design: .serif))
-                    .foregroundColor(editorialCream ? CreamEditorialTheme.textPrimary : SnagDesignSystem.darkTextPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                Text(feedRelativeMissedLabel(venue.goneAt))
-                    .font(.system(size: 9, weight: .heavy))
-                    .foregroundColor(editorialCream ? CreamEditorialTheme.textSecondary : SnagDesignSystem.darkTextMuted)
-                    .tracking(0.35)
-                if let nb = venue.neighborhood, !nb.isEmpty {
-                    Text(nb.uppercased())
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(editorialCream ? CreamEditorialTheme.textTertiary : SnagDesignSystem.darkTextMuted)
-                        .lineLimit(1)
-                }
-            }
-            .padding(8)
-            .frame(width: cardW, alignment: .leading)
-            .background(editorialCream ? CreamEditorialTheme.cardWhite : Color(white: 0.14))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(
-                    editorialCream ? CreamEditorialTheme.hairline : Color.white.opacity(0.06),
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: editorialCream ? CreamEditorialTheme.cardShadow : .clear, radius: 8, x: 0, y: 4)
     }
 }
 

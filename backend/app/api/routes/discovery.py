@@ -553,22 +553,6 @@ async def list_just_opened(
             item["name"] = item.get("venue_name") or item.get("name") or ""
             enrich_likely_open_item(item, i)
 
-        from app.services.discovery.recent_missed import (
-            build_just_missed_payload,
-            collect_bookable_venue_keys,
-            collect_live_open_venue_keys,
-        )
-
-        _bookable_keys = (
-            collect_bookable_venue_keys(jo_inv, so_inv)
-            | collect_live_open_venue_keys(db)
-        )
-        just_missed = build_just_missed_payload(
-            db,
-            exclude_bookable_keys=_bookable_keys,
-            within_minutes=LIVE_FEED_WINDOW_MINUTES,
-        )
-
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:
                 nm = (c.get("name") or "").strip().lower()
@@ -622,7 +606,6 @@ async def list_just_opened(
             "hot_right_now": hot_right_now,
             "feed_meta": snag_feed_meta(),
             "likely_to_open": likely_to_open,
-            "just_missed": just_missed,
             **info,
             "next_scan_at": _next_scan_iso(request),
         }

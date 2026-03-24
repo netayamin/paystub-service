@@ -32,14 +32,6 @@ enum LiveStreamCardFormatting {
         return String(trimmed.prefix(2)).uppercased()
     }
 
-    static func missedAgoLabel(iso: String?) -> String {
-        guard let iso, let d = Drop.parseISO(iso) else { return "just now" }
-        let sec = max(0, Int(-d.timeIntervalSinceNow))
-        if sec < 90 { return "\(max(1, sec))s ago" }
-        if sec < 3600 { return "\(max(1, sec / 60))m ago" }
-        return "\(sec / 3600)h ago"
-    }
-
     static func dropAgoLabel(seconds: Int) -> String {
         if seconds < 90 { return "\(max(1, seconds))s ago" }
         if seconds < 3600 { return "\(max(1, seconds / 60))m ago" }
@@ -179,71 +171,7 @@ struct LiveStreamOpenCard: View {
 
 // MARK: - Full-width inactive rows
 
-struct LiveStreamJustMissedCard: View {
-    let venue: JustMissedVenue
-
-    private let cardFill = Color(red: 0.94, green: 0.94, blue: 0.96)
-
-    private var timeColumn: String {
-        let t = venue.slotTime?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if t.isEmpty { return "—" }
-        let p = t.split(separator: ":")
-        if let h = p.first.flatMap({ Int($0) }) {
-            let mm = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
-            return String(format: "%02d:%02d", h, mm)
-        }
-        return String(t.prefix(5))
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(timeColumn)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .monospacedDigit()
-                Text("2 PAX")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.9))
-            }
-            .frame(width: 52, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(venue.name)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color(red: 0.45, green: 0.45, blue: 0.5))
-                    .lineLimit(1)
-                Text(claimedSubtitle)
-                    .font(.system(size: 12, weight: .regular))
-                    .italic()
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.9)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-            Image(systemName: "lock.fill")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardFill)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
-        )
-    }
-
-    private var claimedSubtitle: String {
-        let ago = LiveStreamCardFormatting.missedAgoLabel(iso: venue.goneAt)
-        return "Claimed · \(ago)"
-    }
-}
-
-/// Sold-out / booked live row (same chrome as just-missed reference).
+/// Sold-out / booked live row.
 struct LiveStreamSoldOutDropCard: View {
     let drop: Drop
     let preferredParty: Int
