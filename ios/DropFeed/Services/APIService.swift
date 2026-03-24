@@ -109,23 +109,15 @@ final class APIService {
     // MARK: - Feed
     
     func fetchJustOpened(
-        dates: [String]? = nil,
-        partySizes: [Int]? = nil,
-        timeAfter: String? = nil,
-        timeBefore: String? = nil
+        partySizes: [Int]? = nil
     ) async throws -> JustOpenedResponse {
         var components = URLComponents(string: "\(baseURL)/feed/live")!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
         ]
-        if let dates = dates, !dates.isEmpty {
-            queryItems.append(URLQueryItem(name: "dates", value: dates.joined(separator: ",")))
-        }
         if let sizes = partySizes, !sizes.isEmpty {
             queryItems.append(URLQueryItem(name: "party_sizes", value: sizes.map { "\($0)" }.joined(separator: ",")))
         }
-        if let t = timeAfter, !t.isEmpty { queryItems.append(URLQueryItem(name: "time_after", value: t)) }
-        if let t = timeBefore, !t.isEmpty { queryItems.append(URLQueryItem(name: "time_before", value: t)) }
         components.queryItems = queryItems
         
         guard let url = components.url else {
@@ -187,10 +179,9 @@ final class APIService {
         }
     }
     
-    func fetchNewDrops(withinMinutes: Int = 15, since: String? = nil) async throws -> [Drop] {
+    func fetchNewDrops(since: String? = nil) async throws -> [Drop] {
         var components = URLComponents(string: "\(baseURL)/feed/new-drops")!
         var qi: [URLQueryItem] = [
-            URLQueryItem(name: "within_minutes", value: "\(withinMinutes)"),
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))")
         ]
         if let s = since { qi.append(URLQueryItem(name: "since", value: s)) }
@@ -285,10 +276,9 @@ final class APIService {
         }
     }
     
-    func fetchFollowStatus(market: String = "nyc") async throws -> FollowStatusResponse {
+    func fetchFollowStatus() async throws -> FollowStatusResponse {
         var components = URLComponents(string: "\(baseURL)/feed/follows/status")!
         components.queryItems = [
-            URLQueryItem(name: "market", value: market),
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
         ]
         guard let url = components.url else { throw APIError.invalidURL }

@@ -38,7 +38,7 @@ FastAPI auto-generates API UIs when the server is running:
 | GET | `/feed/follows/status` | Per-venue last-drop hints (Saved tab) |
 | GET | `/feed/follows/activity` | Activity timeline (Saved tab) |
 
-Query params on `/feed/live`: optional `dates`, `party_sizes`, `mobile`, `debug`, `_t` (cache-bust).
+Query params on `/feed/live`: optional `party_sizes`, `mobile`, `debug`, `_t` (cache-bust). No date filter — it's always the live 10-minute window.
 
 Windows: `live_feed_window_minutes` (default 10) and `just_opened_inventory_minutes` (default 30) appear on **`GET /health`** under `discovery`.
 

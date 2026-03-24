@@ -188,10 +188,7 @@ final class SearchViewModel: ObservableObject {
                 resp = try await service.fetchDrops(dates: datesForAPI, partySizes: effectivePartySizesForAPI)
             } else {
                 resp = try await service.fetchJustOpened(
-                    dates:      dateQuery,
-                    partySizes: effectivePartySizesForAPI,
-                    timeAfter:  nil,
-                    timeBefore: nil
+                    partySizes: effectivePartySizesForAPI
                 )
             }
             var ranked = resp.rankedBoard ?? []
@@ -226,7 +223,7 @@ final class SearchViewModel: ObservableObject {
             // Do not replace date/party-scoped results with `/new-drops` (no date filter) — that breaks Explore.
             let scopedToServerFilters = exploreTabActive || dateQuery != nil || effectivePartySizesForAPI != nil
             if ranked.isEmpty && !scopedToServerFilters {
-                let fallback = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
+                let fallback = (try? await service.fetchNewDrops()) ?? []
                 ranked = fallback
             }
 

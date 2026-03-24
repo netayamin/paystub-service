@@ -271,10 +271,7 @@ final class FeedViewModel: ObservableObject {
         let timeAPI = timeFilterAPI
         do {
             let resp = try await service.fetchJustOpened(
-                dates: selectedDates.isEmpty ? nil : Array(selectedDates),
-                partySizes: selectedPartySizes.isEmpty ? nil : Array(selectedPartySizes),
-                timeAfter: timeAPI.after,
-                timeBefore: timeAPI.before
+                partySizes: selectedPartySizes.isEmpty ? nil : Array(selectedPartySizes)
             )
 
             var ranked = resp.rankedBoard ?? []
@@ -297,7 +294,7 @@ final class FeedViewModel: ObservableObject {
             }
 
             if ranked.isEmpty {
-                let newDrops = (try? await service.fetchNewDrops(withinMinutes: 60)) ?? []
+                let newDrops = (try? await service.fetchNewDrops()) ?? []
                 if !newDrops.isEmpty { ranked = newDrops }
             }
 

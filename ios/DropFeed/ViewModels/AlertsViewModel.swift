@@ -50,7 +50,7 @@ final class AlertsViewModel: ObservableObject {
     
     private func fetchNewDrops() async {
         do {
-            let drops = try await service.fetchNewDrops(withinMinutes: 30, since: lastNewDropsAt)
+            let drops = try await service.fetchNewDrops(since: lastNewDropsAt)
             lastNewDropsAt = ISO8601DateFormatter().string(from: Date())
             
             var added = false
