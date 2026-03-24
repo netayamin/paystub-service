@@ -1,4 +1,4 @@
-.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics ios-phone
+.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics ios-phone backend-doctor
 
 setup: install
 	cp backend/.env.example backend/.env
@@ -35,6 +35,11 @@ ios-phone:
 	@echo "   Build injects ngrok HTTPS into the built app (source Info.plist unchanged)."
 	@echo "4) Use fixed OTP from backend/.env: AUTH_OTP_FIXED=123456"
 	@echo ""
+
+# Quick checks: Postgres on 5432, DATABASE_URL, app import. Run if the backend won't start.
+backend-doctor:
+	@chmod +x scripts/backend-doctor.sh 2>/dev/null || true
+	@./scripts/backend-doctor.sh
 
 dev-backend:
 	@echo "Starting backend on http://127.0.0.1:8000 (use http://YOUR_MAC_IP:8000 on device)..."

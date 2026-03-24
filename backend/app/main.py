@@ -223,9 +223,26 @@ def _health_version() -> str:
 @app.get("/health")
 def health() -> dict:
     """Health check; includes discovery config so each environment can verify env vars."""
+    from sqlalchemy import text
+
+    from app.db.session import SessionLocal
+
+    db_ok = False
+    db_error: str | None = None
+    try:
+        _db = SessionLocal()
+        try:
+            _db.execute(text("SELECT 1"))
+            db_ok = True
+        finally:
+            _db.close()
+    except Exception as e:
+        db_error = f"{type(e).__name__}: {e}"
+
     return {
-        "status": "ok",
+        "status": "ok" if db_ok else "degraded",
         "version": _health_version(),
+        "database": {"connected": db_ok, "error": db_error},
         "background_scheduler": settings.enable_background_scheduler,
         "database_pool": {"pool_size": settings.db_pool_size, "max_overflow": settings.db_max_overflow},
         "discovery": {
