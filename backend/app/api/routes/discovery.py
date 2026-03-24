@@ -72,14 +72,9 @@ def _next_scan_iso(request: Request) -> str:
 
 
 @router.get("/watches/hotlist")
-async def hotlist(market: str | None = None):
-    """
-    Hotlist (hotspot) restaurant names for the given market. By default you get push notifications
-    for drops at any of these, plus any venues you add to My Watches.
-    market: nyc (default) or miami.
-    """
-    mkt = (market or "nyc").strip().lower()
-    return {"hotlist": list_hotspots(mkt), "market": mkt}
+async def hotlist():
+    """Hotlist (hotspot) restaurant names. Push notifications fire for any drop at these venues plus your saved watches."""
+    return {"hotlist": list_hotspots("nyc"), "market": "nyc"}
 
 
 def _normalize_venue(name: str | None) -> str:
@@ -352,18 +347,17 @@ async def list_drops(
     response: Response,
     dates: str,
     party_sizes: str | None = None,
-    market: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
-    **Explore tab:** all bookable inventory for the given calendar days.
+    **Explore tab:** all bookable inventory for the given calendar days (NYC only).
 
-    Requires comma-separated ``dates=YYYY-MM-DD,...``. Optional ``party_sizes``, ``market``.
-    Returns ``just_opened`` + ``still_open`` day buckets (same merge rules as the old home endpoint).
+    Requires comma-separated ``dates=YYYY-MM-DD,...``. Optional ``party_sizes``.
+    Returns ``just_opened`` + ``still_open`` day buckets.
     """
     date_filter = [s.strip() for s in dates.split(",") if s.strip()]
     party_size_list = _parse_ints(party_sizes)
-    market_list = [s.strip() for s in market.split(",") if s.strip()] if market else None
+    market_list = None
     try:
         if not date_filter:
             raise HTTPException(
@@ -437,7 +431,6 @@ async def list_just_opened(
     dates: str | None = None,
     time_slots: str | None = None,
     party_sizes: str | None = None,
-    market: str | None = None,
     debug: str | None = None,
     mobile: str | None = None,
 ):
@@ -455,8 +448,7 @@ async def list_just_opened(
         is_mobile = bool(mobile and str(mobile).strip() in ("1", "true", "yes"))
         date_filter = [s.strip() for s in dates.split(",") if s.strip()] if dates else None
         party_size_list = _parse_ints(party_sizes)
-        market_list = [s.strip() for s in market.split(",") if s.strip()] if market else None
-        has_filters = date_filter or party_size_list or market_list
+        has_filters = date_filter or party_size_list
 
         # Mobile fast path: compact pre-serialized snapshot (zero DB queries, ~10x smaller)
         if is_mobile and not has_filters and not is_debug:
@@ -482,7 +474,7 @@ async def list_just_opened(
         # Filtered path: lightweight in-memory filtering on shared snapshot (no deepcopy)
         snap = get_snapshot()
         if snap is not None and not is_debug:
-            filtered = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list, market_filter=market_list)
+            filtered = filter_snapshot_for_request(snap, date_filter=date_filter, party_sizes=party_size_list)
             filtered["next_scan_at"] = _next_scan_iso(request)
             if (filtered.get("total_venues_scanned") or 0) == 0:
                 filtered["zero_venues_hint"] = (

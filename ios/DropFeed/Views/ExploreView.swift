@@ -116,11 +116,7 @@ struct ExploreView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var exploreMarketLabel: String {
-        let m = vm.results.first?.market?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let m, !m.isEmpty { return m.uppercased() }
-        return "NYC"
-    }
+    private var exploreMarketLabel: String { "NYC" }
 
     // MARK: - Availability (reference: weekday above date, maroon selection, hairline under strip)
 
@@ -218,7 +214,7 @@ struct ExploreView: View {
     private var liveInventoryHeader: some View {
         DSLabeledRuleRow(
             leadingLabel: "LIVE INVENTORY",
-            trailingLabel: exploreMarketLabel == "NYC" ? "NEW YORK" : exploreMarketLabel
+            trailingLabel: "NEW YORK"
         )
     }
 
