@@ -254,120 +254,35 @@ def _consolidate_cards(
     return result
 
 
-def _normalize_rarity(raw) -> float:
+def _quality_score(card: dict, is_hot: bool) -> float:
     """
-    rarity_score is stored on a 0-100 scale (100 / (1 + drops_per_day)).
-    Normalize to 0-1 for scoring so all additive/multiplicative weights
-    stay in the same magnitude as the hotspot bonus (2.0) and quality (~0-1).
-    """
-    if not isinstance(raw, (int, float)) or raw <= 0:
-        return 0.0
-    return min(1.0, float(raw) / 100.0)
-
-
-def _speed_bonus(avg_duration_seconds) -> float:
-    """
-    Reward venues whose drops disappear fast — a proxy for real-time demand.
-    Drops gone in <5 min → full bonus 0.5; gone in >60 min → no bonus.
-    Returns 0.0 if data is unavailable.
-    """
-    if not isinstance(avg_duration_seconds, (int, float)) or avg_duration_seconds <= 0:
-        return 0.0
-    minutes = float(avg_duration_seconds) / 60.0
-    if minutes <= 5:
-        return 0.5
-    if minutes <= 15:
-        return 0.35
-    if minutes <= 30:
-        return 0.2
-    if minutes <= 60:
-        return 0.05
-    return 0.0
-
-
-def _priority_score(card: dict, is_hot: bool) -> float:
-    """
-    General ranked-board score: freshness × scarcity × availability × popularity.
-
-    rarity_score is stored 0-100; normalised to 0-1 before use.
-    Hotspot bonus is additive so it is never cancelled out when rarity data exists.
-    A curated hotspot with rarity=0.05 used to get scarcity=1.15 (worse than 2.5 fallback);
-    now it gets 1.15 + 1.5 = 2.65 regardless of whether rarity data is present.
-    """
-    rarity = _normalize_rarity(card.get("rarity_score"))
-    rarity_scarcity = 1.0 + rarity * 3.0  # 1.0–4.0 data-driven, always computed
-    hotspot_bonus = 1.5 if is_hot else 0.0
-    scarcity = rarity_scarcity + hotspot_bonus
-
-    availability = 1.0 if card.get("slots") else 0.01
-
-    detected = card.get("detected_at") or card.get("created_at")
-    if detected:
-        try:
-            dt = datetime.fromisoformat(detected.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            minutes_ago = (datetime.now(timezone.utc) - dt).total_seconds() / 60
-        except Exception:
-            minutes_ago = 999
-    else:
-        minutes_ago = 999
-
-    # Freshness: strong boost for "just dropped" (< 10 min) so they always surface
-    if minutes_ago <= 10:
-        freshness = 2.0
-    elif minutes_ago <= 30:
-        freshness = 1.5
-    else:
-        freshness = 1.0 / (1.0 + minutes_ago / 60)
-
-    pop = card.get("resy_popularity_score")
-    popularity = (0.5 + float(pop)) if isinstance(pop, (int, float)) else 1.0
-
-    return scarcity * availability * freshness * popularity
-
-
-def _ticker_score(card: dict, is_hot: bool) -> float:
-    """
-    Score for the Real-Time Ticker ranked board.
-    Balances quality (hotspot + rarity + popularity + rating + speed) with
-    a modest freshness bonus so genuinely new availability surfaces without
-    letting unknown restaurants dominate.
+    Shared quality score: curated hotspot list + Resy popularity + rating.
+    No scarcity, no freshness — what matters is whether the place is desirable.
 
     Weights (additive):
-      hotspot    2.0   — on our curated hard-to-get list
-      rarity    ×1.5   — rarity_score normalised 0-1
-      popularity×1.2   — Resy demand signal
-      quality   ×0.8   — rating × credibility (review count)
-      speed      0-0.5 — how fast the drop disappears (demand proxy)
-      freshness  0-0.5 — small boost for < 15 min; decays to 0 after 1 h
+      hotspot    2.0   — on our curated hard-to-get list / resy-popular
+      popularity ×1.5  — Resy's own demand signal
+      quality    ×0.8  — Resy rating × review credibility
     """
     if not card.get("slots"):
         return 0.0
 
     hot        = 2.0 if is_hot else 0.0
-    scarcity   = _normalize_rarity(card.get("rarity_score")) * 1.5
     pop        = card.get("resy_popularity_score")
-    popularity = float(pop) * 1.2 if isinstance(pop, (int, float)) and pop > 0 else 0.0
+    popularity = float(pop) * 1.5 if isinstance(pop, (int, float)) and pop > 0 else 0.0
     rating     = card.get("rating_average") or 0
     count      = card.get("rating_count") or 0
     quality    = (float(rating) / 5.0) * min(1.0, count / 300) * 0.8
-    speed      = _speed_bonus(card.get("avg_drop_duration_seconds"))
 
-    detected = card.get("detected_at") or card.get("created_at")
-    if detected:
-        try:
-            dt = datetime.fromisoformat(detected.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            mins = (datetime.now(timezone.utc) - dt).total_seconds() / 60
-        except Exception:
-            mins = 999
-    else:
-        mins = 999
-    freshness = 0.5 if mins <= 15 else (0.3 if mins <= 60 else 0.0)
+    return hot + popularity + quality
 
-    return hot + scarcity + popularity + quality + speed + freshness
+
+def _priority_score(card: dict, is_hot: bool) -> float:
+    return _quality_score(card, is_hot)
+
+
+def _ticker_score(card: dict, is_hot: bool) -> float:
+    return _quality_score(card, is_hot)
 
 
 def _rank_evidence_multiplier(card: dict) -> float:
@@ -406,34 +321,8 @@ def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
 
 
 def _top_opportunity_score(card: dict) -> float:
-    """
-    Score for Top Drops (Crown Jewels) section: quality + scarcity, NOT freshness.
-
-    We deliberately ignore when a slot was detected so that a random
-    low-quality restaurant freshly detected 2 minutes ago never outranks
-    an iconic hard-to-get restaurant detected 20 minutes ago.
-
-    Factors (additive, all 0-based):
-      • hotspot bonus  — curated hard-to-get list                (0 or 2.0)
-      • rarity         — rarity_score normalised 0-1             (×2.0, max 2.0)
-      • speed          — drop disappears fast = real demand       (0–0.5)
-      • popularity     — Resy's own demand signal                 (×1.5, max ~1.5)
-      • quality        — rating × review credibility              (max ~0.9)
-    """
-    if not card.get("slots"):
-        return 0.0
-
-    hot_bonus  = 2.0 if card.get("feedHot") else 0.0
-    scarcity   = _normalize_rarity(card.get("rarity_score")) * 2.0
-    speed      = _speed_bonus(card.get("avg_drop_duration_seconds"))
-    pop        = card.get("resy_popularity_score")
-    popularity = float(pop) * 1.5 if isinstance(pop, (int, float)) and pop > 0 else 0.0
-    rating     = card.get("rating_average") or 0
-    count      = card.get("rating_count") or 0
-    credibility = min(1.0, count / 300)
-    quality    = (float(rating) / 5.0) * credibility
-
-    return hot_bonus + scarcity + speed + popularity + quality
+    """Top Drops score: same quality signal as the main feed."""
+    return _quality_score(card, bool(card.get("feedHot")))
 
 
 def build_feed(
