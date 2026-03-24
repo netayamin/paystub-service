@@ -78,9 +78,6 @@ def _normalize_name(name: str | None) -> str:
     return name.strip().lower()
 
 
-def is_hot_restaurant(name: str | None, market: str = "nyc") -> bool:
-    return is_hotspot(name, market)
-
 
 
 def _venue_key(v: dict) -> str:
@@ -383,7 +380,7 @@ def build_feed(
         # feedHot: curated editorial list OR strong Resy popularity signal.
         # We deliberately exclude our own collected metrics (rarity, snag_score, etc.)
         # since they measure scarcity, not whether a place is actually desirable.
-        curated = is_hot_restaurant(c.get("name"), mkt)
+        curated = is_hotspot(c.get("name"))
         pop = c.get("resy_popularity_score")
         resy_hot = isinstance(pop, (int, float)) and pop >= 0.65
         is_hot = curated or resy_hot
