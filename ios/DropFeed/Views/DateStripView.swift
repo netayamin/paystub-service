@@ -3,7 +3,6 @@ import SwiftUI
 struct DateStripView: View {
     let dateOptions: [(dateStr: String, dayName: String, dayNum: String)]
     @Binding var selectedDates: Set<String>
-    var calendarCounts: CalendarCounts
     
     private var allSelected: Bool { selectedDates.isEmpty }
     
@@ -29,7 +28,6 @@ struct DateStripView: View {
                     
                     ForEach(dateOptions, id: \.dateStr) { opt in
                         let isSelected = selectedDates.contains(opt.dateStr)
-                        let count = calendarCounts.byDate[opt.dateStr] ?? 0
                         
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -47,13 +45,7 @@ struct DateStripView: View {
                                 Text(opt.dayNum)
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(isSelected ? .white : AppTheme.textPrimary)
-                                if count > 0 {
-                                    Circle()
-                                        .fill(isSelected ? .white : AppTheme.accentRed)
-                                        .frame(width: 5, height: 5)
-                                } else {
-                                    Spacer().frame(height: 5)
-                                }
+                                Spacer().frame(height: 5)
                             }
                             .frame(width: 48)
                             .padding(.vertical, 8)
@@ -82,8 +74,7 @@ struct DateStripView: View {
                 ("2026-03-07", "Fri", "7"),
                 ("2026-03-08", "Sat", "8"),
             ],
-            selectedDates: .constant(Set(["2026-03-04"])),
-            calendarCounts: CalendarCounts(byDate: ["2026-03-04": 12, "2026-03-05": 8, "2026-03-07": 3], dates: [])
+            selectedDates: .constant(Set(["2026-03-04"]))
         )
     }
 }

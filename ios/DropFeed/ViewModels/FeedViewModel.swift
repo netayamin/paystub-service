@@ -13,7 +13,6 @@ final class FeedViewModel: ObservableObject {
     @Published var hotRightNow: [Drop]?
     @Published var likelyToOpen: [LikelyToOpenVenue] = []
     @Published var justMissed: [JustMissedVenue] = []
-    @Published var calendarCounts: CalendarCounts = CalendarCounts()
     @Published var isLoading = false       // true only on first load (no cards yet)
     @Published var isRefreshing = false    // true on silent background polls
     @Published var lastRefreshed: Date?    // wall-clock time of the last successful poll
@@ -327,11 +326,6 @@ final class FeedViewModel: ObservableObject {
                 secondsUntilNextScan = max(0, Int((nextScanAt ?? Date()).timeIntervalSinceNow))
             }
 
-            Task {
-                if let counts = try? await service.fetchCalendarCounts() {
-                    self.calendarCounts = counts
-                }
-            }
         } catch is CancellationError {
         } catch {
             self.error = APIService.userFacingRequestError(error)

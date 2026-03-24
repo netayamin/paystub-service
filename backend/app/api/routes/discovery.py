@@ -26,7 +26,6 @@ from app.models.notify_preference import NotifyPreference
 from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.discovery.buckets import (
     all_bucket_ids,
-    get_calendar_counts,
     get_just_opened_from_buckets,
     get_last_scan_info_buckets,
     get_likely_to_open_venues,
@@ -46,7 +45,6 @@ from app.services.discovery.snapshot_store import (
     get_snapshot,
     get_snapshot_json,
     get_snapshot_json_mobile,
-    get_calendar_json,
     filter_snapshot_for_request,
 )
 
@@ -69,19 +67,6 @@ def _next_scan_iso(request: Request) -> str:
     except Exception:
         pass
     return (datetime.now(timezone.utc) + timedelta(seconds=DISCOVERY_POLL_INTERVAL_SECONDS)).isoformat()
-
-
-@router.get("/watches/calendar-counts")
-async def calendar_counts(db: Session = Depends(get_db)):
-    """Result counts per date for the 14-day calendar. Served from snapshot (zero DB queries)."""
-    try:
-        raw = get_calendar_json()
-        if raw is not None:
-            return Response(content=raw, media_type="application/json")
-        return get_calendar_counts(db, window_start_date())
-    except Exception as e:
-        logger.warning("calendar-counts failed: %s", e, exc_info=True)
-        return {"by_date": {}, "dates": [], "error": str(e)}
 
 
 @router.get("/watches/hotlist")

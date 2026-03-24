@@ -629,23 +629,6 @@ struct JustMissedVenue: Codable, Identifiable, Hashable {
     }
 }
 
-// MARK: - Calendar counts
-
-struct CalendarCounts: Codable {
-    let byDate: [String: Int]
-    let dates: [String]
-    
-    enum CodingKeys: String, CodingKey {
-        case byDate = "by_date"
-        case dates
-    }
-    
-    init(byDate: [String: Int] = [:], dates: [String] = []) {
-        self.byDate = byDate
-        self.dates = dates
-    }
-}
-
 /// Response from GET /chat/watches/just-opened (built via ``decodeLenient`` — not direct JSON decode).
 struct JustOpenedResponse {
     let rankedBoard: [Drop]?

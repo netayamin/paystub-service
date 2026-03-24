@@ -2,7 +2,7 @@
 Pre-computed discovery snapshot: compute once per tick, serve many clients.
 
 After each discovery tick completes, `rebuild_snapshot(db)` builds the full
-just-opened / still-open / feed / calendar-counts / bucket-health response
+just-opened / still-open / feed / bucket-health response
 and stores it in memory.  API endpoints read from the snapshot and apply
 lightweight in-memory filters (date, party_size) — zero DB queries per
 client request.
@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 _snapshot: dict | None = None
 _snapshot_json: bytes | None = None         # full response (for debug / web clients)
 _snapshot_json_mobile: bytes | None = None  # compact response for iOS (ranked_board capped, no day arrays)
-_calendar_json: bytes | None = None
 _bucket_health_json: bytes | None = None
 _snapshot_lock = threading.Lock()
 
@@ -58,12 +57,6 @@ def get_snapshot_json_mobile() -> bytes | None:
         return _snapshot_json_mobile
 
 
-def get_calendar_json() -> bytes | None:
-    """Pre-serialized calendar-counts JSON."""
-    with _snapshot_lock:
-        return _calendar_json
-
-
 def get_bucket_health_json() -> bytes | None:
     """Pre-serialized bucket-status JSON."""
     with _snapshot_lock:
@@ -83,7 +76,6 @@ _ROLLING_REFRESH_INTERVAL_SECONDS = 300  # recompute rolling metrics every 5 min
 def rebuild_snapshot(db: Session) -> None:
     """Recompute the full discovery snapshot from DB.  Called after each tick."""
     from app.services.discovery.buckets import (
-        all_bucket_ids,
         get_bucket_health,
         get_just_opened_from_buckets,
         get_likely_to_open_venues,
@@ -309,29 +301,6 @@ def rebuild_snapshot(db: Session) -> None:
         info = get_last_scan_info_buckets(db, today)
         bucket_health = get_bucket_health(db, today)
 
-        # Calendar counts: unique venue count per date from the already-computed lists
-        date_strs = sorted({
-            d["date_str"] for d in just_opened + still_open if d.get("date_str")
-        })
-        # Also include all dates from buckets for the full 14-day range
-        for _bid, date_str, _ts, _m in all_bucket_ids(today):
-            if date_str not in date_strs:
-                date_strs.append(date_str)
-        date_strs = sorted(set(date_strs))
-
-        def _unique_venue_keys(venues: list[dict]) -> set[str]:
-            return {
-                str(v.get("venue_id") or v.get("name") or "")
-                for v in (venues or []) if isinstance(v, dict)
-            } - {""}
-
-        jo_by_date = {d["date_str"]: d.get("venues") or [] for d in just_opened}
-        so_by_date = {d["date_str"]: d.get("venues") or [] for d in still_open}
-        calendar_by_date = {}
-        for ds in date_strs:
-            keys = _unique_venue_keys(jo_by_date.get(ds, [])) | _unique_venue_keys(so_by_date.get(ds, []))
-            calendar_by_date[ds] = len(keys)
-
         feed_meta = snag_feed_meta()
 
         snap = {
@@ -348,7 +317,6 @@ def rebuild_snapshot(db: Session) -> None:
             "likely_open_soon": [],
             "feed_meta": feed_meta,
             "bucket_health": bucket_health,
-            "calendar_counts": {"by_date": calendar_by_date, "dates": date_strs},
             "rolling_by_name": rolling_by_name,
             **info,
             "computed_at": datetime.now(timezone.utc).isoformat(),
@@ -357,13 +325,8 @@ def rebuild_snapshot(db: Session) -> None:
         # Pre-serialize the API-ready response (without internal fields) to JSON bytes.
         # The no-filter fast path returns these bytes directly — zero per-request work.
         api_payload = {k: v for k, v in snap.items()
-                       if k not in ("rolling_by_name", "bucket_health", "calendar_counts", "computed_at", "ticker_board")}
+                       if k not in ("rolling_by_name", "bucket_health", "computed_at", "ticker_board")}
         api_bytes = _json.dumps(api_payload, separators=(",", ":"), default=str).encode()
-
-        cal_bytes = _json.dumps(
-            {"by_date": calendar_by_date, "dates": date_strs},
-            separators=(",", ":"),
-        ).encode()
 
         bh_stale = [b for b in bucket_health if b.get("stale")]
         bh_payload = {
@@ -390,11 +353,10 @@ def rebuild_snapshot(db: Session) -> None:
         mobile_bytes = _json.dumps(mobile_payload, separators=(",", ":"), default=str).encode()
 
         with _snapshot_lock:
-            global _snapshot, _snapshot_json, _snapshot_json_mobile, _calendar_json, _bucket_health_json
+            global _snapshot, _snapshot_json, _snapshot_json_mobile, _bucket_health_json
             _snapshot = snap
             _snapshot_json = api_bytes
             _snapshot_json_mobile = mobile_bytes
-            _calendar_json = cal_bytes
             _bucket_health_json = bh_bytes
 
         logger.info(

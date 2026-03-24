@@ -1526,34 +1526,6 @@ def _unique_venue_count(venues: list[dict]) -> int:
     return len(seen)
 
 
-def get_calendar_counts(db: Session, today: date | None = None) -> dict:
-    """
-    Return result counts per date for the calendar bar graph.
-    by_date[date_str] = number of unique restaurants (just_opened + still_open, deduped by venue per date).
-    Same restaurant with multiple time slots counts once per date.
-    """
-    if today is None:
-        today = window_start_date()
-    date_strs = []
-    seen_dates = set()
-    for _bid, date_str, _ts, _m in all_bucket_ids(today):
-        if date_str not in seen_dates:
-            seen_dates.add(date_str)
-            date_strs.append(date_str)
-    just_opened = get_just_opened_from_buckets(db, date_filter=None)
-    still_open = get_still_open_from_buckets(db, today, date_filter=None)
-    by_date_jo = {d["date_str"]: _unique_venue_count(d.get("venues")) for d in just_opened}
-    by_date_so = {d["date_str"]: _unique_venue_count(d.get("venues")) for d in still_open}
-    # Per date: unique venues from both; a venue in both lists still counts as 1
-    by_date = {}
-    for d in date_strs:
-        venues_jo = next((x.get("venues") or [] for x in just_opened if x.get("date_str") == d), [])
-        venues_so = next((x.get("venues") or [] for x in still_open if x.get("date_str") == d), [])
-        combined = (venues_jo or []) + (venues_so or [])
-        by_date[d] = _unique_venue_count(combined)
-    return {"by_date": by_date, "dates": date_strs}
-
-
 def get_notifications_by_date(
     db: Session,
     today: date | None = None,

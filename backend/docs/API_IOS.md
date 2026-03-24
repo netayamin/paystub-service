@@ -36,8 +36,6 @@ FastAPI auto-generates API UIs when the server is running:
 |--------|------|---------|
 | GET | `/chat/watches/just-opened` | Main feed: `ranked_board`, `just_opened`, `still_open`, `likely_to_open`, … |
 | GET | `/chat/watches/new-drops` | Lightweight “new since” list for alerts |
-| GET | `/chat/watches/calendar-counts` | Per-date counts for calendar UI |
-
 Query params commonly used on `just-opened`: `dates`, `party_sizes`, `_t` (cache-bust).  
 Optional: `mobile`, `debug`, `market` (see OpenAPI).
 

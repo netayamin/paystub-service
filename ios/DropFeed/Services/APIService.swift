@@ -189,17 +189,6 @@ final class APIService {
         }
     }
     
-    func fetchCalendarCounts() async throws -> CalendarCounts {
-        guard let url = URL(string: "\(baseURL)/chat/watches/calendar-counts") else {
-            throw APIError.invalidURL
-        }
-        let (data, response) = try await session.data(from: url)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError
-        }
-        return try decoder.decode(CalendarCounts.self, from: data)
-    }
-    
     // MARK: - Watchlist
     
     func fetchWatches() async throws -> VenueWatchesResponse {
