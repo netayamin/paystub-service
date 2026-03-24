@@ -32,23 +32,19 @@ private func padQuietCuratorStreamEntries(_ entries: inout [QuietStreamEntry], p
     }
 }
 
-/// Hairline rule with centered **LIVE STREAM** (reference: title only above the card).
+/// "LIVE STREAM" left-aligned bold + "ACTIVE NOW" burgundy right-aligned.
 private struct QuietCuratorLiveStreamCenteredTitle: View {
     var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
+        HStack(alignment: .center) {
             Text("LIVE STREAM")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.85)
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .background(CreamEditorialTheme.canvas)
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
+                .tracking(0.3)
+            Spacer()
+            Text("ACTIVE NOW")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(CreamEditorialTheme.burgundy)
+                .tracking(0.5)
         }
     }
 }
@@ -399,8 +395,8 @@ struct FeedView: View {
         return vm.drops.filter { seen.insert($0.id).inserted }
     }
 
-    /// Live stream entries: most-recently-detected drops from the ranked pool, padded to ≥5 rows.
-    /// Depends on `liveListShuffleToken` and `lastRefreshed`.
+    /// Live stream entries: open drops first (sorted by freshness), then taken drops as context.
+    /// `isPrimaryTier` = true means JUST OPENED (bookable), false means JUST MISSED (taken/sold-out).
     private var quietCuratorStreamEntries: [QuietStreamEntry] {
         _ = vm.liveListShuffleToken
         _ = vm.lastRefreshed
@@ -408,19 +404,16 @@ struct FeedView: View {
         let pool = quietCuratorStreamPool
         guard !pool.isEmpty else { return [] }
 
-        // Sort by freshness; prefer drops with a booking URL first, then fill from the rest.
-        let withURL = pool
-            .filter { feedDropIsBookable($0) }
-            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
-        let withoutURL = pool
-            .filter { !feedDropIsBookable($0) }
-            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+        let sorted = pool.sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+        let open   = sorted.filter { $0.exploreSnagAvailable != false }
+        let taken  = sorted.filter { $0.exploreSnagAvailable == false }
 
-        var ordered = withURL + withoutURL
-        var entries = ordered.prefix(minQuietCuratorStreamRows).map {
-            QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0))
-        }
-        var built = Array(entries)
+        // Up to 4 open rows, then 1 taken row for context, pad to minimum
+        let openSlots  = min(open.count, 4)
+        let takenSlots = taken.isEmpty ? 0 : 1
+        var ordered: [Drop] = Array(open.prefix(openSlots)) + Array(taken.prefix(takenSlots))
+
+        var built = ordered.map { QuietStreamEntry.live($0, isPrimaryTier: $0.exploreSnagAvailable != false) }
         padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
         return built
     }
@@ -565,33 +558,33 @@ struct FeedView: View {
     }
 
     private var quietCuratorLiveStreamSection: some View {
-        let drops = quietCuratorStreamEntries.compactMap { e -> Drop? in
-            guard case .live(let d, _) = e else { return nil }
-            return d
+        let rows: [(Drop, Bool)] = quietCuratorStreamEntries.compactMap { e in
+            guard case .live(let d, let primary) = e else { return nil }
+            return (d, primary)
         }
         return Group {
-            if drops.isEmpty {
+            if rows.isEmpty {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     QuietCuratorLiveStreamCenteredTitle()
                         .padding(.horizontal, 18)
 
-                    // Single bordered container, rows separated by dividers
                     VStack(spacing: 0) {
-                        ForEach(Array(drops.enumerated()), id: \.offset) { idx, drop in
+                        ForEach(Array(rows.enumerated()), id: \.offset) { idx, pair in
+                            let (drop, isPrimary) = pair
                             LiveStreamOpenCard(
                                 drop: drop,
                                 preferredParty: mockPreferredParty(for: drop),
                                 todayDateStr: vm.todayDateStr,
+                                isTaken: !isPrimary,
                                 onTap: { liveStreamOpenResy(drop) }
                             )
                             .staggeredAppear(index: idx, delayPerItem: 0.03)
 
-                            if idx < drops.count - 1 {
+                            if idx < rows.count - 1 {
                                 Divider()
                                     .background(CreamEditorialTheme.hairline)
-                                    .padding(.horizontal, 16)
                             }
                         }
                     }
