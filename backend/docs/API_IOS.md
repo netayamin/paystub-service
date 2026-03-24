@@ -3,7 +3,11 @@
 All paths are relative to the API origin (e.g. `https://your-host` or `http://127.0.0.1:8000`).  
 The app uses the **`/chat`** prefix for product APIs.
 
-OpenAPI (try requests in the browser): **`GET /docs`**
+FastAPI auto-generates API UIs when the server is running:
+
+- **`GET /docs`** — Swagger UI (expand endpoints, “Try it out”, send requests)
+- **`GET /redoc`** — ReDoc (single-page reference, often easier to scan)
+- **`GET /openapi.json`** — raw schema (Postman, codegen, etc.)
 
 ---
 
@@ -12,7 +16,7 @@ OpenAPI (try requests in the browser): **`GET /docs`**
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/health` | Liveness, DB connectivity, discovery config |
-| GET | `/` | JSON pointer to `/docs` and `/health` |
+| GET | `/` | JSON pointer to `/docs`, `/redoc`, `/health` |
 
 ---
 

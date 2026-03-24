@@ -137,7 +137,8 @@ async def lifespan(app: FastAPI):
         threading.Thread(target=startup_snapshot_only, daemon=True).start()
     print("\n" + "=" * 60)
     print("  BACKEND READY  http://127.0.0.1:8000")
-    print("  API docs       http://127.0.0.1:8000/docs")
+    print("  API docs       http://127.0.0.1:8000/docs   (Swagger — try requests)")
+    print("  API reference  http://127.0.0.1:8000/redoc  (ReDoc — read all endpoints)")
     print("  Health         http://127.0.0.1:8000/health")
     print("  — Open those URLs in a browser ON THIS MACHINE (not iPhone).")
     print("  — Or run:  curl -s http://127.0.0.1:8000/health")
@@ -187,7 +188,14 @@ app.include_router(push.router, prefix="/chat", tags=["push"])
 @app.get("/", include_in_schema=False)
 def root():
     """Root: point to API docs and health."""
-    return {"message": "Snag API (iOS)", "docs": "/docs", "health": "/health", "client_contract": "backend/docs/API_IOS.md"}
+    return {
+        "message": "Snag API (iOS)",
+        "docs_swagger": "/docs",
+        "docs_redoc": "/redoc",
+        "openapi_json": "/openapi.json",
+        "health": "/health",
+        "client_contract": "backend/docs/API_IOS.md",
+    }
 
 
 def _health_version() -> str:
