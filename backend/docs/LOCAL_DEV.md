@@ -71,7 +71,7 @@ This checks port 5432, DB connectivity, and that the app imports.
 | `Connection refused` / `could not connect to server` (5432) | Run `docker compose up -d db` (or start your Postgres). |
 | `password authentication failed` / `database "paystub" does not exist` | Match `DATABASE_URL` in `backend/.env` to your Postgres user/db, or use the compose defaults. |
 | `alembic.util.exc.CommandError` / missing tables | Run `cd backend && poetry run alembic upgrade head`. |
-| `Address already in use` on 8000 | Stop the other process: `lsof -i :8000` then kill it, or use another port: `uvicorn app.main:app --host 0.0.0.0 --port 8001`. |
+| **`[Errno 48] Address already in use`** (port 8000) | Something else is already bound to 8000 (often an old uvicorn). From repo root: **`make backend-kill-8000`** then **`make dev-backend`**. Or use another port: **`make dev-backend PORT=8001`** (and point ngrok/app at that port). |
 | App starts but `/chat/...` errors | Open `/docs` and try `/health`. If DB is down, `/health` will show `database.connected: false`. |
 | Discovery empty / no drops | Normal without Resy keys; set `RESY_API_KEY` and `RESY_AUTH_TOKEN` in `.env` for live scanning. |
 

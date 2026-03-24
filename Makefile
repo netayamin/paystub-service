@@ -1,4 +1,7 @@
-.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics ios-phone backend-doctor
+# Backend HTTP port (override if 8000 is busy: make dev-backend PORT=8001)
+PORT ?= 8000
+
+.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics ios-phone backend-doctor backend-kill-8000
 
 setup: install
 	cp backend/.env.example backend/.env
@@ -41,9 +44,14 @@ backend-doctor:
 	@chmod +x scripts/backend-doctor.sh 2>/dev/null || true
 	@./scripts/backend-doctor.sh
 
+# Free port 8000 when uvicorn says "Address already in use" (kills whatever is listening there).
+backend-kill-8000:
+	@P=$$(lsof -tiTCP:8000 -sTCP:LISTEN 2>/dev/null); \
+	if [ -n "$$P" ]; then echo "Killing PID(s) on port 8000: $$P"; kill -9 $$P; else echo "Nothing listening on port 8000."; fi
+
 dev-backend:
-	@echo "Starting backend on http://127.0.0.1:8000 (use http://YOUR_MAC_IP:8000 on device)..."
-	cd backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	@echo "Starting backend on http://127.0.0.1:$(PORT) (use http://YOUR_MAC_IP:$(PORT) on device)..."
+	cd backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(PORT)
 
 # Run backend + frontend with one command. Open http://localhost:5173 (Vite proxies /chat to 8000).
 dev-all:
