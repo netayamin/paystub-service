@@ -99,9 +99,8 @@ struct SavedView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(AppTheme.surface)
-            .cornerRadius(12)
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                Rectangle()
                     .stroke(AppTheme.border, lineWidth: 0.5)
             )
             .padding(.horizontal, 16)
@@ -158,9 +157,8 @@ struct SavedView: View {
                     }
                 }
                 .background(AppTheme.surfaceElevated)
-                .cornerRadius(12)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    Rectangle()
                         .stroke(AppTheme.border, lineWidth: 0.5)
                 )
                 .padding(.horizontal, 16)
@@ -200,7 +198,6 @@ struct SavedView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(AppTheme.surfaceElevated)
-                    .cornerRadius(8)
                 }
             }
         }
@@ -255,9 +252,8 @@ struct SavedView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 10)
                         .background(AppTheme.surface)
-                        .cornerRadius(10)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            Rectangle()
                                 .stroke(AppTheme.border, lineWidth: 0.5)
                         )
                     }
@@ -311,9 +307,8 @@ struct SavedView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
                 .background(AppTheme.surface)
-                .cornerRadius(10)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    Rectangle()
                         .stroke(AppTheme.border, lineWidth: 0.5)
                 )
             }
@@ -350,7 +345,6 @@ struct SavedView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
                     .background(AppTheme.surfaceElevated.opacity(0.5))
-                    .cornerRadius(10)
                 }
             }
         }

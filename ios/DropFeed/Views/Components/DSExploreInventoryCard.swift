@@ -124,9 +124,9 @@ struct DSExploreInventoryCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(CreamEditorialTheme.cardWhite)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipped()
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                Rectangle()
                     .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
             )
         }

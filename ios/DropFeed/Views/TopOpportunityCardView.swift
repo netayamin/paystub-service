@@ -63,7 +63,6 @@ struct TopOpportunityCardView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(drop.feedHot == true ? AppTheme.badgeHot : AppTheme.badgeTrending)
-                    .cornerRadius(8)
 
                     if isJustReleased {
                         Text("New")
@@ -72,7 +71,6 @@ struct TopOpportunityCardView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .background(AppTheme.badgeNew)
-                            .cornerRadius(8)
                     }
                     if let label = freshnessLabel {
                         Text(label)
@@ -81,7 +79,6 @@ struct TopOpportunityCardView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .background(AppTheme.badgeFreshness)
-                            .cornerRadius(8)
                     }
                     Spacer()
                 }
@@ -120,7 +117,6 @@ struct TopOpportunityCardView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
                     .background(AppTheme.textPrimary)
-                    .cornerRadius(12)
 
                     if resyUrl != nil {
                         Button {
@@ -131,7 +127,6 @@ struct TopOpportunityCardView: View {
                                 .foregroundColor(.white)
                                 .frame(width: 52, height: 52)
                                 .background(AppTheme.surfaceElevated)
-                                .cornerRadius(12)
                         }
                         .buttonStyle(ScaleButtonStyle())
                     }
@@ -142,9 +137,9 @@ struct TopOpportunityCardView: View {
             }
         }
         .frame(width: 300, height: 280)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 18)
+            Rectangle()
                 .strokeBorder(AppTheme.border, lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 4)

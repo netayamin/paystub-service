@@ -41,9 +41,8 @@ struct AlertsView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 12)
                         .background(AppTheme.surface)
-                        .cornerRadius(12)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            Rectangle()
                                 .stroke(AppTheme.border, lineWidth: 0.5)
                         )
                     }
@@ -121,9 +120,8 @@ struct AlertsView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(AppTheme.surface)
-            .cornerRadius(12)
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                Rectangle()
                     .stroke(AppTheme.border, lineWidth: 0.5)
             )
 
@@ -155,7 +153,6 @@ struct AlertsView: View {
                     }
                 }
                 .background(AppTheme.surfaceElevated)
-                .cornerRadius(12)
             }
             if savedVM.showFreeTextAdd && !savedVM.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
                 Button {
@@ -204,7 +201,6 @@ struct AlertsView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(AppTheme.surfaceElevated)
-                        .cornerRadius(8)
                     }
                 }
             } else {
@@ -360,7 +356,6 @@ struct AlertsView: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(AppTheme.accentRed)
-                            .cornerRadius(10)
                     }
                     .buttonStyle(.plain)
                 }

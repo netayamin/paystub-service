@@ -230,7 +230,7 @@ struct ExploreView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(CreamEditorialTheme.peachBadgeFill)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipped()
     }
 
     @ViewBuilder

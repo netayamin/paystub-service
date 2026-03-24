@@ -22,7 +22,6 @@ struct DateStripView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
                             .background(allSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
-                            .cornerRadius(12)
                     }
                     .buttonStyle(.plain)
                     
@@ -50,7 +49,6 @@ struct DateStripView: View {
                             .frame(width: 48)
                             .padding(.vertical, 8)
                             .background(isSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
-                            .cornerRadius(14)
                         }
                         .buttonStyle(.plain)
                         .id(opt.dateStr)

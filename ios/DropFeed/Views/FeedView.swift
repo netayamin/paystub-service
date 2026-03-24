@@ -32,19 +32,23 @@ private func padQuietCuratorStreamEntries(_ entries: inout [QuietStreamEntry], p
     }
 }
 
-/// "LIVE STREAM" left-aligned bold + "ACTIVE NOW" burgundy right-aligned.
+/// Hairline rule with centered **LIVE STREAM** (reference: title only above the card).
 private struct QuietCuratorLiveStreamCenteredTitle: View {
     var body: some View {
-        HStack(alignment: .center) {
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
             Text("LIVE STREAM")
-                .font(.system(size: 17, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.3)
-            Spacer()
-            Text("ACTIVE NOW")
-                .font(.system(size: 11, weight: .heavy))
-                .foregroundColor(CreamEditorialTheme.burgundy)
-                .tracking(0.5)
+                .tracking(0.85)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .background(CreamEditorialTheme.canvas)
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
         }
     }
 }
@@ -395,8 +399,8 @@ struct FeedView: View {
         return vm.drops.filter { seen.insert($0.id).inserted }
     }
 
-    /// Live stream entries: open drops first (sorted by freshness), then taken drops as context.
-    /// `isPrimaryTier` = true means JUST OPENED (bookable), false means JUST MISSED (taken/sold-out).
+    /// Live stream entries: most-recently-detected drops from the ranked pool, padded to ≥5 rows.
+    /// Depends on `liveListShuffleToken` and `lastRefreshed`.
     private var quietCuratorStreamEntries: [QuietStreamEntry] {
         _ = vm.liveListShuffleToken
         _ = vm.lastRefreshed
@@ -404,16 +408,19 @@ struct FeedView: View {
         let pool = quietCuratorStreamPool
         guard !pool.isEmpty else { return [] }
 
-        let sorted = pool.sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
-        let open   = sorted.filter { $0.exploreSnagAvailable != false }
-        let taken  = sorted.filter { $0.exploreSnagAvailable == false }
+        // Sort by freshness; prefer drops with a booking URL first, then fill from the rest.
+        let withURL = pool
+            .filter { feedDropIsBookable($0) }
+            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+        let withoutURL = pool
+            .filter { !feedDropIsBookable($0) }
+            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
 
-        // Up to 4 open rows, then 1 taken row for context, pad to minimum
-        let openSlots  = min(open.count, 4)
-        let takenSlots = taken.isEmpty ? 0 : 1
-        var ordered: [Drop] = Array(open.prefix(openSlots)) + Array(taken.prefix(takenSlots))
-
-        var built = ordered.map { QuietStreamEntry.live($0, isPrimaryTier: $0.exploreSnagAvailable != false) }
+        var ordered = withURL + withoutURL
+        var entries = ordered.prefix(minQuietCuratorStreamRows).map {
+            QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0))
+        }
+        var built = Array(entries)
         padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
         return built
     }
@@ -462,9 +469,9 @@ struct FeedView: View {
     private func quietCuratorHottestCarouselCardChrome<V: View>(_ content: V) -> some View {
         let r: CGFloat = 16
         return content
-            .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
+            .clipped()
             .overlay(
-                RoundedRectangle(cornerRadius: r, style: .continuous)
+                Rectangle()
                     .stroke(Color.black.opacity(0.1), lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
@@ -558,33 +565,33 @@ struct FeedView: View {
     }
 
     private var quietCuratorLiveStreamSection: some View {
-        let rows: [(Drop, Bool)] = quietCuratorStreamEntries.compactMap { e in
-            guard case .live(let d, let primary) = e else { return nil }
-            return (d, primary)
+        let drops = quietCuratorStreamEntries.compactMap { e -> Drop? in
+            guard case .live(let d, _) = e else { return nil }
+            return d
         }
         return Group {
-            if rows.isEmpty {
+            if drops.isEmpty {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     QuietCuratorLiveStreamCenteredTitle()
                         .padding(.horizontal, 18)
 
+                    // Single bordered container, rows separated by dividers
                     VStack(spacing: 0) {
-                        ForEach(Array(rows.enumerated()), id: \.offset) { idx, pair in
-                            let (drop, isPrimary) = pair
+                        ForEach(Array(drops.enumerated()), id: \.offset) { idx, drop in
                             LiveStreamOpenCard(
                                 drop: drop,
                                 preferredParty: mockPreferredParty(for: drop),
                                 todayDateStr: vm.todayDateStr,
-                                isTaken: !isPrimary,
                                 onTap: { liveStreamOpenResy(drop) }
                             )
                             .staggeredAppear(index: idx, delayPerItem: 0.03)
 
-                            if idx < rows.count - 1 {
+                            if idx < drops.count - 1 {
                                 Divider()
                                     .background(CreamEditorialTheme.hairline)
+                                    .padding(.horizontal, 16)
                             }
                         }
                     }
@@ -763,9 +770,9 @@ struct FeedView: View {
             }
             .padding(16)
             .background(Color(white: 0.14))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipped()
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                Rectangle()
                     .stroke(Color.white.opacity(0.08), lineWidth: 1)
             )
         }
@@ -1109,7 +1116,7 @@ struct FeedView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            Rectangle()
                 .stroke(palette.border, lineWidth: 1)
         )
     }
@@ -1194,7 +1201,7 @@ struct FeedView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            Rectangle()
                 .stroke(AppTheme.liveDot.opacity(0.25), lineWidth: 0.5)
         )
     }
@@ -1220,7 +1227,7 @@ struct FeedView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                Rectangle()
                     .stroke(AppTheme.accentOrange.opacity(0.35), lineWidth: 0.5)
             )
         }
@@ -1261,7 +1268,6 @@ struct FeedView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
                 .background(SnagDesignSystem.salmonAccent)
-                .cornerRadius(12)
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -1525,11 +1531,11 @@ private struct LiveGlanceCompactCard: View {
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                Rectangle()
                     .fill(Color(white: 0.11))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                Rectangle()
                     .stroke(Color.white.opacity(0.07), lineWidth: 1)
             )
         }
@@ -1742,9 +1748,9 @@ private struct QuietCuratorTacticalForecastPanel: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(CreamEditorialTheme.canvas)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipped()
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        Rectangle()
                             .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
                     )
             }
@@ -1850,9 +1856,9 @@ private struct QuietCuratorTacticalForecastPanel: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(height: 200)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            Rectangle()
                 .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
         )
     }
@@ -1886,7 +1892,7 @@ private struct QuietCuratorTacticalForecastPanel: View {
             .frame(height: 72)
             .frame(maxWidth: .infinity)
             .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .clipped()
 
             Text(timePlusLabel(for: v))
                 .font(.system(size: 13, weight: .bold))
@@ -1902,9 +1908,9 @@ private struct QuietCuratorTacticalForecastPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(Color(red: 0.94, green: 0.94, blue: 0.96))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            Rectangle()
                 .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
         )
     }
@@ -2022,7 +2028,7 @@ private struct MarketLeaderHeroCard: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(SnagDesignSystem.coral)
-                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .clipped()
                     } else {
                         Color.clear.frame(width: 1, height: 1)
                     }
@@ -2063,9 +2069,9 @@ private struct MarketLeaderHeroCard: View {
                         .frame(maxWidth: .infinity, minHeight: 40, alignment: .center)
                         .padding(.horizontal, 6)
                         .background(SnagDesignSystem.darkElevated)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipped()
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            Rectangle()
                                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
                         )
                 }
@@ -2079,9 +2085,9 @@ private struct MarketLeaderHeroCard: View {
         .frame(height: Self.cardHeight)
         .frame(maxWidth: .infinity)
         .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
@@ -2136,9 +2142,9 @@ private struct FeedPredictWillOpenSection: View {
                             .background(
                                 editorialCream ? CreamEditorialTheme.cardWhite : Color(white: 0.14)
                             )
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .clipped()
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                Rectangle()
                                     .stroke(
                                         editorialCream ? CreamEditorialTheme.hairline : Color.clear,
                                         lineWidth: 1
@@ -2245,9 +2251,9 @@ private struct FeedPredictWillOpenSection: View {
                 .frame(width: 148, alignment: .leading)
             }
             .frame(width: 148, height: 188)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipped()
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                Rectangle()
                     .stroke(
                         editorialCream ? CreamEditorialTheme.hairline : Color.white.opacity(0.08),
                         lineWidth: 1
@@ -2415,7 +2421,7 @@ private struct MockLiveNowRow: View {
                                 .foregroundColor(.white)
                                 .frame(width: 46, height: 44)
                                 .background(SnagDesignSystem.coral)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .clipped()
                         }
                         .buttonStyle(.plain)
                     } else if let fresh = drop.serverFreshnessLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !fresh.isEmpty {
@@ -2436,9 +2442,9 @@ private struct MockLiveNowRow: View {
             .padding(.vertical, 12)
         }
         .frame(height: rowHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            Rectangle()
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
         .opacity(available ? 1 : 0.88)
@@ -2502,7 +2508,7 @@ private struct InventoryPredictionsSection: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(SnagDesignSystem.coralSoft)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipped()
                 }
                 .buttonStyle(.plain)
             }
@@ -2549,7 +2555,7 @@ private struct InventoryPredictionRow: View {
                 SnagDesignSystem.cardGray
             }
             .frame(width: 52, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipped()
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(venue.name)
@@ -2742,7 +2748,7 @@ private struct CrownJewelCard: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .background(SnagDesignSystem.coral)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .clipped()
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
@@ -2754,7 +2760,7 @@ private struct CrownJewelCard: View {
             .frame(width: cardWidth, height: cardHeight, alignment: .bottom)
         }
         .frame(width: cardWidth, height: cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipped()
         .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 }
@@ -3080,7 +3086,7 @@ private struct BarebonesDropRow: View {
                 )
             }
             .frame(width: 56, height: 56)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipped()
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(drop.name)
@@ -3118,7 +3124,7 @@ private struct BarebonesDropRow: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(AppTheme.accentRed)
-                    .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
+                    .clipped()
                 }
                 .buttonStyle(ScaleButtonStyle())
                 .disabled(resyUrl == nil)
@@ -3138,9 +3144,9 @@ private struct BarebonesDropRow: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 16)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .stroke(AppTheme.border, lineWidth: 0.5)
         )
     }
@@ -3194,7 +3200,6 @@ private struct RareDropCard: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
                     .background(AppTheme.scarcityRare)
-                    .cornerRadius(6)
                     .padding(8)
             }
 
@@ -3236,7 +3241,6 @@ private struct RareDropCard: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
                         .background(AppTheme.accentOrange)
-                        .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 2)
@@ -3245,9 +3249,9 @@ private struct RareDropCard: View {
         }
         .frame(width: 160)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            Rectangle()
                 .stroke(AppTheme.scarcityRare.opacity(0.4), lineWidth: 0.5)
         )
     }
@@ -3300,7 +3304,6 @@ private struct TrendingDropCard: View {
                         .padding(.horizontal, 7)
                         .padding(.vertical, 4)
                         .background(AppTheme.liveDot)
-                        .cornerRadius(6)
                         .padding(8)
                 }
             }
@@ -3330,7 +3333,6 @@ private struct TrendingDropCard: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
                         .background(AppTheme.accent)
-                        .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
             }
@@ -3338,9 +3340,9 @@ private struct TrendingDropCard: View {
         }
         .frame(width: 150)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            Rectangle()
                 .stroke(AppTheme.liveDot.opacity(0.3), lineWidth: 0.5)
         )
     }
@@ -3406,7 +3408,7 @@ struct LatestDropRowView: View {
                     }
                 }
                 .frame(width: 58, height: 58)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipped()
 
                 // Name + badges + sublabel
                 VStack(alignment: .leading, spacing: 4) {
@@ -3422,7 +3424,6 @@ struct LatestDropRowView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(badge.color)
-                                .cornerRadius(4)
                         }
                     }
                     if !subLabel.isEmpty {
@@ -3455,9 +3456,9 @@ struct LatestDropRowView: View {
             }
             .padding(12)
             .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipped()
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                Rectangle()
                     .stroke(AppTheme.border, lineWidth: 0.5)
             )
         }
@@ -3503,7 +3504,7 @@ struct HotRightNowCard: View {
                 }
                 .frame(width: 120, height: 80)
                 .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipped()
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {

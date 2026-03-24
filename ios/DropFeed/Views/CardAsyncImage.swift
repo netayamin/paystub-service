@@ -88,11 +88,11 @@ struct CardAsyncImage<Fallback: View>: View {
 #Preview("Skeleton tones") {
     VStack(spacing: 8) {
         HStack(spacing: 8) {
-            CardImageSkeleton(tone: .lightOnLight).frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: 12))
-            CardImageSkeleton(tone: .darkCard).frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: 12))
+            CardImageSkeleton(tone: .lightOnLight).frame(width: 60, height: 60).clipped()
+            CardImageSkeleton(tone: .darkCard).frame(width: 60, height: 60).clipped()
             CardImageSkeleton(tone: .snagMuted).frame(width: 48, height: 48).clipShape(Circle())
         }
-        CardImageSkeleton(tone: .heroMuted).frame(height: 100).clipShape(RoundedRectangle(cornerRadius: 16))
+        CardImageSkeleton(tone: .heroMuted).frame(height: 100).clipped()
     }
     .padding()
     .background(Color.black.opacity(0.2))

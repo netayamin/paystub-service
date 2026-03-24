@@ -167,7 +167,7 @@ struct SearchView: View {
                         whoSection
                     }
                     .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .clipped()
                     .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
@@ -215,7 +215,7 @@ struct SearchView: View {
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(palette.accentRed.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipped()
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                 }
@@ -265,7 +265,7 @@ struct SearchView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .background(palette.pageBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipped()
 
             // Quick-pick chips
             ScrollView(.horizontal, showsIndicators: false) {
@@ -359,9 +359,9 @@ struct SearchView: View {
             .foregroundColor(sel ? .white : palette.textSecondary)
             .frame(width: 54, height: 62)
             .background(sel ? Color(red: 0.11, green: 0.14, blue: 0.22) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipped()
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                Rectangle()
                     .stroke(sel ? Color.clear : palette.border, lineWidth: 1)
             )
         }
@@ -480,7 +480,7 @@ struct SearchView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(palette.accentRed)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipped()
         }
         .buttonStyle(.plain)
     }
@@ -549,9 +549,9 @@ struct SearchView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(palette.accentRed.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipped()
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        Rectangle()
                             .stroke(palette.accentRed.opacity(0.18), lineWidth: 1)
                     )
                 }
@@ -746,7 +746,7 @@ private struct LikelyOpenRow: View {
             .padding(.vertical, 14)
             .background(Color.white)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipped()
         .shadow(color: .black.opacity(0.07), radius: 10, x: 0, y: 3)
     }
 }
@@ -817,7 +817,7 @@ private struct SearchResultCard: View {
                         }
                     }
                     .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipped()
 
                     // Elite flame badge on thumbnail
                     if isElite {
@@ -876,7 +876,7 @@ private struct SearchResultCard: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 9)
                             .background(palette.accentRed)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .clipped()
                     }
                     .buttonStyle(.plain)
                     .disabled(resyUrl == nil)
@@ -947,11 +947,11 @@ private struct SearchResultCard: View {
             }
         }
         .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipped()
         .shadow(color: isElite ? palette.accentRed.opacity(0.10) : .black.opacity(0.05),
                 radius: isElite ? 10 : 6, x: 0, y: 2)
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .stroke(isElite ? palette.accentRed.opacity(0.25) : Color.clear, lineWidth: 1.5)
         )
     }

@@ -100,7 +100,7 @@ struct FeedSkeletonView: View {
                 .frame(width: max(12, peek - 4), height: heroHeight)
         }
         .padding(.leading, side)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipped()
         .shimmer()
     }
 

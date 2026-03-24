@@ -95,7 +95,6 @@ struct PremiumPaywallView: View {
                             .background(
                                 LinearGradient(colors: [AppTheme.premiumGold, Color.orange], startPoint: .leading, endPoint: .trailing)
                             )
-                            .cornerRadius(16)
                         }
                         .disabled(premium.purchaseInProgress)
                         
@@ -129,7 +128,7 @@ struct PremiumPaywallView: View {
                 .foregroundColor(iconColor)
                 .frame(width: 36, height: 36)
                 .background(iconColor.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipped()
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)

@@ -45,7 +45,7 @@ struct LikelyToOpenSection: View {
                                 .foregroundColor(SnagDesignSystem.coral)
                                 .frame(width: 172, height: 188)
                                 .background(SnagDesignSystem.cardGray)
-                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .clipped()
                             }
                             .buttonStyle(.plain)
                         }
@@ -162,7 +162,7 @@ struct LikelyToOpenSection: View {
             .background(SnagDesignSystem.cardGray)
         }
         .frame(width: 172, height: 188, alignment: .top)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipped()
     }
 
     private func likelyTimeLine(_ venue: LikelyToOpenVenue) -> String {

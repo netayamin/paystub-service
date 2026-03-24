@@ -47,9 +47,8 @@ struct YouView: View {
                 row(label: "Last scan", value: feedVM.lastScanText)
             }
             .background(AppTheme.surface)
-            .cornerRadius(14)
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
+                Rectangle()
                     .stroke(AppTheme.border, lineWidth: 0.5)
             )
         }
@@ -91,9 +90,8 @@ struct YouView: View {
                 .padding(.vertical, 14)
             }
             .background(AppTheme.surface)
-            .cornerRadius(14)
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
+                Rectangle()
                     .stroke(AppTheme.border, lineWidth: 0.5)
             )
         }
@@ -131,9 +129,8 @@ struct YouView: View {
                 }
                 .padding(16)
                 .background(AppTheme.surface)
-                .cornerRadius(14)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14)
+                    Rectangle()
                         .stroke(AppTheme.border, lineWidth: 0.5)
                 )
             }
@@ -165,9 +162,8 @@ struct YouView: View {
                 .padding(.vertical, 14)
             }
             .background(AppTheme.surface)
-            .cornerRadius(14)
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
+                Rectangle()
                     .stroke(AppTheme.border, lineWidth: 0.5)
             )
         }

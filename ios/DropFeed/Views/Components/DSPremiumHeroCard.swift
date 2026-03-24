@@ -159,7 +159,7 @@ struct DSPremiumHeroCard: View {
 
         Group {
             if let r = innerClipCornerRadius {
-                bounded.clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
+                bounded.clipped()
             } else {
                 bounded
             }
@@ -298,9 +298,9 @@ struct DSPremiumHeroCard: View {
                                 .frame(maxWidth: .infinity)
                                 .frame(height: isCompactTile ? 44 : 50)
                                 .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .clipped()
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    Rectangle()
                                         .stroke(Color.black.opacity(canBook ? 0.08 : 0.12), lineWidth: 1)
                                 )
                         }
@@ -317,9 +317,9 @@ struct DSPremiumHeroCard: View {
                                     .foregroundColor(.white)
                                     .frame(width: isCompactTile ? 44 : 52, height: isCompactTile ? 44 : 50)
                                     .background(Color.black)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .clipped()
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        Rectangle()
                                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                                     )
                             }
@@ -330,9 +330,9 @@ struct DSPremiumHeroCard: View {
                     .padding(isCompactTile ? 10 : 12)
                     .background {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            Rectangle()
                                 .fill(Color.black.opacity(0.32))
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            Rectangle()
                                 .fill(.ultraThinMaterial)
                         }
                         .environment(\.colorScheme, .dark)
@@ -386,6 +386,6 @@ struct DSPremiumHeroCard: View {
         )
         .frame(width: 280)
         .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipped()
     }
 }

@@ -287,9 +287,9 @@ private struct LoginSpotFeatureCard: View {
             .background(Color(red: 0.07, green: 0.07, blue: 0.07))
         }
         .frame(width: width)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .stroke(
                     LinearGradient(
                         colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],

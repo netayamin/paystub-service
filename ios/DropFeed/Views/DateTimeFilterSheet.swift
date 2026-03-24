@@ -59,7 +59,6 @@ struct DateTimeFilterSheet: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(vm.selectedDates.isEmpty ? AppTheme.pillSelected : AppTheme.pillUnselected)
-                        .cornerRadius(10)
                 }
                 .buttonStyle(.plain)
                 ForEach(vm.dateOptions, id: \.dateStr) { opt in
@@ -80,7 +79,6 @@ struct DateTimeFilterSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(isSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
-                .cornerRadius(10)
         }
         .buttonStyle(.plain)
     }
@@ -111,7 +109,6 @@ struct DateTimeFilterSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(isSelected ? AppTheme.pillSelected : AppTheme.pillUnselected)
-                .cornerRadius(10)
         }
         .buttonStyle(.plain)
     }

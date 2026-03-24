@@ -61,7 +61,7 @@ struct DropCardView: View {
                 }
             }
             .frame(width: 72, height: 72)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipped()
             
             // Content
             VStack(alignment: .leading, spacing: 6) {
@@ -123,7 +123,6 @@ struct DropCardView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(AppTheme.scarcityBackground(for: drop.scarcityTier))
-                        .cornerRadius(6)
                     }
                     
                     if let trend = drop.trendLabel, let up = drop.trendUp {
@@ -137,7 +136,6 @@ struct DropCardView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(AppTheme.surfaceElevated)
-                        .cornerRadius(6)
                     }
                     
                     if let freshness = drop.serverFreshnessLabel {
@@ -170,9 +168,9 @@ struct DropCardView: View {
         }
         .padding(12)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipped()
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Rectangle()
                 .stroke(AppTheme.border, lineWidth: 0.5)
         )
     }
@@ -206,7 +204,6 @@ struct DropCardView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(hasLink ? AppTheme.surfaceElevated : AppTheme.surfaceElevated.opacity(0.5))
-        .cornerRadius(8)
     }
     
     private var imageFallback: some View {
