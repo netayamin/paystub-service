@@ -285,10 +285,16 @@ def rebuild_snapshot(db: Session) -> None:
         from app.services.discovery.recent_missed import (
             build_just_missed_payload,
             collect_bookable_venue_keys,
+            collect_live_open_venue_keys,
         )
 
-        # Missed strip: same window as home feed; exclude venues still bookable anywhere in inventory.
-        _bookable_keys = collect_bookable_venue_keys(just_opened_inventory, still_open_inventory)
+        # Missed strip: exclude venues that are still bookable.
+        # Union inventory-derived keys with a live slot_availability query so that venues
+        # whose slot_id changed between scans (API variance) are never shown as missed.
+        _bookable_keys = (
+            collect_bookable_venue_keys(just_opened_inventory, still_open_inventory)
+            | collect_live_open_venue_keys(db)
+        )
         just_missed = build_just_missed_payload(
             db,
             now=now_utc,

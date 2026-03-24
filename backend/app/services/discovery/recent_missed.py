@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.recent_missed_drop import RecentMissedDrop
+from app.models.slot_availability import SlotAvailability
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,31 @@ def collect_bookable_venue_keys(
                 if k:
                     keys.add(k)
     return keys
+
+
+def collect_live_open_venue_keys(db: Session) -> set[str]:
+    """Query slot_availability directly for venues with at least one open slot right now.
+
+    This catches venues whose slot_id changed between scans (Resy API variance):
+    the old slot gets written to recent_missed_drops while the new slot hasn't
+    made it into the snapshot inventory yet. Without this, those venues appear
+    as 'just missed' even though they're still bookable.
+    """
+    try:
+        rows = (
+            db.query(SlotAvailability.venue_id, SlotAvailability.venue_name)
+            .filter(SlotAvailability.state == "open")
+            .distinct()
+            .all()
+        )
+        keys: set[str] = set()
+        for vid, vname in rows:
+            k = venue_identity_key(vid, vname)
+            if k:
+                keys.add(k)
+        return keys
+    except Exception:
+        return set()
 
 
 def record_closed_slots_as_missed(

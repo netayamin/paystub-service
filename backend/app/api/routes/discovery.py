@@ -556,9 +556,13 @@ async def list_just_opened(
         from app.services.discovery.recent_missed import (
             build_just_missed_payload,
             collect_bookable_venue_keys,
+            collect_live_open_venue_keys,
         )
 
-        _bookable_keys = collect_bookable_venue_keys(jo_inv, so_inv)
+        _bookable_keys = (
+            collect_bookable_venue_keys(jo_inv, so_inv)
+            | collect_live_open_venue_keys(db)
+        )
         just_missed = build_just_missed_payload(
             db,
             exclude_bookable_keys=_bookable_keys,
