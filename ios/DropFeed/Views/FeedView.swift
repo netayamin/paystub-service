@@ -32,23 +32,22 @@ private func padQuietCuratorStreamEntries(_ entries: inout [QuietStreamEntry], p
     }
 }
 
-/// Hairline rule with centered **LIVE STREAM** (reference: title only above the card).
+/// Hairline rule with centered **LIVE STREAM** title + **ACTIVE NOW** status.
 private struct QuietCuratorLiveStreamCenteredTitle: View {
     var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
+        HStack(alignment: .center) {
+            // "LIVE STREAM" — Manrope 14px Bold, deep neutral
             Text("LIVE STREAM")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(CreamEditorialTheme.textPrimary)
-                .tracking(0.85)
+                .font(Manrope.title(14))
+                .foregroundColor(Color(red: 0.08, green: 0.08, blue: 0.10))
+                .tracking(-0.2)
                 .lineLimit(1)
-                .padding(.horizontal, 12)
-                .background(CreamEditorialTheme.canvas)
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
+            Spacer()
+            // "ACTIVE NOW" — Manrope 10px Bold, Bordeaux Red
+            Text("ACTIVE NOW")
+                .font(Manrope.status(10))
+                .foregroundColor(CreamEditorialTheme.burgundy)
+                .tracking(0.4)
         }
     }
 }
@@ -1071,14 +1070,14 @@ struct FeedView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("LIVE STREAM")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(palette.textTertiary)
-                    .tracking(0.8)
+                    .font(Manrope.title(14))
+                    .foregroundColor(Color(red: 0.08, green: 0.08, blue: 0.10))
+                    .tracking(-0.2)
                 Spacer()
                 Text(vm.liveStreamActivityLabel.uppercased())
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(palette.textTertiary)
-                    .tracking(0.3)
+                    .font(Manrope.status(10))
+                    .foregroundColor(CreamEditorialTheme.burgundy)
+                    .tracking(0.4)
             }
             .padding(.horizontal, 16)
 

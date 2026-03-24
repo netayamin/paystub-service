@@ -3,7 +3,6 @@ import SwiftUI
 // MARK: - Formatting
 
 enum LiveStreamCardFormatting {
-    /// `HH:mm` from first slot (reference detail line).
     static func slotTime24hColon(_ drop: Drop) -> String {
         let raw = drop.slots.first?.time?.trimmingCharacters(in: .whitespaces) ?? ""
         guard !raw.isEmpty else { return "—" }
@@ -13,22 +12,11 @@ enum LiveStreamCardFormatting {
         return String(format: "%02d:%02d", h, mm)
     }
 
-    static func detailLine(drop: Drop) -> String {
-        let kind = drop.liveStreamVelocityBadge
-            ?? drop.exploreVenuePill
-            ?? drop.rowPrimaryMetric
-            ?? "Table"
-        let time = slotTime24hColon(drop)
-        return "\(kind) • \(time)"
-    }
-
     static func venueInitials(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "??" }
         let parts = trimmed.split(separator: " ").filter { !$0.isEmpty }
-        if parts.count >= 2 {
-            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
-        }
+        if parts.count >= 2 { return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased() }
         return String(trimmed.prefix(2)).uppercased()
     }
 
@@ -39,9 +27,9 @@ enum LiveStreamCardFormatting {
     }
 }
 
-// MARK: - Open row (full-width horizontal)
+// MARK: - Open row
 
-/// Full-width horizontal card: thumbnail | JUST OPENED · ago / name / ⚡ claim time · detail | BOOK
+/// Full-width horizontal live-stream row using the Manrope typographic spec.
 struct LiveStreamOpenCard: View {
     let drop: Drop
     let preferredParty: Int
@@ -74,10 +62,13 @@ struct LiveStreamOpenCard: View {
         return "\(kind) • \(preferredParty)ppl"
     }
 
+    private var hasURL: Bool { drop.effectiveResyBookingURL != nil }
+
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .center, spacing: 14) {
-                // Thumbnail
+
+                // Thumbnail — sharp square
                 Group {
                     if let u = imageURL {
                         CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
@@ -87,51 +78,55 @@ struct LiveStreamOpenCard: View {
                         Color(red: 0.91, green: 0.91, blue: 0.93)
                     }
                 }
-                .frame(width: 78, height: 78)
+                .frame(width: 72, height: 72)
                 .clipped()
 
                 // Text stack
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
+
+                    // Signal label + time
+                    HStack(spacing: 5) {
                         Text("JUST OPENED")
-                            .font(.system(size: 11, weight: .heavy))
+                            .font(Manrope.signalLabel(9))
                             .foregroundColor(CreamEditorialTheme.burgundy)
-                            .tracking(0.4)
+                            .tracking(0.6)
                         Text(agoLabel)
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(CreamEditorialTheme.textTertiary)
+                            .font(Manrope.detail(10))
+                            .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.62))
                     }
 
-                    Text(drop.name)
-                        .font(.system(size: 20, weight: .bold, design: .serif))
-                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                    // Restaurant name — primary anchor
+                    Text(drop.name.uppercased())
+                        .font(Manrope.title(14))
+                        .foregroundColor(Color(red: 0.08, green: 0.08, blue: 0.10))
                         .lineLimit(1)
                         .minimumScaleFactor(0.80)
 
+                    // Secondary signals
                     HStack(spacing: 4) {
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.0))
                         Text(claimTimeLabel)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(Manrope.detail(10))
+                            .fontWeight(.semibold)
                             .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.0))
                         Text(detailLine)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(CreamEditorialTheme.textSecondary)
+                            .font(Manrope.detail(10))
+                            .foregroundColor(Color(red: 0.60, green: 0.60, blue: 0.62))
                             .lineLimit(1)
                     }
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-                // BOOK button — dimmed when no booking URL yet
-                let hasURL = drop.effectiveResyBookingURL != nil
+                // BOOK button
                 Text("BOOK")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(hasURL ? .white : Color(red: 0.6, green: 0.6, blue: 0.62))
-                    .tracking(0.6)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    .background(hasURL ? Color.black : Color(red: 0.9, green: 0.9, blue: 0.92))
+                    .font(Manrope.button(11))
+                    .foregroundColor(hasURL ? .white : Color(red: 0.60, green: 0.60, blue: 0.62))
+                    .tracking(2.0)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 13)
+                    .background(hasURL ? Color(red: 0.08, green: 0.08, blue: 0.10) : Color(red: 0.90, green: 0.90, blue: 0.92))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -140,4 +135,3 @@ struct LiveStreamOpenCard: View {
         .buttonStyle(.plain)
     }
 }
-

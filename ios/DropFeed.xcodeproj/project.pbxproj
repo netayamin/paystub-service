@@ -315,6 +315,7 @@
 			files = (
 				0E072CB12F42DB98006543EE /* claude.md in Resources */,
 				A1000008 /* Assets.xcassets in Resources */,
+							B90F9BBC4A9A8362FC2A95B9 /* Manrope-Variable.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
