@@ -7,7 +7,7 @@ import Foundation
 final class APIService {
     static let shared = APIService()
 
-    /// API origin only (no trailing slash, no `/chat` suffix — paths add `/chat/...` themselves).
+    /// API origin only (no trailing slash).
     private let baseURL: String = APIService.resolvedAPIBaseOrigin
 
     /// Normalized origin actually used for requests (same logic as `baseURL`).
@@ -38,10 +38,6 @@ final class APIService {
     private static func normalizeAPIBaseOrigin(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         while s.hasSuffix("/") { s.removeLast() }
-        if s.hasSuffix("/chat") {
-            s = String(s.dropLast(5))
-            while s.hasSuffix("/") { s.removeLast() }
-        }
         return s
     }
     
@@ -78,7 +74,7 @@ final class APIService {
             Can’t reach \(Self.sharedBaseURLDisplay) — nothing answered, or it’s not this API.
 
             • In the backend folder: `poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000`
-            • Check port 8000 isn’t another app (you should get 200 from POST /chat/auth/request-code, not 404).
+            • Check port 8000 isn’t another app (you should get 200 from POST /auth/request-code, not 404).
             • Simulator uses `API_BASE_URL` from Info.plist (127.0.0.1 is correct for the Mac).
             """
             #else
@@ -118,7 +114,7 @@ final class APIService {
         timeAfter: String? = nil,
         timeBefore: String? = nil
     ) async throws -> JustOpenedResponse {
-        var components = URLComponents(string: "\(baseURL)/chat/watches/just-opened")!
+        var components = URLComponents(string: "\(baseURL)/feed/live")!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
         ]
@@ -162,7 +158,7 @@ final class APIService {
         guard !dates.isEmpty else {
             throw APIError.serverMessage("Choose at least one date for Explore.")
         }
-        var components = URLComponents(string: "\(baseURL)/chat/watches/drops")!
+        var components = URLComponents(string: "\(baseURL)/explore/drops")!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "dates", value: dates.joined(separator: ",")),
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
@@ -192,7 +188,7 @@ final class APIService {
     }
     
     func fetchNewDrops(withinMinutes: Int = 15, since: String? = nil) async throws -> [Drop] {
-        var components = URLComponents(string: "\(baseURL)/chat/watches/new-drops")!
+        var components = URLComponents(string: "\(baseURL)/feed/new-drops")!
         var qi: [URLQueryItem] = [
             URLQueryItem(name: "within_minutes", value: "\(withinMinutes)"),
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))")
@@ -226,7 +222,7 @@ final class APIService {
     // MARK: - Watchlist
     
     func fetchWatches() async throws -> VenueWatchesResponse {
-        guard let url = URL(string: "\(baseURL)/chat/venue-watches") else {
+        guard let url = URL(string: "\(baseURL)/watches") else {
             throw APIError.invalidURL
         }
         let (data, response) = try await session.data(from: url)
@@ -237,7 +233,7 @@ final class APIService {
     }
     
     func addWatch(venueName: String) async throws -> VenueWatch {
-        guard let url = URL(string: "\(baseURL)/chat/venue-watches") else {
+        guard let url = URL(string: "\(baseURL)/watches") else {
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)
@@ -252,7 +248,7 @@ final class APIService {
     }
     
     func removeWatch(id: Int) async throws {
-        guard let url = URL(string: "\(baseURL)/chat/venue-watches/\(id)") else {
+        guard let url = URL(string: "\(baseURL)/watches/\(id)") else {
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)
@@ -264,7 +260,7 @@ final class APIService {
     }
     
     func addExclude(venueName: String) async throws {
-        guard let url = URL(string: "\(baseURL)/chat/venue-watches/exclude") else {
+        guard let url = URL(string: "\(baseURL)/watches/exclude") else {
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)
@@ -278,7 +274,7 @@ final class APIService {
     }
     
     func removeExclude(id: Int) async throws {
-        guard let url = URL(string: "\(baseURL)/chat/venue-watches/exclude/\(id)") else {
+        guard let url = URL(string: "\(baseURL)/watches/exclude/\(id)") else {
             throw APIError.invalidURL
         }
         var request = URLRequest(url: url)
@@ -290,7 +286,7 @@ final class APIService {
     }
     
     func fetchFollowStatus(market: String = "nyc") async throws -> FollowStatusResponse {
-        var components = URLComponents(string: "\(baseURL)/chat/watches/follows/status")!
+        var components = URLComponents(string: "\(baseURL)/feed/follows/status")!
         components.queryItems = [
             URLQueryItem(name: "market", value: market),
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
@@ -304,7 +300,7 @@ final class APIService {
     }
 
     func fetchFollowActivity(limit: Int = 30) async throws -> FollowActivityResponse {
-        var components = URLComponents(string: "\(baseURL)/chat/watches/follows/activity")!
+        var components = URLComponents(string: "\(baseURL)/feed/follows/activity")!
         components.queryItems = [
             URLQueryItem(name: "limit", value: "\(limit)"),
             URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
@@ -318,7 +314,7 @@ final class APIService {
     }
 
     func fetchHotlist() async throws -> [String] {
-        guard let url = URL(string: "\(baseURL)/chat/watches/hotlist") else {
+        guard let url = URL(string: "\(baseURL)/feed/hotlist") else {
             throw APIError.invalidURL
         }
         let (data, response) = try await session.data(from: url)
@@ -332,7 +328,7 @@ final class APIService {
     // MARK: - Push
     
     func registerPushToken(deviceToken: String) async {
-        guard let url = URL(string: "\(baseURL)/chat/push/register") else { return }
+        guard let url = URL(string: "\(baseURL)/push/register") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -344,7 +340,7 @@ final class APIService {
     /// Fire-and-forget product metrics (`user_behavior_events`). Uses `X-Recipient-Id` when you pass `recipientId`.
     func trackBehaviorEvents(recipientId: String? = nil, events: [BehaviorTrackEvent]) {
         guard !events.isEmpty else { return }
-        guard let url = URL(string: "\(baseURL)/chat/notifications/behavior-events") else { return }
+        guard let url = URL(string: "\(baseURL)/events/behavior") else { return }
         Task {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -360,7 +356,7 @@ final class APIService {
     // MARK: - Auth (phone / OTP / profile)
 
     func requestAuthCode(phoneE164: String) async throws {
-        guard let url = URL(string: "\(baseURL)/chat/auth/request-code") else { throw APIError.invalidURL }
+        guard let url = URL(string: "\(baseURL)/auth/request-code") else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -374,7 +370,7 @@ final class APIService {
     }
 
     func verifyAuthCode(phoneE164: String, code: String) async throws -> String {
-        guard let url = URL(string: "\(baseURL)/chat/auth/verify-code") else { throw APIError.invalidURL }
+        guard let url = URL(string: "\(baseURL)/auth/verify-code") else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -390,7 +386,7 @@ final class APIService {
     }
 
     func completeAuthProfile(accessToken: String, firstName: String, lastName: String, email: String) async throws {
-        guard let url = URL(string: "\(baseURL)/chat/auth/complete-profile") else { throw APIError.invalidURL }
+        guard let url = URL(string: "\(baseURL)/auth/complete-profile") else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -475,7 +471,7 @@ struct NewDropSlot: Codable {
     }
 }
 
-/// Client event for `POST /chat/notifications/behavior-events` (conversion / product metrics).
+/// Client event for `POST /events/behavior` (conversion / product metrics).
 struct BehaviorTrackEvent: Encodable {
     let eventType: String
     var venueId: String?

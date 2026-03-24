@@ -1,7 +1,6 @@
 """
 Discovery API — routes used by the iOS app (and ops via /docs).
 
-Mounted under ``/chat`` (e.g. ``GET /chat/watches/just-opened``).
 See ``backend/docs/API_IOS.md`` for the full client contract.
 """
 import json
@@ -71,7 +70,7 @@ def _next_scan_iso(request: Request) -> str:
     return (datetime.now(timezone.utc) + timedelta(seconds=DISCOVERY_POLL_INTERVAL_SECONDS)).isoformat()
 
 
-@router.get("/watches/hotlist")
+@router.get("/feed/hotlist")
 async def hotlist():
     """Hotlist (hotspot) restaurant names. Push notifications fire for any drop at these venues plus your saved watches."""
     return {"hotlist": list_hotspots("nyc"), "market": "nyc"}
@@ -87,7 +86,7 @@ def _recipient_id(request: Request) -> str:
     return (request.headers.get("X-Recipient-Id") or "default").strip() or "default"
 
 
-@router.get("/venue-watches")
+@router.get("/watches")
 async def get_venue_watches(request: Request, db: Session = Depends(get_db)):
     """
     User's notify list: saved (include) and excluded (removed from default hotlist).
@@ -110,7 +109,7 @@ async def get_venue_watches(request: Request, db: Session = Depends(get_db)):
     return {"watches": watches, "excluded": excluded}
 
 
-@router.post("/venue-watches")
+@router.post("/watches")
 async def add_venue_watch(request: Request, db: Session = Depends(get_db)):
     """Add a venue to your notify list (include)."""
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
@@ -137,7 +136,7 @@ async def add_venue_watch(request: Request, db: Session = Depends(get_db)):
     return {"id": row.id, "venue_name": norm}
 
 
-@router.delete("/venue-watches/{watch_id:int}")
+@router.delete("/watches/{watch_id:int}")
 async def remove_venue_watch(request: Request, watch_id: int, db: Session = Depends(get_db)):
     """Remove a venue from your saved list (include)."""
     rid = _recipient_id(request)
@@ -153,7 +152,7 @@ async def remove_venue_watch(request: Request, watch_id: int, db: Session = Depe
     return {"ok": True}
 
 
-@router.post("/venue-watches/exclude")
+@router.post("/watches/exclude")
 async def add_venue_exclude(request: Request, db: Session = Depends(get_db)):
     """Remove a venue from default hotlist notifications (exclude)."""
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
@@ -180,7 +179,7 @@ async def add_venue_exclude(request: Request, db: Session = Depends(get_db)):
     return {"id": row.id, "venue_name": norm}
 
 
-@router.delete("/venue-watches/exclude/{exclude_id:int}")
+@router.delete("/watches/exclude/{exclude_id:int}")
 async def remove_venue_exclude(request: Request, exclude_id: int, db: Session = Depends(get_db)):
     """Add a venue back to default hotlist notifications (remove from excluded)."""
     rid = _recipient_id(request)
@@ -196,7 +195,7 @@ async def remove_venue_exclude(request: Request, exclude_id: int, db: Session = 
     return {"ok": True}
 
 
-@router.get("/watches/follows/status")
+@router.get("/feed/follows/status")
 async def follows_status(
     request: Request,
     db: Session = Depends(get_db),
@@ -213,7 +212,7 @@ async def follows_status(
     )
 
 
-@router.get("/watches/follows/activity")
+@router.get("/feed/follows/activity")
 async def follows_activity(
     request: Request,
     db: Session = Depends(get_db),
@@ -254,7 +253,7 @@ def _parse_since(since: str | None) -> datetime | None:
         return None
 
 
-@router.get("/watches/new-drops")
+@router.get("/feed/new-drops")
 async def new_drops(
     db: Session = Depends(get_db),
     within_minutes: int | None = None,
@@ -341,7 +340,7 @@ def _parse_ints(value: str | None) -> list[int] | None:
     return out if out else None
 
 
-@router.get("/watches/drops")
+@router.get("/explore/drops")
 async def list_drops(
     request: Request,
     response: Response,
@@ -423,7 +422,7 @@ async def list_drops(
         }
 
 
-@router.get("/watches/just-opened")
+@router.get("/feed/live")
 async def list_just_opened(
     request: Request,
     response: Response,
@@ -437,7 +436,7 @@ async def list_just_opened(
     """**Home feed (live):** slots that **opened** in the last ``LIVE_FEED_WINDOW_MINUTES`` (default 10).
 
     ``still_open`` is always empty here — full calendar inventory for Explore is
-    ``GET /chat/watches/drops?dates=YYYY-MM-DD,...``.
+    ``GET /explore/drops?dates=YYYY-MM-DD,...``.
 
     Serves from pre-computed snapshot when possible.
 

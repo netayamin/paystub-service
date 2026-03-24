@@ -181,10 +181,10 @@ if _maxim_logger is not None:
             pass
         return response
 
-app.include_router(auth.router, prefix="/chat", tags=["auth"])
-app.include_router(discovery.router, prefix="/chat", tags=["discovery"])
-app.include_router(notifications.router, prefix="/chat", tags=["notifications"])
-app.include_router(push.router, prefix="/chat", tags=["push"])
+app.include_router(auth.router, tags=["auth"])
+app.include_router(discovery.router, tags=["discovery"])
+app.include_router(notifications.router, tags=["events"])
+app.include_router(push.router, tags=["push"])
 
 
 @app.get("/", include_in_schema=False)

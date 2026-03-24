@@ -43,7 +43,7 @@ class BehaviorEventsRequest(BaseModel):
     events: list[BehaviorEventIn] = Field(..., max_length=50)
 
 
-@router.post("/notifications/behavior-events")
+@router.post("/events/behavior")
 def post_behavior_events(
     body: BehaviorEventsRequest,
     db: Session = Depends(get_db),

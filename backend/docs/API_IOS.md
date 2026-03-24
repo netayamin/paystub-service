@@ -1,11 +1,10 @@
 # API surface for the iOS app (Snag / DropFeed)
 
-All paths are relative to the API origin (e.g. `https://your-host` or `http://127.0.0.1:8000`).  
-The app uses the **`/chat`** prefix for product APIs.
+All paths are relative to the API origin (e.g. `https://your-host` or `http://127.0.0.1:8000`).
 
 FastAPI auto-generates API UIs when the server is running:
 
-- **`GET /docs`** — Swagger UI (expand endpoints, “Try it out”, send requests)
+- **`GET /docs`** — Swagger UI (expand endpoints, "Try it out", send requests)
 - **`GET /redoc`** — ReDoc (single-page reference, often easier to scan)
 - **`GET /openapi.json`** — raw schema (Postman, codegen, etc.)
 
@@ -24,48 +23,47 @@ FastAPI auto-generates API UIs when the server is running:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/chat/auth/request-code` | Send SMS OTP |
-| POST | `/chat/auth/verify-code` | Exchange code for access token |
-| POST | `/chat/auth/complete-profile` | Save name / email after verify |
+| POST | `/auth/request-code` | Send SMS OTP |
+| POST | `/auth/verify-code` | Exchange OTP for access token |
+| POST | `/auth/complete-profile` | Save name / email after verify |
 
 ---
 
-## Discovery & feed (primary data)
+## Feed — live activity (Home tab)
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/chat/watches/just-opened` | **Home / Feed:** live activity — slots that **opened** in the last ~10 minutes (`LIVE_FEED_WINDOW_MINUTES`); `still_open` is empty. Closures in that window appear in `just_missed`. |
-| GET | `/chat/watches/drops` | **Explore:** full bookable inventory for given days — requires `dates=YYYY-MM-DD,...`; optional `party_sizes`, `market`. Returns `just_opened` + `still_open` day buckets (client merges like before). |
-| GET | `/chat/watches/new-drops` | Lightweight “new since” list for alerts (uses full inventory window server-side). |
+| GET | `/feed/live` | Slots that **opened** in the last ~10 min (`LIVE_FEED_WINDOW_MINUTES`); `still_open` is always empty here |
+| GET | `/feed/new-drops` | Lightweight "new since" list used by push alerts |
+| GET | `/feed/hotlist` | Curated NYC hotspot restaurant names |
+| GET | `/feed/follows/status` | Per-venue last-drop hints (Saved tab) |
+| GET | `/feed/follows/activity` | Activity timeline (Saved tab) |
 
-Query params on `just-opened`: optional `dates`, `party_sizes`, `_t` (cache-bust).  
-Optional: `mobile`, `debug`, `market` (see OpenAPI).
+Query params on `/feed/live`: optional `dates`, `party_sizes`, `mobile`, `debug`, `_t` (cache-bust).
 
-Windows: `just_opened_inventory_minutes` (default 30) + `live_feed_window_minutes` (default 10) appear on **`GET /health`** under `discovery`.
+Windows: `live_feed_window_minutes` (default 10) and `just_opened_inventory_minutes` (default 30) appear on **`GET /health`** under `discovery`.
 
 ---
 
-## Saved venues & hotlist
+## Explore — full calendar inventory
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/chat/watches/hotlist` | Curated hotspot names per market |
-| GET | `/chat/venue-watches` | Saved watches + excluded list |
-| POST | `/chat/venue-watches` | Add watch |
-| DELETE | `/chat/venue-watches/{watch_id}` | Remove watch |
-| POST | `/chat/venue-watches/exclude` | Exclude from hotlist |
-| DELETE | `/chat/venue-watches/exclude/{exclude_id}` | Remove exclusion |
+| GET | `/explore/drops` | All bookable inventory for given days — requires `dates=YYYY-MM-DD,...`; optional `party_sizes`. Returns `just_opened` + `still_open` day buckets. |
 
 ---
 
-## Follows / activity (Saved tab)
+## Watches — saved venues
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/chat/watches/follows/status` | Per-venue last-drop hints |
-| GET | `/chat/watches/follows/activity` | Activity timeline |
+| GET | `/watches` | Saved watches + excluded list |
+| POST | `/watches` | Add a venue watch |
+| DELETE | `/watches/{watch_id}` | Remove a watch |
+| POST | `/watches/exclude` | Exclude a venue from hotlist notifications |
+| DELETE | `/watches/exclude/{exclude_id}` | Remove an exclusion |
 
-Headers: `X-Recipient-Id` (optional; default recipient for dev).
+Headers: `X-Recipient-Id` (optional; defaults to `default` for dev).
 
 ---
 
@@ -73,8 +71,8 @@ Headers: `X-Recipient-Id` (optional; default recipient for dev).
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/chat/push/register` | Register APNs device token |
-| POST | `/chat/notifications/behavior-events` | Batch product/analytics events |
+| POST | `/push/register` | Register APNs device token |
+| POST | `/events/behavior` | Batch product / analytics events |
 
 ---
 
