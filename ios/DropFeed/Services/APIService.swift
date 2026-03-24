@@ -156,6 +156,40 @@ final class APIService {
             throw APIError.decodeError(error)
         }
     }
+
+    /// Explore tab: full bookable inventory for specific calendar days (`just_opened` + `still_open` merge in client).
+    func fetchDrops(dates: [String], partySizes: [Int]? = nil) async throws -> JustOpenedResponse {
+        guard !dates.isEmpty else {
+            throw APIError.serverMessage("Choose at least one date for Explore.")
+        }
+        var components = URLComponents(string: "\(baseURL)/chat/watches/drops")!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "dates", value: dates.joined(separator: ",")),
+            URLQueryItem(name: "_t", value: "\(Int(Date().timeIntervalSince1970 * 1000))"),
+        ]
+        if let sizes = partySizes, !sizes.isEmpty {
+            queryItems.append(URLQueryItem(name: "party_sizes", value: sizes.map { "\($0)" }.joined(separator: ",")))
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else { throw APIError.invalidURL }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(from: url)
+        } catch let urlError as URLError {
+            throw APIError.serverMessage(Self.connectionHint(for: urlError))
+        } catch {
+            throw error
+        }
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.httpError
+        }
+        do {
+            return try JustOpenedResponse.decodeLenient(from: data, decoder: decoder)
+        } catch {
+            throw APIError.decodeError(error)
+        }
+    }
     
     func fetchNewDrops(withinMinutes: Int = 15, since: String? = nil) async throws -> [Drop] {
         var components = URLComponents(string: "\(baseURL)/chat/watches/new-drops")!

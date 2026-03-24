@@ -135,8 +135,8 @@ final class SearchViewModel: ObservableObject {
         partySize >= 4 ? [4, 6, 8] : [partySize]
     }
 
-    /// Party sizes sent to `/just-opened`; `nil` means omit param (any party).
-    /// Explore omits party on the wire so `/just-opened` returns the full day inventory; party segment is display-only.
+    /// Party sizes sent to the API; `nil` means omit param (any party).
+    /// Explore uses `/watches/drops` and omits party on the wire so the server returns full day inventory; party segment is display-only.
     private var effectivePartySizesForAPI: [Int]? {
         if exploreTabActive { return nil }
         return partyAPIFilter
@@ -177,16 +177,25 @@ final class SearchViewModel: ObservableObject {
 
         do {
             let dateQuery = selectedDates.isEmpty ? nil : Array(selectedDates)
-            let resp = try await service.fetchJustOpened(
-                dates:      dateQuery,
-                partySizes: effectivePartySizesForAPI,
-                timeAfter:  nil,
-                timeBefore: nil
-            )
+            let resp: JustOpenedResponse
+            if exploreTabActive {
+                let datesForAPI: [String]
+                if selectedDates.isEmpty {
+                    datesForAPI = dateOptions.map { $0.dateStr }
+                } else {
+                    datesForAPI = Array(selectedDates)
+                }
+                resp = try await service.fetchDrops(dates: datesForAPI, partySizes: effectivePartySizesForAPI)
+            } else {
+                resp = try await service.fetchJustOpened(
+                    dates:      dateQuery,
+                    partySizes: effectivePartySizesForAPI,
+                    timeAfter:  nil,
+                    timeBefore: nil
+                )
+            }
             var ranked = resp.rankedBoard ?? []
-            // Explore: prefer date-bucket inventory (just_opened + still_open).
-            // Only replace ranked_board when the filtered inventory is non-empty — otherwise we'd wipe
-            // ranked_board on date-string mismatches and show an empty grid.
+            // Explore: grid uses merged day inventory from `/watches/drops`.
             if exploreTabActive {
                 if let inv = resp.dayInventory, !inv.isEmpty {
                     let allowedNorm = Set(selectedDates.map { Drop.normalizeCalendarDayKey($0) })

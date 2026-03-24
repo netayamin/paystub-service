@@ -34,6 +34,8 @@ from app.core.constants import (
     DISCOVERY_BUCKET_JOB_ID,
     DISCOVERY_POLL_INTERVAL_SECONDS,
     DISCOVERY_SLIDING_WINDOW_JOB_ID,
+    JUST_OPENED_WITHIN_MINUTES,
+    LIVE_FEED_WINDOW_MINUTES,
     PUSH_INTERVAL_SECONDS,
     PUSH_JOB_ID,
 )
@@ -246,5 +248,7 @@ def health() -> dict:
             "bucket_cooldown_seconds": DISCOVERY_BUCKET_COOLDOWN_SECONDS,
             "resy_per_page": DISCOVERY_RESY_PER_PAGE,
             "resy_max_pages": DISCOVERY_RESY_MAX_PAGES,
+            "just_opened_inventory_minutes": JUST_OPENED_WITHIN_MINUTES,
+            "live_feed_window_minutes": LIVE_FEED_WINDOW_MINUTES,
         },
     }

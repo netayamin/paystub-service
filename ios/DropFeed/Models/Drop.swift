@@ -629,7 +629,7 @@ struct JustMissedVenue: Codable, Identifiable, Hashable {
     }
 }
 
-/// Response from GET /chat/watches/just-opened (built via ``decodeLenient`` — not direct JSON decode).
+/// Response from GET /chat/watches/just-opened or GET /chat/watches/drops (``decodeLenient`` — not direct JSON decode).
 struct JustOpenedResponse {
     let rankedBoard: [Drop]?
     let topOpportunities: [Drop]?

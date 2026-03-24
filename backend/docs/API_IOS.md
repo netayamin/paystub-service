@@ -34,10 +34,14 @@ FastAPI auto-generates API UIs when the server is running:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/chat/watches/just-opened` | Main feed: `ranked_board`, `just_opened`, `still_open`, `likely_to_open`, … |
-| GET | `/chat/watches/new-drops` | Lightweight “new since” list for alerts |
-Query params commonly used on `just-opened`: `dates`, `party_sizes`, `_t` (cache-bust).  
+| GET | `/chat/watches/just-opened` | **Home / Feed:** live activity — slots that **opened** in the last ~10 minutes (`LIVE_FEED_WINDOW_MINUTES`); `still_open` is empty. Closures in that window appear in `just_missed`. |
+| GET | `/chat/watches/drops` | **Explore:** full bookable inventory for given days — requires `dates=YYYY-MM-DD,...`; optional `party_sizes`, `market`. Returns `just_opened` + `still_open` day buckets (client merges like before). |
+| GET | `/chat/watches/new-drops` | Lightweight “new since” list for alerts (uses full inventory window server-side). |
+
+Query params on `just-opened`: optional `dates`, `party_sizes`, `_t` (cache-bust).  
 Optional: `mobile`, `debug`, `market` (see OpenAPI).
+
+Windows: `just_opened_inventory_minutes` (default 30) + `live_feed_window_minutes` (default 10) appear on **`GET /health`** under `discovery`.
 
 ---
 

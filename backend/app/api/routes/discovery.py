@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import date, datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
@@ -17,6 +17,7 @@ from app.core.constants import (
     DISCOVERY_POLL_INTERVAL_SECONDS,
     DISCOVERY_ROLLING_METRICS_LIMIT,
     JUST_OPENED_WITHIN_MINUTES,
+    LIVE_FEED_WINDOW_MINUTES,
 )
 from app.core.discovery_config import DISCOVERY_DATE_TIMEZONE
 from app.core.hotspots import is_hotspot, list_hotspots
@@ -42,10 +43,11 @@ from app.services.discovery.feed_display import attach_feed_card_display_fields
 from app.services.discovery.follow_activity import follow_activity_timeline, follow_status_for_recipient
 from app.services.discovery.likely_open_scoring import enrich_likely_open_item
 from app.services.discovery.snapshot_store import (
+    filter_inventory_for_drops,
+    filter_snapshot_for_request,
     get_snapshot,
     get_snapshot_json,
     get_snapshot_json_mobile,
-    filter_snapshot_for_request,
 )
 
 router = APIRouter()
@@ -280,7 +282,7 @@ async def new_drops(
         # Use snapshot for just-opened data (zero DB queries); fall back to DB if not yet built
         snap = get_snapshot()
         if snap is not None:
-            just_opened = snap.get("just_opened") or []
+            just_opened = snap.get("just_opened_inventory") or snap.get("just_opened") or []
         else:
             just_opened = get_just_opened_from_buckets(
                 db,
@@ -344,6 +346,89 @@ def _parse_ints(value: str | None) -> list[int] | None:
     return out if out else None
 
 
+@router.get("/watches/drops")
+async def list_drops(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    dates: str,
+    party_sizes: str | None = None,
+    market: str | None = None,
+):
+    """
+    **Explore tab:** all bookable inventory for the given calendar days.
+
+    Requires comma-separated ``dates=YYYY-MM-DD,...``. Optional ``party_sizes``, ``market``.
+    Returns ``just_opened`` + ``still_open`` day buckets (same merge rules as the old home endpoint).
+    """
+    date_filter = [s.strip() for s in dates.split(",") if s.strip()]
+    party_size_list = _parse_ints(party_sizes)
+    market_list = [s.strip() for s in market.split(",") if s.strip()] if market else None
+    try:
+        if not date_filter:
+            raise HTTPException(
+                status_code=422,
+                detail="Provide at least one date: dates=YYYY-MM-DD[,YYYY-MM-DD,...]",
+            )
+        snap = get_snapshot()
+        if snap is not None:
+            payload = filter_inventory_for_drops(
+                snap,
+                date_filter=date_filter,
+                party_sizes=party_size_list,
+                market_filter=market_list,
+            )
+            payload["next_scan_at"] = _next_scan_iso(request)
+            return Response(
+                content=json.dumps(payload, separators=(",", ":"), default=str).encode(),
+                media_type="application/json",
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+            )
+        today = window_start_date()
+        time_slot_list = None
+        info = get_last_scan_info_buckets(db, today)
+        just_opened = get_just_opened_from_buckets(
+            db,
+            limit_events=DISCOVERY_JUST_OPENED_LIMIT,
+            date_filter=date_filter,
+            time_slots=time_slot_list,
+            party_sizes=party_size_list,
+            opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
+        )
+        still_open = get_still_open_from_buckets(
+            db,
+            today,
+            date_filter=date_filter,
+            time_slots=time_slot_list,
+            party_sizes=party_size_list,
+            exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
+        )
+        for day in just_opened:
+            for v in day.get("venues") or []:
+                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
+        for day in still_open:
+            for v in day.get("venues") or []:
+                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
+        payload = {**info, "just_opened": just_opened, "still_open": still_open, "next_scan_at": _next_scan_iso(request)}
+        return Response(
+            content=json.dumps(payload, separators=(",", ":"), default=str).encode(),
+            media_type="application/json",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("list_drops failed: %s", e, exc_info=True)
+        return {
+            "just_opened": [],
+            "still_open": [],
+            "last_scan_at": None,
+            "total_venues_scanned": 0,
+            "next_scan_at": _next_scan_iso(request),
+            "error": str(e),
+        }
+
+
 @router.get("/watches/just-opened")
 async def list_just_opened(
     request: Request,
@@ -356,18 +441,14 @@ async def list_just_opened(
     debug: str | None = None,
     mobile: str | None = None,
 ):
-    """Just opened + still open. Serves from pre-computed snapshot (zero DB queries).
+    """**Home feed (live):** slots that **opened** in the last ``LIVE_FEED_WINDOW_MINUTES`` (default 10).
 
-    **Live home feed:** `ranked_board` is the primary ordered list of bookable cards.
-    With `mobile=1`, it is a capped, quality-filtered slice (see `feed_meta`).
+    ``still_open`` is always empty here — full calendar inventory for Explore is
+    ``GET /chat/watches/drops?dates=YYYY-MM-DD,...``.
 
-    Pass `mobile=1` for a compact payload (~10x smaller, faster on iOS).
+    Serves from pre-computed snapshot when possible.
 
-    **Feed card fields (public):** Cards may include `eligibility_evidence`, `user_facing_opened_at`,
-    and `bucket_successful_poll_count` when present from the discovery pipeline (diff-truth for ranking).
-
-    **`debug=1`:** Bypasses snapshot; hits DB. Adds `_debug` bucket health and, on each feed card,
-    `_debug_rank` (eligibility tier, multiplier, home-feed qualification) for staging — not a stable contract.
+    **`debug=1`:** Bypasses snapshot; hits DB. Adds `_debug` for staging — not a stable contract.
     """
     try:
         is_debug = debug and str(debug).strip() in ("1", "true", "yes")
@@ -420,26 +501,34 @@ async def list_just_opened(
         time_slot_list = [s.strip() for s in (time_slots or "").split(",") if s.strip()] or None
         response.headers["X-Discovery-Today"] = today.isoformat()
         info = get_last_scan_info_buckets(db, today)
+        # Full inventory for just_missed exclusions (same as snapshot /drops).
+        jo_inv = get_just_opened_from_buckets(
+            db,
+            limit_events=DISCOVERY_JUST_OPENED_LIMIT,
+            date_filter=None,
+            time_slots=None,
+            party_sizes=None,
+            opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
+        )
+        so_inv = get_still_open_from_buckets(
+            db,
+            today,
+            date_filter=None,
+            time_slots=None,
+            party_sizes=None,
+            exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
+        )
+        # Home feed: only very recent opens; Explore uses GET /watches/drops.
         just_opened = get_just_opened_from_buckets(
             db,
             limit_events=DISCOVERY_JUST_OPENED_LIMIT,
             date_filter=date_filter,
             time_slots=time_slot_list,
             party_sizes=party_size_list,
-            opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
+            opened_within_minutes=LIVE_FEED_WINDOW_MINUTES,
         )
-        still_open = get_still_open_from_buckets(
-            db,
-            today,
-            date_filter=date_filter,
-            time_slots=time_slot_list,
-            party_sizes=party_size_list,
-            exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
-        )
+        still_open: list[dict] = []
         for day in just_opened:
-            for v in day.get("venues") or []:
-                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
-        for day in still_open:
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
 
@@ -470,9 +559,7 @@ async def list_just_opened(
                         v["trend_pct"] = rm.trend_pct
 
         _attach_metrics_raw(just_opened)
-        _attach_metrics_raw(still_open)
 
-        # Pass still_open so ranked_board always has bookable venues, not only 10-min-fresh ones
         feed = build_feed(just_opened, still_open)
         ranked_board = feed["ranked_board"]
         top_opportunities = feed["top_opportunities"]
@@ -516,8 +603,12 @@ async def list_just_opened(
             collect_bookable_venue_keys,
         )
 
-        _bookable_keys = collect_bookable_venue_keys(just_opened, still_open)
-        just_missed = build_just_missed_payload(db, exclude_bookable_keys=_bookable_keys)
+        _bookable_keys = collect_bookable_venue_keys(jo_inv, so_inv)
+        just_missed = build_just_missed_payload(
+            db,
+            exclude_bookable_keys=_bookable_keys,
+            within_minutes=LIVE_FEED_WINDOW_MINUTES,
+        )
 
         def _attach_metrics(cards: list[dict]) -> None:
             for c in cards:

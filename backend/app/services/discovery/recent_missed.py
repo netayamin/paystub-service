@@ -89,16 +89,20 @@ def build_just_missed_payload(
     *,
     now: datetime | None = None,
     exclude_bookable_keys: set[str] | None = None,
+    within_minutes: int | None = None,
 ) -> list[dict]:
     """Deduplicate by venue_id or name; newest first; cap JUST_MISSED_FEED_LIMIT.
 
     If ``exclude_bookable_keys`` is set (from just_opened + still_open), venues that
     still have availability are omitted — a single closed slot must not imply \"just missed\"
     for the whole venue while other slots remain bookable.
+
+    ``within_minutes`` overrides the lookback window (default ``JUST_MISSED_WITHIN_MINUTES``).
     """
     now_utc = now or datetime.now(timezone.utc)
     prune_stale_missed_rows(db, now=now_utc)
-    cutoff = now_utc - timedelta(minutes=JUST_MISSED_WITHIN_MINUTES)
+    minutes = within_minutes if within_minutes is not None and within_minutes > 0 else JUST_MISSED_WITHIN_MINUTES
+    cutoff = now_utc - timedelta(minutes=minutes)
     # When excluding many rows, scan deeper so the strip can still fill up to the cap.
     query_limit = 200 if exclude_bookable_keys else 80
     rows = (

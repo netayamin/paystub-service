@@ -27,6 +27,7 @@ from app.core.constants import (
     DISCOVERY_JUST_OPENED_LIMIT,
     DISCOVERY_ROLLING_METRICS_LIMIT,
     JUST_OPENED_WITHIN_MINUTES,
+    LIVE_FEED_WINDOW_MINUTES,
 )
 from app.core.discovery_config import DISCOVERY_DATE_TIMEZONE
 from app.core.nyc_hotspots import is_hotspot
@@ -118,7 +119,8 @@ def rebuild_snapshot(db: Session) -> None:
             except Exception as e:
                 logger.warning("Periodic rolling metrics refresh failed: %s", e)
 
-        just_opened = get_just_opened_from_buckets(
+        # Full inventory for Explore (`GET /chat/watches/drops`) — same window as before.
+        just_opened_inventory = get_just_opened_from_buckets(
             db,
             limit_events=DISCOVERY_JUST_OPENED_LIMIT,
             date_filter=None,
@@ -126,7 +128,7 @@ def rebuild_snapshot(db: Session) -> None:
             party_sizes=None,
             opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
-        still_open = get_still_open_from_buckets(
+        still_open_inventory = get_still_open_from_buckets(
             db,
             today,
             date_filter=None,
@@ -135,10 +137,23 @@ def rebuild_snapshot(db: Session) -> None:
             exclude_opened_within_minutes=JUST_OPENED_WITHIN_MINUTES,
         )
 
-        for day in just_opened:
+        for day in just_opened_inventory:
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
-        for day in still_open:
+        for day in still_open_inventory:
+            for v in day.get("venues") or []:
+                v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
+
+        # Home feed (`GET /chat/watches/just-opened`): only very recent opens (no full still_open merge).
+        just_opened_live = get_just_opened_from_buckets(
+            db,
+            limit_events=DISCOVERY_JUST_OPENED_LIMIT,
+            date_filter=None,
+            time_slots=None,
+            party_sizes=None,
+            opened_within_minutes=LIVE_FEED_WINDOW_MINUTES,
+        )
+        for day in just_opened_live:
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
 
@@ -240,11 +255,12 @@ def rebuild_snapshot(db: Session) -> None:
                     if rm:
                         v.update(rm)
 
-        _attach_metrics_to_days(just_opened)
-        _attach_metrics_to_days(still_open)
+        _attach_metrics_to_days(just_opened_inventory)
+        _attach_metrics_to_days(still_open_inventory)
+        _attach_metrics_to_days(just_opened_live)
 
-        # Pass both just_opened AND still_open so the ranked board always has content
-        feed = build_feed(just_opened, still_open)
+        # Ranked/ticker/top/hot: only LIVE_FEED_WINDOW_MINUTES opens (Explore uses /drops).
+        feed = build_feed(just_opened_live, [])
         _cap = _SNAPSHOT_FULL_BOARD_CAP
         ranked_board = (feed.get("ranked_board") or [])[:_cap]
         ticker_board = (feed.get("ticker_board") or [])[:_cap]
@@ -271,9 +287,13 @@ def rebuild_snapshot(db: Session) -> None:
             collect_bookable_venue_keys,
         )
 
-        _bookable_keys = collect_bookable_venue_keys(just_opened, still_open)
+        # Missed strip: same window as home feed; exclude venues still bookable anywhere in inventory.
+        _bookable_keys = collect_bookable_venue_keys(just_opened_inventory, still_open_inventory)
         just_missed = build_just_missed_payload(
-            db, now=now_utc, exclude_bookable_keys=_bookable_keys
+            db,
+            now=now_utc,
+            exclude_bookable_keys=_bookable_keys,
+            within_minutes=LIVE_FEED_WINDOW_MINUTES,
         )
 
         def _attach_metrics(cards: list[dict]) -> None:
@@ -304,8 +324,10 @@ def rebuild_snapshot(db: Session) -> None:
         feed_meta = snag_feed_meta()
 
         snap = {
-            "just_opened": just_opened,
-            "still_open": still_open,
+            "just_opened": just_opened_live,
+            "still_open": [],
+            "just_opened_inventory": just_opened_inventory,
+            "still_open_inventory": still_open_inventory,
             "ranked_board": ranked_board,
             "ticker_board": ticker_board,
             "top_opportunities": top_opportunities,
@@ -325,7 +347,14 @@ def rebuild_snapshot(db: Session) -> None:
         # Pre-serialize the API-ready response (without internal fields) to JSON bytes.
         # The no-filter fast path returns these bytes directly — zero per-request work.
         api_payload = {k: v for k, v in snap.items()
-                       if k not in ("rolling_by_name", "bucket_health", "computed_at", "ticker_board")}
+                       if k not in (
+                           "rolling_by_name",
+                           "bucket_health",
+                           "computed_at",
+                           "ticker_board",
+                           "just_opened_inventory",
+                           "still_open_inventory",
+                       )}
         api_bytes = _json.dumps(api_payload, separators=(",", ":"), default=str).encode()
 
         bh_stale = [b for b in bucket_health if b.get("stale")]
@@ -460,6 +489,40 @@ def filter_snapshot_for_request(
         "feed_meta": snap.get("feed_meta"),
         "last_scan_at": snap.get("last_scan_at"),
         "total_venues_scanned": snap.get("total_venues_scanned", 0),
+    }
+
+
+def filter_inventory_for_drops(
+    snap: dict,
+    date_filter: list[str],
+    party_sizes: list[int] | None = None,
+    market_filter: list[str] | None = None,
+) -> dict:
+    """Explore inventory: full just_opened + still_open for selected dates (in-memory filter)."""
+    pseudo = {
+        "just_opened": snap.get("just_opened_inventory") or [],
+        "still_open": snap.get("still_open_inventory") or [],
+        "ranked_board": [],
+        "top_opportunities": [],
+        "hot_right_now": [],
+        "likely_to_open": snap.get("likely_to_open", []),
+        "just_missed": [],
+        "feed_meta": snap.get("feed_meta"),
+        "last_scan_at": snap.get("last_scan_at"),
+        "total_venues_scanned": snap.get("total_venues_scanned", 0),
+    }
+    out = filter_snapshot_for_request(
+        pseudo,
+        date_filter=date_filter,
+        party_sizes=party_sizes,
+        market_filter=market_filter,
+    )
+    return {
+        "just_opened": out["just_opened"],
+        "still_open": out["still_open"],
+        "last_scan_at": out.get("last_scan_at"),
+        "total_venues_scanned": out.get("total_venues_scanned", 0),
+        "feed_meta": out.get("feed_meta"),
     }
 
 
