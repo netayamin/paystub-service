@@ -115,6 +115,8 @@ struct Drop: Codable, Identifiable {
     let userFacingOpenedAt: String?
     /// Successful polls for the bucket; used with `eligibilityEvidence` for baseline trust.
     let bucketSuccessfulPollCount: Int?
+    /// Resy venue URL slug (e.g. "le-gratin") — used to build a booking URL for any date.
+    let resySlug: String?
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -190,6 +192,7 @@ struct Drop: Codable, Identifiable {
         eligibilityEvidence = try c.decodeIfPresent(String.self, forKey: .eligibilityEvidence)
         userFacingOpenedAt = try c.decodeIfPresent(String.self, forKey: .userFacingOpenedAt)
         bucketSuccessfulPollCount = Self.decodeFlexibleInt(c, forKey: .bucketSuccessfulPollCount)
+        resySlug = try c.decodeIfPresent(String.self, forKey: .resySlug)
     }
 
     private static func decodeFlexibleInt(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Int? {
@@ -271,7 +274,8 @@ struct Drop: Codable, Identifiable {
         exploreShowDot: Bool? = nil,
         eligibilityEvidence: String? = nil,
         userFacingOpenedAt: String? = nil,
-        bucketSuccessfulPollCount: Int? = nil
+        bucketSuccessfulPollCount: Int? = nil,
+        resySlug: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -333,9 +337,11 @@ struct Drop: Codable, Identifiable {
         self.eligibilityEvidence = eligibilityEvidence
         self.userFacingOpenedAt = userFacingOpenedAt
         self.bucketSuccessfulPollCount = bucketSuccessfulPollCount
+        self.resySlug = resySlug
     }
 
-    /// First non-empty Resy / book URL on the card or any slot (matches backend `_card_resy_url`).
+    /// First non-empty Resy / book URL on the card or any slot.
+    /// Falls back to a constructed Resy venue page from `resySlug` so every drop is always tappable.
     var effectiveResyBookingURL: String? {
         let tidy: (String?) -> String? = { raw in
             let t = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -345,7 +351,20 @@ struct Drop: Codable, Identifiable {
         for s in slots {
             if let u = tidy(s.resyUrl) { return u }
         }
+        // Build from resy_slug — always deep-link to the venue booking page
+        if let slug = tidy(resySlug) {
+            let date = tidy(slots.first?.dateStr ?? dateStr) ?? Self.todayDateString()
+            let seats = partySizesAvailable.first ?? 2
+            return "https://resy.com/cities/new-york-ny/venues/\(slug)?date=\(date)&seats=\(seats)"
+        }
         return nil
+    }
+
+    private static func todayDateString() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "America/New_York")
+        return f.string(from: Date())
     }
 
     /// True when there is a non-empty Resy booking link; otherwise use server flag if present.
@@ -435,6 +454,7 @@ struct Drop: Codable, Identifiable {
         case eligibilityEvidence = "eligibility_evidence"
         case userFacingOpenedAt = "user_facing_opened_at"
         case bucketSuccessfulPollCount = "bucket_successful_poll_count"
+        case resySlug = "resy_slug"
     }
     
     // MARK: - Scarcity helpers
@@ -725,7 +745,8 @@ struct JustOpenedResponse {
             market: a.market ?? b.market,
             eligibilityEvidence: a.eligibilityEvidence ?? b.eligibilityEvidence,
             userFacingOpenedAt: laterISO(a.userFacingOpenedAt, b.userFacingOpenedAt),
-            bucketSuccessfulPollCount: a.bucketSuccessfulPollCount ?? b.bucketSuccessfulPollCount
+            bucketSuccessfulPollCount: a.bucketSuccessfulPollCount ?? b.bucketSuccessfulPollCount,
+            resySlug: a.resySlug ?? b.resySlug
         )
     }
 
@@ -776,7 +797,8 @@ struct JustOpenedResponse {
                     market: venue["market"] as? String,
                     eligibilityEvidence: venue["eligibility_evidence"] as? String,
                     userFacingOpenedAt: venue["user_facing_opened_at"] as? String,
-                    bucketSuccessfulPollCount: (venue["bucket_successful_poll_count"] as? NSNumber)?.intValue
+                    bucketSuccessfulPollCount: (venue["bucket_successful_poll_count"] as? NSNumber)?.intValue,
+                    resySlug: venue["resy_slug"] as? String
                 )
                 result.append(drop)
             }

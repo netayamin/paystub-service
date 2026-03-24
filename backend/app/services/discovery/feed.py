@@ -169,6 +169,7 @@ def _consolidate_cards(
             "rating_average": payload.get("rating_average"),
             "rating_count": payload.get("rating_count"),
             "market": payload.get("market") or "nyc",
+            "resy_slug": payload.get("resy_slug"),
             "eligibility_evidence": payload.get("eligibility_evidence"),
             "user_facing_opened_at": payload.get("user_facing_opened_at"),
             "bucket_successful_poll_count": payload.get("bucket_successful_poll_count"),

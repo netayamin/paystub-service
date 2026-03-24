@@ -605,15 +605,15 @@ struct FeedView: View {
     }
 
     private func liveStreamOpenResy(_ drop: Drop) {
-        // Prefer the direct booking URL; fall back to a Resy venue search.
+        // effectiveResyBookingURL builds a URL from resy_slug as a fallback, so this should always succeed.
         let urlString: String
         if let direct = drop.effectiveResyBookingURL, !direct.isEmpty {
             urlString = direct
         } else {
+            // Last resort: Resy city search
             let name = drop.name
                 .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? drop.name
-            let city = drop.market?.lowercased() == "miami" ? "miami-beach-fl" : "ny"
-            urlString = "https://resy.com/cities/\(city)?query=\(name)"
+            urlString = "https://resy.com/cities/ny?query=\(name)"
         }
         guard let url = URL(string: urlString) else { return }
         APIService.shared.trackBehaviorEvents(events: [
