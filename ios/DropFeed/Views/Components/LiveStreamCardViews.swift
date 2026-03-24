@@ -149,57 +149,86 @@ struct LiveStreamOpenCard: View {
 
 // MARK: - Full-width inactive rows
 
-/// Sold-out / booked live row.
+/// Sold-out / booked live row — mirrors LiveStreamOpenCard layout but muted.
 struct LiveStreamSoldOutDropCard: View {
     let drop: Drop
     let preferredParty: Int
 
-    private let cardFill = Color(red: 0.94, green: 0.94, blue: 0.96)
+    private let mutedText = Color(red: 0.55, green: 0.55, blue: 0.58)
+    private let cardFill = Color(red: 0.96, green: 0.96, blue: 0.97)
+
+    private var imageURL: URL? {
+        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
+        return URL(string: s)
+    }
+
+    private var agoLabel: String {
+        LiveStreamCardFormatting.dropAgoLabel(seconds: drop.secondsSinceDetected)
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(LiveStreamCardFormatting.slotTime24hColon(drop))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .monospacedDigit()
-                Text("\(preferredParty) PAX")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.9))
+            // Thumbnail — desaturated
+            Group {
+                if let u = imageURL {
+                    CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
+                        Color(red: 0.88, green: 0.88, blue: 0.90)
+                    }
+                    .saturation(0.0)
+                    .opacity(0.6)
+                } else {
+                    Color(red: 0.88, green: 0.88, blue: 0.90)
+                }
             }
-            .frame(width: 52, alignment: .leading)
+            .frame(width: 66, height: 66)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
+            // Text stack
             VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("JUST DROPPED")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundColor(mutedText)
+                        .tracking(0.3)
+                    Text(agoLabel)
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(CreamEditorialTheme.textTertiary)
+                }
+
                 Text(drop.name)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color(red: 0.45, green: 0.45, blue: 0.5))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(mutedText)
                     .lineLimit(1)
-                Text(subtitle)
+                    .minimumScaleFactor(0.82)
+
+                Text("Sold Out")
                     .font(.system(size: 12, weight: .regular))
-                    .italic()
                     .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.9)
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-            Image(systemName: "lock.fill")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.75))
+            // TAKEN button (outline)
+            Text("TAKEN")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(mutedText)
+                .tracking(0.5)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(mutedText.opacity(0.4), lineWidth: 1.5)
+                )
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardFill)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
         )
-    }
-
-    private var subtitle: String {
-        let ago = LiveStreamCardFormatting.dropAgoLabel(seconds: drop.secondsSinceDetected)
-        return "Table for \(preferredParty) • Booked · \(ago)"
     }
 }
