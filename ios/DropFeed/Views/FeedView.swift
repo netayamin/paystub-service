@@ -605,7 +605,17 @@ struct FeedView: View {
     }
 
     private func liveStreamOpenResy(_ drop: Drop) {
-        guard let s = drop.effectiveResyBookingURL, let url = URL(string: s) else { return }
+        // Prefer the direct booking URL; fall back to a Resy venue search.
+        let urlString: String
+        if let direct = drop.effectiveResyBookingURL, !direct.isEmpty {
+            urlString = direct
+        } else {
+            let name = drop.name
+                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? drop.name
+            let city = drop.market?.lowercased() == "miami" ? "miami-beach-fl" : "ny"
+            urlString = "https://resy.com/cities/\(city)?query=\(name)"
+        }
+        guard let url = URL(string: urlString) else { return }
         APIService.shared.trackBehaviorEvents(events: [
             BehaviorTrackEvent(
                 eventType: "resy_opened",

@@ -206,7 +206,8 @@ final class FeedViewModel: ObservableObject {
             let pop     = (d.resyPopularityScore ?? 0) * 100
             let trend   = min(d.trendPct ?? 0, 50) * 0.5
             let recency = max(0.0, 3600.0 - Double(d.secondsSinceDetected)) / 3600.0 * 5
-            return snag + pop + trend + recency
+            let hasURL  = d.effectiveResyBookingURL != nil ? 20.0 : 0.0  // prefer bookable
+            return snag + pop + trend + recency + hasURL
         }
         let hotspot    = drops.filter { $0.isHotspot == true && $0.feedHot == true }
                               .sorted { score($0) > score($1) }
