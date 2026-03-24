@@ -222,6 +222,7 @@
 				A1000101 /* FeedPalette.swift */,
 				A1000104 /* SnagDesignSystem.swift */,
 				A1000190 /* DropFeedTokens.swift */,
+				B3AAA8A55986320387F8AF81 /* ManropeFont.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -237,7 +238,6 @@
 				A10001F4 /* DSPremiumHeroCard.swift */,
 				A10001F6 /* DSExploreInventoryCard.swift */,
 				A10001FC /* LiveStreamCardViews.swift */,
-							B3AAA8A55986320387F8AF81 /* ManropeFont.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
