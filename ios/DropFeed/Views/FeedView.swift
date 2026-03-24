@@ -1545,12 +1545,6 @@ private func feedMealMetricsLine(for drop: Drop, preferredParty: Int) -> String 
     return "\(t) · \(party) · \(score)"
 }
 
-    let sec = max(0, Int(-d.timeIntervalSinceNow))
-    if sec < 90 { return "JUST NOW" }
-    if sec < 3600 { return "\(max(1, sec / 60))M AGO" }
-    return "\(sec / 3600)H AGO"
-}
-
 private func feedTimeToClaimLabel(for drop: Drop) -> String {
     if let avg = drop.avgDropDurationSeconds, avg > 0 {
         let s = min(120, max(5, Int(avg.rounded())))
