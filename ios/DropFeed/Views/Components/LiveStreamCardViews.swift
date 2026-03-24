@@ -39,126 +39,104 @@ enum LiveStreamCardFormatting {
     }
 }
 
-// MARK: - Open tile (2-col grid)
+// MARK: - Open row (full-width horizontal)
 
-/// Reference: top row (time + TODAY / date + PAX pill), square image, bold name + neighborhood line.
+/// Full-width horizontal card: thumbnail | JUST OPENED · ago / name / ⚡ claim time · detail | BOOK
 struct LiveStreamOpenCard: View {
     let drop: Drop
     let preferredParty: Int
-    /// `YYYY-MM-DD` for “TODAY” vs other labels (from ``FeedViewModel/todayDateStr``).
     let todayDateStr: String
     var onTap: () -> Void
-
-    private let cardFill = Color(red: 0.94, green: 0.94, blue: 0.96)
-    private let imagePlaceholder = Color(red: 0.92, green: 0.92, blue: 0.94)
 
     private var imageURL: URL? {
         guard let s = drop.imageUrl, !s.isEmpty else { return nil }
         return URL(string: s)
     }
 
-    private var slotDateStr: String? {
-        let s = drop.slots.first?.dateStr ?? drop.dateStr
-        guard let u = s?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty else { return nil }
-        return u
+    private var agoLabel: String {
+        LiveStreamCardFormatting.dropAgoLabel(seconds: drop.secondsSinceDetected)
     }
 
-    private var dayChinLabel: String {
-        guard let ds = slotDateStr else { return "SOON" }
-        if ds == todayDateStr { return "TODAY" }
-        let p = ds.split(separator: "-")
-        guard p.count == 3,
-              let y = Int(p[0]), let m = Int(p[1]), let d = Int(p[2]) else { return "UPCOMING" }
-        var c = DateComponents()
-        c.year = y; c.month = m; c.day = d
-        guard let date = Calendar.current.date(from: c) else { return "UPCOMING" }
-        let f = DateFormatter()
-        f.dateFormat = "EEE MMM d"
-        return f.string(from: date).uppercased()
+    private var claimTimeLabel: String {
+        if let avg = drop.avgDropDurationSeconds, avg > 0 {
+            let s = min(120, max(5, Int(avg.rounded())))
+            return s < 60 ? "< \(s)s" : "< \(max(1, s / 60))m"
+        }
+        let guess = max(8, 75 - min(70, drop.secondsSinceDetected))
+        return "< \(guess)s"
     }
 
-    private var footerDetailLine: String {
-        let n = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !n.isEmpty, !loc.isEmpty { return "\(n) • \(loc)" }
-        if !n.isEmpty { return n }
-        if !loc.isEmpty { return loc }
-        let kind = drop.liveStreamVelocityBadge ?? drop.exploreVenuePill ?? "Table"
-        return "\(kind) • \(LiveStreamCardFormatting.slotTime24hColon(drop))"
+    private var detailLine: String {
+        let kind = drop.liveStreamVelocityBadge
+            ?? drop.exploreVenuePill
+            ?? drop.rowPrimaryMetric
+            ?? "Table"
+        return "\(kind) \u2022 \(preferredParty)ppl"
     }
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(LiveStreamCardFormatting.slotTime24hColon(drop))
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(CreamEditorialTheme.textPrimary)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Text(dayChinLabel)
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(CreamEditorialTheme.textTertiary)
-                            .tracking(0.35)
-                            .lineLimit(1)
-                    }
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-                    Text("\(preferredParty) PAX")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.white)
-                        .tracking(0.25)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.black)
-                        .clipShape(Capsule())
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-
-                Color.clear
-                    .aspectRatio(1.0, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .overlay {
-                        Group {
-                            if let u = imageURL {
-                                CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
-                                    imagePlaceholder
-                                }
-                            } else {
-                                imagePlaceholder
-                            }
+            HStack(alignment: .center, spacing: 14) {
+                // Thumbnail
+                Group {
+                    if let u = imageURL {
+                        CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
+                            Color(red: 0.91, green: 0.91, blue: 0.93)
                         }
-                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                        .clipped()
+                    } else {
+                        Color(red: 0.91, green: 0.91, blue: 0.93)
                     }
+                }
+                .frame(width: 66, height: 66)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                // Text stack
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text("JUST OPENED")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundColor(CreamEditorialTheme.burgundy)
+                            .tracking(0.3)
+                        Text(agoLabel)
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundColor(CreamEditorialTheme.textTertiary)
+                    }
+
+                    Text(drop.name)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(CreamEditorialTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.0))
+                        Text(claimTimeLabel)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(red: 1.0, green: 0.72, blue: 0.0))
+                        Text(detailLine)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(CreamEditorialTheme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+                // BOOK button
+                Text("BOOK")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .tracking(0.5)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Color.black)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .padding(.horizontal, 10)
-
-                Text(drop.name)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-
-                Text(footerDetailLine)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.88)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
             }
-            .background(cardFill)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(CreamEditorialTheme.cardWhite)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)

@@ -658,14 +658,7 @@ struct FeedView: View {
                         }
 
                         if !opens.isEmpty {
-                            LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: 12, alignment: .top),
-                                    GridItem(.flexible(), spacing: 12, alignment: .top),
-                                ],
-                                alignment: .leading,
-                                spacing: 12
-                            ) {
+                            VStack(spacing: 10) {
                                 ForEach(Array(opens.enumerated()), id: \.offset) { idx, drop in
                                     LiveStreamOpenCard(
                                         drop: drop,
