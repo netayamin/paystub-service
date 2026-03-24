@@ -97,7 +97,7 @@ struct LiveStreamOpenCard: View {
 
                     // Restaurant name — primary anchor
                     Text(drop.name.uppercased())
-                        .font(Manrope.title(14))
+                        .font(Manrope.title(12))
                         .foregroundColor(Color(red: 0.08, green: 0.08, blue: 0.10))
                         .lineLimit(1)
                         .minimumScaleFactor(0.80)
