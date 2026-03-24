@@ -259,8 +259,9 @@ def rebuild_snapshot(db: Session) -> None:
         _attach_metrics_to_days(still_open_inventory)
         _attach_metrics_to_days(just_opened_live)
 
-        # Ranked/ticker/top/hot: only LIVE_FEED_WINDOW_MINUTES opens (Explore uses /drops).
-        feed = build_feed(just_opened_live, [])
+        # Home feed uses the full inventory (just_opened + still_open across all days)
+        # so the best available drops always surface regardless of when they were detected.
+        feed = build_feed(just_opened_inventory, still_open_inventory)
         _cap = _SNAPSHOT_FULL_BOARD_CAP
         ranked_board = (feed.get("ranked_board") or [])[:_cap]
         ticker_board = (feed.get("ticker_board") or [])[:_cap]
