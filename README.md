@@ -42,23 +42,20 @@ cd backend && poetry install && poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload --port 8000
 ```
 
-## Development (backend + frontend)
+## Development (iOS + API)
 
-Use **two terminals** so you can see the backend running and its logs:
+The product is **native iOS** (`ios/`). The API is FastAPI.
 
-**Terminal 1 — Backend** (you’ll see “BACKEND READY” when it’s up):
+**Backend** (you’ll see “BACKEND READY” when it’s up):
 
 ```bash
 make dev-backend
 ```
 
-**Terminal 2 — Frontend** (then open http://localhost:5173):
+- API docs: http://127.0.0.1:8000/docs  
+- **Endpoint overview for the app:** `backend/docs/API_IOS.md`
 
-```bash
-cd frontend && npm run dev
-```
-
-Or run both in one terminal (mixed logs): `make dev-all`.
+See `ios/README.md` for simulator, device, and ngrok.
 
 ## Database: clear and rebuild
 

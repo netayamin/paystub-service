@@ -1,7 +1,7 @@
 # Backend HTTP port (override if 8000 is busy: make dev-backend PORT=8001)
 PORT ?= 8000
 
-.PHONY: setup install dev dev-backend dev-all db-up db-down db-reset migrate migrate-metrics ios-phone backend-doctor backend-kill-8000
+.PHONY: setup install dev dev-backend db-up db-down db-reset migrate migrate-metrics ios-phone backend-doctor backend-kill-8000
 
 setup: install
 	cp backend/.env.example backend/.env
@@ -9,7 +9,6 @@ setup: install
 
 install:
 	cd backend && poetry install
-	cd frontend && npm install
 
 # Run backend only (port 8000). You should see "BACKEND READY" in this terminal when it starts.
 dev: dev-backend
@@ -52,10 +51,6 @@ backend-kill-8000:
 dev-backend:
 	@echo "Starting backend on http://127.0.0.1:$(PORT) (use http://YOUR_MAC_IP:$(PORT) on device)..."
 	cd backend && poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port $(PORT)
-
-# Run backend + frontend with one command. Open http://localhost:5173 (Vite proxies /chat to 8000).
-dev-all:
-	cd frontend && npm run dev:all
 
 db-up:
 	docker compose up -d db

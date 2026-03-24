@@ -538,7 +538,7 @@ def run_poll_for_bucket(
             logger.info("Bucket %s: initialized baseline (was None), %s slots (no bootstrap write to slot_availability)", bid, n)
         else:
             logger.warning(
-                "Bucket %s: initialized baseline with 0 slots — Resy returned no availability for date=%s time_slot=%s. Check GET /chat/watches/resy-test and RESY_API_KEY/RESY_AUTH_TOKEN.",
+                "Bucket %s: initialized baseline with 0 slots — Resy returned no availability for date=%s time_slot=%s. Check RESY_API_KEY/RESY_AUTH_TOKEN and backend logs.",
                 bid, date_str, time_slot,
             )
         db.commit()

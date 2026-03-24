@@ -12,7 +12,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 # Load .env from backend/ before any app code
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -29,7 +28,7 @@ if _maxim_api_key and _maxim_repo_id:
     _maxim_logger = _maxim.logger({"id": _maxim_repo_id})
     instrument_pydantic_ai(_maxim_logger, debug=os.getenv("MAXIM_DEBUG", "").lower() in ("1", "true", "yes"))
 
-from app.api.routes import auth, discovery, notifications, push, resy
+from app.api.routes import auth, discovery, notifications, push
 from app.config import settings
 from app.core.constants import (
     DISCOVERY_BUCKET_JOB_ID,
@@ -152,15 +151,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Resy Discovery", version="0.1.0", lifespan=lifespan)
 
-# CORS: dev origins + optional CORS_ORIGINS env (comma-separated) for production frontend, e.g. https://your-app.vercel.app
-_cors_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-]
+# CORS: optional CORS_ORIGINS env (comma-separated). iOS native app does not need browser origins.
+_cors_origins: list[str] = []
 _cors_extra = os.getenv("CORS_ORIGINS", "")
 if _cors_extra:
     _cors_origins.extend(o.strip() for o in _cors_extra.split(",") if o.strip())
@@ -190,22 +182,12 @@ app.include_router(auth.router, prefix="/chat", tags=["auth"])
 app.include_router(discovery.router, prefix="/chat", tags=["discovery"])
 app.include_router(notifications.router, prefix="/chat", tags=["notifications"])
 app.include_router(push.router, prefix="/chat", tags=["push"])
-app.include_router(resy.router, prefix="/resy", tags=["resy"])
-
-
-_STATIC_DIR = Path(__file__).resolve().parent / "static"
-
-
-@app.get("/chat-ui", include_in_schema=False)
-def chat_test_ui():
-    """Simple test chat UI (alternative to Swagger)."""
-    return FileResponse(_STATIC_DIR / "chat_test.html", media_type="text/html")
 
 
 @app.get("/", include_in_schema=False)
 def root():
     """Root: point to API docs and health."""
-    return {"message": "Resy API", "docs": "/docs", "health": "/health"}
+    return {"message": "Snag API (iOS)", "docs": "/docs", "health": "/health", "client_contract": "backend/docs/API_IOS.md"}
 
 
 def _health_version() -> str:

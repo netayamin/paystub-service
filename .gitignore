@@ -26,9 +26,9 @@ scripts/resy_venue_search_curl.sh
 *.p8
 AuthKey_*.p8
 
-# Node / frontend
+# Node / frontend (web app removed — iOS-only product)
 node_modules/
-frontend/node_modules/
+/frontend/
 .npm
 *.tsbuildinfo
 

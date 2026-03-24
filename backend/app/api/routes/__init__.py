@@ -1,3 +1,3 @@
-from app.api.routes import discovery, resy
+from app.api.routes import auth, discovery, notifications, push
 
-__all__ = ["discovery", "resy"]
+__all__ = ["auth", "discovery", "notifications", "push"]

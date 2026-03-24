@@ -1,5 +1,7 @@
 # Backend local dev — when “nothing works”
 
+**HTTP routes used by the iOS app:** see [`API_IOS.md`](./API_IOS.md) (also **GET /docs** when the server is running).
+
 ## Minimal flow (Mac)
 
 1. **Postgres running** on `localhost:5432` with DB `paystub` / user `paystub` / password `paystub`:
