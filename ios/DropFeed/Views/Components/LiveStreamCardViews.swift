@@ -71,7 +71,7 @@ struct LiveStreamOpenCard: View {
             ?? drop.exploreVenuePill
             ?? drop.rowPrimaryMetric
             ?? "Table"
-        return "\(kind) \u2022 \(preferredParty)ppl"
+        return "\(kind) • \(preferredParty)ppl"
     }
 
     var body: some View {
