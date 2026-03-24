@@ -573,32 +573,28 @@ struct FeedView: View {
             if drops.isEmpty {
                 EmptyView()
             } else {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     QuietCuratorLiveStreamCenteredTitle()
                         .padding(.horizontal, 18)
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        QuietCuratorStreamSubsectionHeader(
-                            title: "JUST OPENED",
-                            dotColor: CreamEditorialTheme.liveStreamPulseGreen,
-                            titleColor: CreamEditorialTheme.liveStreamPulseGreen,
-                            clockColor: CreamEditorialTheme.textSecondary
-                        )
-                        .padding(.horizontal, 4)
+                    // Single bordered container, rows separated by dividers
+                    VStack(spacing: 0) {
+                        ForEach(Array(drops.enumerated()), id: \.offset) { idx, drop in
+                            LiveStreamOpenCard(
+                                drop: drop,
+                                preferredParty: mockPreferredParty(for: drop),
+                                todayDateStr: vm.todayDateStr,
+                                onTap: { liveStreamOpenResy(drop) }
+                            )
+                            .staggeredAppear(index: idx, delayPerItem: 0.03)
 
-                        VStack(spacing: 10) {
-                            ForEach(Array(drops.enumerated()), id: \.offset) { idx, drop in
-                                LiveStreamOpenCard(
-                                    drop: drop,
-                                    preferredParty: mockPreferredParty(for: drop),
-                                    todayDateStr: vm.todayDateStr,
-                                    onTap: { liveStreamOpenResy(drop) }
-                                )
-                                .staggeredAppear(index: idx, delayPerItem: 0.03)
+                            if idx < drops.count - 1 {
+                                Divider()
+                                    .background(CreamEditorialTheme.hairline)
+                                    .padding(.horizontal, 16)
                             }
                         }
                     }
-                    .padding(12)
                     .background(CreamEditorialTheme.cardWhite)
                     .overlay(
                         Rectangle()
@@ -606,7 +602,7 @@ struct FeedView: View {
                     )
                     .padding(.horizontal, 18)
                 }
-                .padding(.bottom, 20)
+                .padding(.bottom, 10)
             }
         }
     }

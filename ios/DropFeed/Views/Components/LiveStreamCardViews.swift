@@ -137,12 +137,6 @@ struct LiveStreamOpenCard: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CreamEditorialTheme.cardWhite)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
     }
