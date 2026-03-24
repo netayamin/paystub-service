@@ -1,105 +1,60 @@
 """
-Market-aware hotspot (hotlist) venues: hard-to-get restaurants we treat as special for notifications and ranking.
-
-- NYC: ~200 of NYC's most desirable / hardest-to-book restaurants across all neighborhoods.
-- Miami: Curated Miami Beach & Miami popular / tough-to-get spots.
-Match by normalized venue name (case-insensitive); substring match for display names.
+Market-aware hotspot (hotlist) venues for ranking and notifications.
+Match is case-insensitive substring (normalized). Add/remove names here to tune the feed.
 """
 from __future__ import annotations
 
 import re
 import unicodedata
 
-# ---------------------------------------------------------------------------
-# NYC — ~200 of the city's most desirable / hardest-to-book restaurants
-# ---------------------------------------------------------------------------
 NYC_HOTSPOT_NAMES = sorted({
-    # ── Original core list ──────────────────────────────────────────────────
-    "Theodora", "The Corner Store", "Zou Zou", "Thai Diner", "Lilia", "Russ & Daughters",
-    "Ha's Snack Bar", "Via Carota", "Rule of Thirds", "Coqodaq", "Ippudo", "Di An Di",
-    "Leo", "Balthazar", "Laser Wolf", "Gupshup", "Planta Queen", "Bangkok Supper Club",
-    "Nami Nori", "Margot", "Mokbar", "Saigon Social", "Blue Ribbon Sushi", "L'Industrie",
-    "Shuka", "Pastis", "Minetta Tavern", "Don Angie", "Cafe Spaghetti", "Chez Ma Tante",
-    "Misi", "Twin Tails", "Dame", "Babbo", "Wu's Wonton", "Miss Ada",
-    "Carbone", "Cote", "Le Bernardin", "I Sodi", "Tatiana", "Atomix",
-    "4 Charles Prime Rib", "Eleven Madison Park", "Per Se",
-
-    # ── Fine dining & Michelin ───────────────────────────────────────────────
-    "Daniel", "Jean-Georges", "Gabriel Kreuther", "Aquavit", "Le Coucou",
-    "The Modern", "Gramercy Tavern", "Union Square Cafe", "Craft", "Aureole",
-    "Ai Fiori", "Marea", "Casa Mono", "Tocqueville", "Blue Hill",
-    "Aldea", "Dovetail", "Atera", "Blanca", "Chef's Table at Brooklyn Fare",
-    "Masa", "Sushi Nakazawa", "Sushi Yasuda", "15 East", "Kappo Masa",
-    "Sushi Ginza Onodera", "Sushi Amane", "Shuko", "Neta", "Jewel Bako",
-    "Kajitsu", "Kyo Ya", "Soto", "En Japanese Brasserie",
-    "Crown Shy", "Manhatta", "Eleven Madison Park",
-
-    # ── Italian & pasta-focused ──────────────────────────────────────────────
-    "L'Artusi", "Perla", "Café Altro Paradiso", "Vic's", "Il Buco",
-    "Il Buco Alimentari", "Locanda Verde", "Bar Primi", "Maialino",
-    "Sant Ambroeus", "Scarpetta", "Peasant", "Raoul's", "Frankies 457",
-    "Prime Meats", "Roman's", "Lupa", "Osteria Morini", "Noodle Pudding",
-
-    # ── French ──────────────────────────────────────────────────────────────
-    "Buvette", "Bar Boulud", "Boulud Sud", "Café Boulud", "db Bistro Moderne",
-    "Frenchette", "Dirty French", "Le Crocodile", "Benoit",
-    "Lucien", "Tartine", "Bar Marseille",
-
-    # ── Steak & American ────────────────────────────────────────────────────
-    "Peter Luger", "Keens Steakhouse", "Wolfgang's Steakhouse", "Sparks Steakhouse",
-    "Porter House Bar and Grill", "Quality Meats", "The Grill", "The Pool",
-    "Crown Shy", "St. Anselm", "M. Wells Steakhouse", "Marlow Bistro",
-
-    # ── Seafood ─────────────────────────────────────────────────────────────
-    "Lure Fishbar", "Flex Mussels", "Greenpoint Fish & Lobster", "Neptune Oyster",
-    "Blue Ribbon Brasserie", "Grand Banks", "Cull & Pistol",
-
-    # ── Modern American / New American ──────────────────────────────────────
-    "Estela", "Charlie Bird", "Prune", "Hearth", "Upland",
-    "Jack's Wife Freda", "Casa Lever", "The NoMad", "Olmsted",
-    "Sunday in Brooklyn", "Francie", "Aska", "Oxalis", "Faro",
-    "The Four Horsemen", "Maison Premiere", "Achilles Heel",
-    "Vinegar Hill House", "Colonie", "Walter's", "Popina",
-    "Bar Corvo", "Sauvage", "Celestine", "Stevie", "Bar Pisellino",
-    "Emmett's", "Rucola", "Loulou",
-
-    # ── Asian ───────────────────────────────────────────────────────────────
-    "Nobu", "Nobu Downtown", "Cosme", "Oxomoco", "Llama Inn", "Llama San",
-    "Casa Enrique", "Oxalis", "Mu Ramen", "Ivan Ramen", "Totto Ramen",
-    "Hide-Chan Ramen", "Momofuku Ko", "Momofuku Noodle Bar", "Momofuku Ssäm Bar",
-    "Nakamura", "Ichiran", "Okonomi", "Ki Sushi", "Tanoshi Sushi",
-    "Cafe China", "Hutong", "Hao Noodle", "RedFarm", "Decoy",
-    "Jeepney", "Pig & Khao", "Fish Cheeks", "Ugly Baby", "Somtum Der",
-    "Wayla", "Ugly Baby", "Khe-Yo", "Hanoi House", "Nam Son",
-
-    # ── Pizza ────────────────────────────────────────────────────────────────
-    "Roberta's", "Emily", "Lucali", "Una Pizza Napoletana", "Kesté",
-    "Paulie Gee's", "Ops", "Speedy Romeo", "Motorino", "Rubirosa",
-    "Corner Slice", "Barboncino", "San Matteo",
-
-    # ── Wine bars & casual fine ──────────────────────────────────────────────
-    "Wildair", "Ten Bells", "Compagnie des Vins Surnaturels", "Pijiu Belly",
-    "June Wine Bar", "Chambers Street Wines", "Tertulia",
-
-    # ── Brunch / all-day ────────────────────────────────────────────────────
-    "Russ & Daughters Cafe", "Egg Shop", "Dimes", "Rosemary's",
-    "Cookshop", "Buttermilk Channel", "Marlow & Sons",
-
-    # ── Latino / Caribbean ───────────────────────────────────────────────────
-    "Cosme", "Atla", "La Contenta", "Calle Dao", "Malecon",
-    "Amor Cubano", "La Loncheria", "Lupe",
-
-    # ── Middle Eastern & Mediterranean ──────────────────────────────────────
-    "Bavel", "Nur", "Gazala's", "Nish Nush", "Au Za'atar", "Dagon",
-    "Lilia" , "Zaytinya",
-
-    # ── Bars with great food ─────────────────────────────────────────────────
-    "Employees Only", "Attaboy", "Death & Co", "Please Don't Tell",
-    "Amor y Amargo", "Cienfuegos",
+    "4 Charles Prime Rib", "15 East", "Achilles Heel", "Agern", "Ai Fiori",
+    "Aldea", "Alma", "Amor Cubano", "Aquavit", "Aska", "Atla", "Atomix",
+    "Atera", "Attaboy", "Au Za'atar", "Aureole", "Babbo", "Bangkok Supper Club",
+    "Barboncino", "Bar Boulud", "Bar Corvo", "Bar Marseille", "Bar Pisellino",
+    "Bar Primi", "Balthazar", "Bavel", "Benoit", "Blanca", "Blue Hill",
+    "Blue Ribbon Brasserie", "Blue Ribbon Sushi", "Boulud Sud",
+    "Buttermilk Channel", "Buvette", "Café Altro Paradiso", "Café Boulud",
+    "Cafe China", "Cafe Spaghetti", "Carbone", "Casa Enrique", "Casa Lever",
+    "Casa Mono", "Celestine", "Charlie Bird", "Chef's Table at Brooklyn Fare",
+    "Chez Ma Tante", "Colonie", "Compagnie des Vins Surnaturels", "Cookshop",
+    "Corner Slice", "Cosme", "Cote", "Craft", "Crown Shy", "Cull & Pistol",
+    "Dame", "Daniel", "db Bistro Moderne", "Death & Co", "Decoy", "Di An Di",
+    "Dimes", "Dirty French", "Don Angie", "Dovetail", "Egg Shop",
+    "Emily", "Emmett's", "Employees Only", "En Japanese Brasserie",
+    "Estela", "Faro", "Fish Cheeks", "Flex Mussels", "Frankies 457",
+    "Francie", "Frenchette", "Gabriel Kreuther", "Grand Banks", "Gramercy Tavern",
+    "Greenpoint Fish & Lobster", "Gupshup", "Ha's Snack Bar", "Hanoi House",
+    "Hao Noodle", "Hearth", "Hide-Chan Ramen", "Hutong", "I Sodi",
+    "Ichiran", "Il Buco", "Il Buco Alimentari", "Ippudo", "Ivan Ramen",
+    "Jack's Wife Freda", "Jean-Georges", "Jeepney", "Jewel Bako",
+    "June Wine Bar", "Kajitsu", "Kappo Masa", "Keens Steakhouse",
+    "Kesté", "Khe-Yo", "Ki Sushi", "Kyo Ya", "L'Artusi", "L'Industrie",
+    "La Contenta", "Laser Wolf", "Le Bernardin", "Le Coucou", "Le Crocodile",
+    "Leo", "Lilia", "Llama Inn", "Llama San", "Locanda Verde", "Loulou",
+    "Lucali", "Lucien", "Lupa", "Lure Fishbar", "Maialino", "Maison Premiere",
+    "Manhatta", "Marea", "Margot", "Marlow & Sons", "Masa", "Minetta Tavern",
+    "Misi", "Miss Ada", "Mokbar", "Momofuku Ko", "Momofuku Noodle Bar",
+    "Momofuku Ssäm Bar", "Motorino", "Mu Ramen", "Nakamura", "Nami Nori",
+    "Neptune Oyster", "Neta", "Nobu", "Nobu Downtown", "Noodle Pudding",
+    "Nur", "Okonomi", "Olmsted", "Ops", "Osteria Morini", "Oxalis",
+    "Oxomoco", "Paulie Gee's", "Peasant", "Per Se", "Perla",
+    "Peter Luger", "Pig & Khao", "Planta Queen", "Popina", "Porter House Bar and Grill",
+    "Prime Meats", "Prune", "Quality Meats", "Raoul's", "RedFarm",
+    "Roberta's", "Roman's", "Rosemary's", "Rucola", "Rule of Thirds",
+    "Rubirosa", "Russ & Daughters", "Russ & Daughters Cafe", "Saigon Social",
+    "Sant Ambroeus", "Sauvage", "Scarpetta", "Shuka", "Shuko",
+    "Somtum Der", "Soto", "Sparks Steakhouse", "Speedy Romeo", "St. Anselm",
+    "Stevie", "Sunday in Brooklyn", "Sushi Amane", "Sushi Ginza Onodera",
+    "Sushi Nakazawa", "Sushi Yasuda", "Tanoshi Sushi", "Tatiana", "Ten Bells",
+    "Tertulia", "Thai Diner", "The Corner Store", "The Four Horsemen",
+    "The Grill", "The Modern", "The NoMad", "The Pool", "Theodora",
+    "Tocqueville", "Totto Ramen", "Twin Tails", "Ugly Baby", "Una Pizza Napoletana",
+    "Union Square Cafe", "Upland", "Vic's", "Via Carota", "Vinegar Hill House",
+    "Walter's", "Wayla", "Wildair", "Wolfgang's Steakhouse", "Wu's Wonton",
+    "Zaytinya", "Zou Zou",
 })
 
-# Top-priority names for "Top Drops" — the absolute hardest to get in NYC.
-# Ordered by prestige / demand. Matched as substrings (case-insensitive).
 NYC_TOP_OPPORTUNITY_PRIORITY = (
     "don angie", "lilia", "i sodi", "via carota", "tatiana",
     "carbone", "le bernardin", "atomix", "four charles", "4 charles",
