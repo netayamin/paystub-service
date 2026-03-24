@@ -399,7 +399,7 @@ struct FeedView: View {
         return vm.drops.filter { seen.insert($0.id).inserted }
     }
 
-    /// Live stream: **4 primary** slots from Resy-bookable drops + **1–2** taken/missed rows, then pad to **≥5** venues from the ranked pool.
+    /// Live stream entries: most-recently-detected drops from the ranked pool, padded to ≥5 rows.
     /// Depends on `liveListShuffleToken` and `lastRefreshed`.
     private var quietCuratorStreamEntries: [QuietStreamEntry] {
         _ = vm.liveListShuffleToken
@@ -408,63 +408,21 @@ struct FeedView: View {
         let pool = quietCuratorStreamPool
         guard !pool.isEmpty else { return [] }
 
-        let bookable = pool
+        // Sort by freshness; prefer drops with a booking URL first, then fill from the rest.
+        let withURL = pool
             .filter { feedDropIsBookable($0) }
             .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
+        let withoutURL = pool
+            .filter { !feedDropIsBookable($0) }
+            .sorted { $0.secondsSinceDetected < $1.secondsSinceDetected }
 
-        // Partition by Explore flag. `nil` is treated as open (API omitted field).
-        let exploreOpen = bookable.filter { $0.exploreSnagAvailable != false }
-        let exploreTaken = bookable.filter { $0.exploreSnagAvailable == false }
-
-        let primaryTarget = 4
-        let primaryTriple: [Drop] = {
-            guard !bookable.isEmpty else { return [] }
-            if exploreOpen.count >= primaryTarget {
-                if exploreOpen.count == primaryTarget { return exploreOpen }
-                let window = exploreOpen.count - primaryTarget
-                let start = Int(vm.liveListShuffleToken % UInt64(window + 1))
-                return Array(exploreOpen[start ..< (start + primaryTarget)])
-            }
-            var out = exploreOpen
-            let need = primaryTarget - out.count
-            if need > 0 {
-                let used = Set(out.map(\.id))
-                let fill = exploreTaken.filter { !used.contains($0.id) }
-                if !fill.isEmpty {
-                    if fill.count <= need {
-                        out.append(contentsOf: fill)
-                    } else {
-                        let w = fill.count - need
-                        let s = Int(vm.liveListShuffleToken % UInt64(w + 1))
-                        out.append(contentsOf: fill[s ..< (s + need)])
-                    }
-                }
-            }
-            if out.count < primaryTarget {
-                let used = Set(out.map(\.id))
-                for d in bookable where !used.contains(d.id) {
-                    out.append(d)
-                    if out.count >= primaryTarget { break }
-                }
-            }
-            return Array(out.prefix(primaryTarget))
-        }()
-
-        let primaryIds = Set(primaryTriple.map(\.id))
-
-        var out: [QuietStreamEntry] = []
-        out.append(contentsOf: primaryTriple.map { QuietStreamEntry.live($0, isPrimaryTier: true) })
-
-        if out.isEmpty {
-            let raw = Array(pool.filter { feedDropIsBookable($0) }.prefix(primaryTarget))
-            if !raw.isEmpty {
-                var built = raw.map { QuietStreamEntry.live($0, isPrimaryTier: true) }
-                padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
-                return built
-            }
-            return Array(pool.prefix(minQuietCuratorStreamRows)).map { QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0)) }
+        var ordered = withURL + withoutURL
+        var entries = ordered.prefix(minQuietCuratorStreamRows).map {
+            QuietStreamEntry.live($0, isPrimaryTier: feedDropIsBookable($0))
         }
-        return out
+        var built = Array(entries)
+        padQuietCuratorStreamEntries(&built, pool: pool, minimumRows: minQuietCuratorStreamRows)
+        return built
     }
 
     /// Up to three hot / trending drops for the Quiet Curator hero carousel (“TOP 3 EXCLUSIVE”).
@@ -607,10 +565,12 @@ struct FeedView: View {
     }
 
     private var quietCuratorLiveStreamSection: some View {
-        let entries = quietCuratorStreamEntries
-        let opens = liveStreamOpenDrops(from: entries)
+        let drops = quietCuratorStreamEntries.compactMap { e -> Drop? in
+            guard case .live(let d, _) = e else { return nil }
+            return d
+        }
         return Group {
-            if opens.isEmpty {
+            if drops.isEmpty {
                 EmptyView()
             } else {
                 VStack(alignment: .leading, spacing: 12) {
@@ -627,7 +587,7 @@ struct FeedView: View {
                         .padding(.horizontal, 4)
 
                         VStack(spacing: 10) {
-                            ForEach(Array(opens.enumerated()), id: \.offset) { idx, drop in
+                            ForEach(Array(drops.enumerated()), id: \.offset) { idx, drop in
                                 LiveStreamOpenCard(
                                     drop: drop,
                                     preferredParty: mockPreferredParty(for: drop),
@@ -648,14 +608,6 @@ struct FeedView: View {
                 }
                 .padding(.bottom, 20)
             }
-        }
-    }
-
-    private func liveStreamOpenDrops(from entries: [QuietStreamEntry]) -> [Drop] {
-        entries.compactMap { e in
-            guard case .live(let d, _) = e else { return nil }
-            let open = d.effectiveResyBookingURL != nil || d.exploreSnagAvailable != false
-            return open ? d : nil
         }
     }
 

@@ -123,14 +123,15 @@ struct LiveStreamOpenCard: View {
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-                // BOOK button
+                // BOOK button — dimmed when no booking URL yet
+                let hasURL = drop.effectiveResyBookingURL != nil
                 Text("BOOK")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(hasURL ? .white : Color(red: 0.6, green: 0.6, blue: 0.62))
                     .tracking(0.6)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 14)
-                    .background(Color.black)
+                    .background(hasURL ? Color.black : Color(red: 0.9, green: 0.9, blue: 0.92))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .padding(.horizontal, 16)
