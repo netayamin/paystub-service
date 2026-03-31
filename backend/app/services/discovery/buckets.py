@@ -427,12 +427,40 @@ def _upsert_venue(
     db.execute(stmt.on_conflict_do_update(index_elements=["venue_id"], set_=update_cols))
 
 
+def _clear_bucket_projection_rows(db: Session, bid: str) -> tuple[int, int, int]:
+    """
+    Delete live projection rows for one bucket.
+
+    When a baseline is rewritten, prior drop/projection rows were evaluated against the
+    old baseline and can look contradictory under the new one. Clearing them keeps
+    invariants strict: surviving rows are guaranteed against the active baseline.
+    """
+    n_drop = (
+        db.query(DropEvent)
+        .filter(DropEvent.bucket_id == bid)
+        .delete(synchronize_session=False)
+    )
+    n_slot = (
+        db.query(SlotAvailability)
+        .filter(SlotAvailability.bucket_id == bid)
+        .delete(synchronize_session=False)
+    )
+    n_state = (
+        db.query(AvailabilityState)
+        .filter(AvailabilityState.bucket_id == bid)
+        .delete(synchronize_session=False)
+    )
+    return n_drop, n_slot, n_state
+
+
 def run_baseline_for_bucket(
     db: Session, bid: str, date_str: str, time_slot: str, provider: str = "resy", market: str = "nyc"
 ) -> int:
     """
     Fetch current state for bucket and set baseline = prev = curr. Replaces any previous baseline.
-    Does NOT write to slot_availability or availability_state (no state/metrics from baseline).
+    Clears existing drop/projection rows for this bucket so stale rows from old baselines
+    cannot survive and violate "fully booked before reopen" under the active baseline.
+    Does NOT write new slot_availability or availability_state rows from baseline.
     Returns slot count.
     """
     rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider, market=market)
@@ -468,8 +496,19 @@ def run_baseline_for_bucket(
                 baseline_calibration_polls=DISCOVERY_BASELINE_CALIBRATION_POLLS,
             )
         )
+    n_drop, n_slot, n_state = _clear_bucket_projection_rows(db, bid)
     db.commit()
-    logger.info("Baseline bucket %s: %s slots", bid, len(slot_ids))
+    if n_drop or n_slot or n_state:
+        logger.info(
+            "Baseline bucket %s: %s slots (cleared projection drop=%s slot=%s state=%s)",
+            bid,
+            len(slot_ids),
+            n_drop,
+            n_slot,
+            n_state,
+        )
+    else:
+        logger.info("Baseline bucket %s: %s slots", bid, len(slot_ids))
     return len(slot_ids)
 
 
@@ -482,9 +521,8 @@ def refresh_baselines_for_all_buckets(
     """
     Re-run baseline for all 28 buckets in place (current search area). For each bucket,
     overwrites baseline_slot_ids_json and prev_slot_ids_json with a fresh fetch — the
-    previous baseline is replaced (not kept). Does not delete discovery_buckets or
-    drop_events rows. Use after changing the Resy search bounding box so "just opened" /
-    "still open" are correct for the new area without wiping drop history.
+    previous baseline is replaced (not kept). Per-bucket drop/projection rows are also
+    cleared so post-refresh rows are always evaluated against the active baseline.
     progress_callback: optional (bucket_id, index_1based, total, slot_count) after each bucket.
     Returns { "buckets_refreshed", "buckets_total", "errors" }.
     """
