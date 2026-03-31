@@ -18,8 +18,6 @@ from app.services.discovery.feed_display import attach_feed_card_display_fields
 
 TOP_OPPORTUNITIES_MAX = 4
 HOT_RIGHT_NOW_MAX = 12
-HOT_RIGHT_NOW_COLS = 5  # frontend grid columns; pad so last row is full
-MIN_SECOND_ROW_CARDS = 8  # at least 2 rows
 BRAND_NEW_SECONDS = 300
 JUST_DROPPED_SECONDS = 600
 
@@ -254,10 +252,11 @@ def _consolidate_cards(
 def _quality_score(card: dict, is_hot: bool) -> float:
     """
     Shared quality score: curated hotspot list + Resy popularity + rating.
-    No scarcity, no freshness — what matters is whether the place is desirable.
+    ``is_hot`` is **only** true when the venue is on our editorial hotlist (NYC_HOTSPOT_NAMES),
+    not Resy popularity — that keeps "elite" / carousel badges aligned with the list.
 
     Weights (additive):
-      hotspot    2.0   — on our curated hard-to-get list / resy-popular
+      hotspot    2.0   — on our curated hard-to-get list (is_hotspot)
       popularity ×1.5  — Resy's own demand signal
       quality    ×0.8  — Resy rating × review credibility
     """
@@ -300,21 +299,12 @@ def _snag_include_in_live_segments(card: dict) -> bool:
 
 def _is_ticker_worthy(card: dict, is_hot: bool) -> bool:
     """
-    Returns True if a venue deserves to appear in the Real-Time Ticker.
-    Curated hotspot list always qualifies. Otherwise requires a strong
-    Resy popularity signal — we don't use our own collected metrics
-    to judge desirability.
+    Real-Time Ticker: only venues on the curated hotlist (same as feedHot).
+    Padding to MIN_TICKER_ITEMS uses ranked_board below if the list is short.
     """
     if not card.get("slots"):
         return False
-    if is_hot:
-        return True  # curated list + resy_hot always qualifies
-
-    pop = card.get("resy_popularity_score")
-    if isinstance(pop, (int, float)) and pop >= 0.25:
-        return True
-
-    return False
+    return bool(is_hot)
 
 
 def _top_opportunity_score(card: dict) -> float:
@@ -331,7 +321,7 @@ def build_feed(
     Returns:
       - ranked_board: all cards sorted by priority (feed_hot set on each)
       - top_opportunities: up to 4 cards (priority names first, then hot, then fill)
-      - hot_right_now: hot cards excluding top_opportunities, deduped by name, max HOT_RIGHT_NOW_MAX
+      - hot_right_now: curated hotlist only (feedHot), excluding top_opportunities, max HOT_RIGHT_NOW_MAX
     """
     jo_flat: list[tuple[str, str, str, str | None, dict]] = []
     for day in just_opened or []:
@@ -377,15 +367,12 @@ def build_feed(
 
     for c in cards:
         mkt = c.get("market") or "nyc"
-        # feedHot: curated editorial list OR strong Resy popularity signal.
-        # We deliberately exclude our own collected metrics (rarity, snag_score, etc.)
-        # since they measure scarcity, not whether a place is actually desirable.
-        curated = is_hotspot(c.get("name"))
-        pop = c.get("resy_popularity_score")
-        resy_hot = isinstance(pop, (int, float)) and pop >= 0.65
-        is_hot = curated or resy_hot
-        c["feedHot"] = is_hot
-        c["_priority"] = _priority_score(c, is_hot) * _rank_evidence_multiplier(c)
+        # feedHot: curated hotlist only (NYC_HOTSPOT_NAMES / is_hotspot). Do not use
+        # Resy popularity here — it was marking random busy places as "hot".
+        curated = is_hotspot(c.get("name"), mkt)
+        c["feedHot"] = curated
+        c["is_hotspot"] = curated
+        c["_priority"] = _priority_score(c, curated) * _rank_evidence_multiplier(c)
 
     ranked = sorted(cards, key=lambda x: -(x.get("_priority") or 0))
 
@@ -436,19 +423,8 @@ def build_feed(
     top_ids = {d["id"] for d in top_opportunities}
 
     hot_only = [d for d in ranked if d.get("feedHot")]
-    # Hot right now: hot cards not in top 4, then pad with non-hot so frontend can fill rows (min 8, multiple of 5)
+    # Hottest carousel: hotlist venues only (no padding with Resy-"hot" or generic ranked cards).
     hot_right_now = [d for d in hot_only if d["id"] not in top_ids][:HOT_RIGHT_NOW_MAX]
-    seen_hrn_ids = {d["id"] for d in hot_right_now}
-    non_hot = [d for d in ranked if not d.get("feedHot") and d["id"] not in top_ids and d["id"] not in seen_hrn_ids]
-    if len(hot_right_now) < MIN_SECOND_ROW_CARDS:
-        need = MIN_SECOND_ROW_CARDS - len(hot_right_now)
-        hot_right_now = hot_right_now + non_hot[:need]
-        seen_hrn_ids = {d["id"] for d in hot_right_now}
-        non_hot = [d for d in non_hot if d["id"] not in seen_hrn_ids]
-    target_len = max(MIN_SECOND_ROW_CARDS, ((len(hot_right_now) + HOT_RIGHT_NOW_COLS - 1) // HOT_RIGHT_NOW_COLS) * HOT_RIGHT_NOW_COLS)
-    if len(hot_right_now) < target_len:
-        extra = target_len - len(hot_right_now)
-        hot_right_now = hot_right_now + non_hot[:extra]
 
     # Ticker board: quality-filtered subset for the Real-Time Ticker.
     # Only venues that pass _is_ticker_worthy(), sorted by _ticker_score.
