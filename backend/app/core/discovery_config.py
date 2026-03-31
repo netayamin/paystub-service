@@ -6,7 +6,7 @@ Env vars: DISCOVERY_WINDOW_DAYS, DISCOVERY_TIME_SLOTS, DISCOVERY_PARTY_SIZES,
 DISCOVERY_MAX_CONCURRENT_BUCKETS, DISCOVERY_BUCKET_COOLDOWN_SECONDS,
 DISCOVERY_TICK_SECONDS, NOTIFIED_DEDUPE_MINUTES, DISCOVERY_RESY_PER_PAGE,
 DISCOVERY_RESY_MAX_PAGES, DISCOVERY_DATE_TIMEZONE, DROP_EVENTS_RETENTION_DAYS (7–30),
-NOTIFICATIONS_RETENTION_DAYS (7–90).
+NOTIFICATIONS_RETENTION_DAYS (7–90), DISCOVERY_BASELINE_CALIBRATION_POLLS (1–10).
 
 In Docker, .env is not in the image; set these in docker-compose environment: or env_file:
 so each environment can use different values. Verify with GET /health (includes discovery config).
@@ -91,6 +91,8 @@ DISCOVERY_WINDOW_DAYS = _int("DISCOVERY_WINDOW_DAYS", 14, min_val=1, max_val=14)
 # No allowed= so any comma-separated times from env are accepted (e.g. 21:00, 19:00)
 DISCOVERY_TIME_SLOTS = _list_str("DISCOVERY_TIME_SLOTS", ["15:00", "20:30"])
 DISCOVERY_PARTY_SIZES = _list_int("DISCOVERY_PARTY_SIZES", [2, 4])
+# Union this many successful scans before locking baseline (reduces false “reopen” when a single poll misses inventory).
+DISCOVERY_BASELINE_CALIBRATION_POLLS = _int("DISCOVERY_BASELINE_CALIBRATION_POLLS", 3, min_val=1, max_val=10)
 
 # -----------------------------------------------------------------------------
 # Scheduler: concurrency, cooldown, tick (.env is source of truth)
@@ -116,7 +118,8 @@ NOTIFICATIONS_RETENTION_DAYS = _int("NOTIFICATIONS_RETENTION_DAYS", 30, min_val=
 # Log effective config at import so each environment can verify env vars are applied
 _log.info(
     "Discovery config (from env): window_days=%s time_slots=%s party_sizes=%s "
-    "max_concurrent_buckets=%s bucket_cooldown_sec=%s resy_per_page=%s resy_max_pages=%s",
+    "max_concurrent_buckets=%s bucket_cooldown_sec=%s resy_per_page=%s resy_max_pages=%s "
+    "baseline_calibration_polls=%s",
     DISCOVERY_WINDOW_DAYS,
     DISCOVERY_TIME_SLOTS,
     DISCOVERY_PARTY_SIZES,
@@ -124,6 +127,7 @@ _log.info(
     DISCOVERY_BUCKET_COOLDOWN_SECONDS,
     DISCOVERY_RESY_PER_PAGE,
     DISCOVERY_RESY_MAX_PAGES,
+    DISCOVERY_BASELINE_CALIBRATION_POLLS,
 )
 
 
@@ -139,6 +143,7 @@ class DiscoveryConfig:
     resy_per_page: int
     resy_max_pages: int
     notified_dedupe_minutes: int
+    baseline_calibration_polls: int
 
 
 def get_discovery_config() -> DiscoveryConfig:
@@ -152,4 +157,5 @@ def get_discovery_config() -> DiscoveryConfig:
         resy_per_page=DISCOVERY_RESY_PER_PAGE,
         resy_max_pages=DISCOVERY_RESY_MAX_PAGES,
         notified_dedupe_minutes=NOTIFIED_DEDUPE_MINUTES,
+        baseline_calibration_polls=DISCOVERY_BASELINE_CALIBRATION_POLLS,
     )

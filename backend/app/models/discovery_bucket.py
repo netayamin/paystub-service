@@ -1,5 +1,5 @@
 """Per-bucket state for discovery drops. bucket = (market, date_str, time_slot); N markets × 14 days × n slots."""
-from sqlalchemy import Column, DateTime, Integer, Index, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, Index, String, Text
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -19,3 +19,7 @@ class DiscoveryBucket(Base):
     prev_slot_ids_json = Column(Text, nullable=True)  # JSON array from last poll
     scanned_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     successful_poll_count = Column(Integer, nullable=False, server_default="0")
+    # True after baseline union is locked (manual baseline or N calibration polls).
+    baseline_calibration_complete = Column(Boolean, nullable=False, server_default="false")
+    # Successful calibration merges completed (0 until locked).
+    baseline_calibration_polls = Column(Integer, nullable=False, server_default="0")

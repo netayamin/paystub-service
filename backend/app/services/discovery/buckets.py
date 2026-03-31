@@ -46,6 +46,7 @@ from app.core.constants import (
     VENUES_RETENTION_DAYS,
 )
 from app.core.discovery_config import (
+    DISCOVERY_BASELINE_CALIBRATION_POLLS,
     DISCOVERY_DATE_TIMEZONE,
     DISCOVERY_MAX_CONCURRENT_BUCKETS,
     DISCOVERY_PARTY_SIZES,
@@ -447,6 +448,8 @@ def run_baseline_for_bucket(
         row.prev_slot_ids_json = js
         row.scanned_at = now
         row.successful_poll_count = (row.successful_poll_count or 0) + 1
+        row.baseline_calibration_complete = True
+        row.baseline_calibration_polls = DISCOVERY_BASELINE_CALIBRATION_POLLS
         if not row.market:
             row.market = market
     else:
@@ -461,6 +464,8 @@ def run_baseline_for_bucket(
                 prev_slot_ids_json=js,
                 scanned_at=now,
                 successful_poll_count=1,
+                baseline_calibration_complete=True,
+                baseline_calibration_polls=DISCOVERY_BASELINE_CALIBRATION_POLLS,
             )
         )
     db.commit()
@@ -516,6 +521,12 @@ def run_poll_for_bucket(
     """
     Poll one bucket: fetch curr (network, outside tx), then in a short write tx: lease bucket,
     compute diff, apply projection + sessions, commit. Apply only if our run is newer (last-writer-wins).
+
+    Until baseline calibration completes, we merge unions of slot_id and venue_id across
+    DISCOVERY_BASELINE_CALIBRATION_POLLS successful scans (no DropEvents / slot_availability writes).
+    That locks a stronger “what had inventory” snapshot so drops mean “new vs that union,”
+    not a single flaky poll.
+
     Returns (drops_emitted, current_slot_count, invariant_stats).
     """
     # Network I/O first (no DB transaction)
@@ -537,46 +548,114 @@ def run_poll_for_bucket(
     prev_set: set[str] = set()
 
     if not bucket_row:
-        js = json.dumps(sorted(curr_set))
-        vjs = json.dumps(_venue_ids_from_rows(rows))
         db.add(
             DiscoveryBucket(
                 bucket_id=bid,
                 date_str=date_str,
                 time_slot=time_slot,
                 market=market,
-                baseline_slot_ids_json=js,
-                baseline_venue_ids_json=vjs,
-                prev_slot_ids_json=js,
-                scanned_at=now,
-                successful_poll_count=1,
+                baseline_calibration_complete=False,
+                baseline_calibration_polls=0,
             )
         )
         db.commit()
-        return 0, len(curr_set), {"B": len(curr_set), "P": len(curr_set), "C": len(curr_set), "baseline_ready": True, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
+        bucket_row = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id == bid).first()
+        if not bucket_row:
+            logger.error("Bucket %s: failed to persist discovery_buckets row", bid)
+            db.rollback()
+            return 0, len(curr_set), {"skipped": True, "reason": "no_bucket_row"}
+
+    if bucket_row.baseline_calibration_complete and bucket_row.baseline_slot_ids_json is None:
+        bucket_row.baseline_calibration_complete = False
+        bucket_row.baseline_calibration_polls = 0
+        logger.warning(
+            "Bucket %s: inconsistent state (calibration complete but no baseline); resetting calibration",
+            bid,
+        )
+        if not curr_set:
+            db.commit()
+            return 0, 0, {
+                "B": 0,
+                "P": 0,
+                "C": 0,
+                "baseline_ready": False,
+                "emitted": 0,
+                "reset_inconsistent": True,
+            }
+
+    if not bucket_row.baseline_calibration_complete:
+        if not curr_set:
+            if bucket_row.baseline_slot_ids_json is None:
+                logger.warning(
+                    "Bucket %s: skipping baseline init — Resy returned 0 slots for date=%s "
+                    "time_slot=%s. Will retry next poll.",
+                    bid,
+                    date_str,
+                    time_slot,
+                )
+            else:
+                logger.warning(
+                    "Bucket %s: calibration poll skipped — empty response (date=%s time_slot=%s). Will retry.",
+                    bid,
+                    date_str,
+                    time_slot,
+                )
+            db.rollback()
+            return 0, 0, {
+                "B": 0,
+                "P": 0,
+                "C": 0,
+                "baseline_ready": False,
+                "emitted": 0,
+                "calibration": True,
+                "skipped_empty": True,
+            }
+
+        slot_union = _parse_slot_ids_json(bucket_row.baseline_slot_ids_json) | curr_set
+        venue_union = _parse_venue_ids_json(bucket_row.baseline_venue_ids_json) | set(_venue_ids_from_rows(rows))
+        cal_before = int(bucket_row.baseline_calibration_polls or 0)
+        bucket_row.baseline_slot_ids_json = json.dumps(sorted(slot_union))
+        bucket_row.baseline_venue_ids_json = json.dumps(sorted(venue_union))
+        bucket_row.prev_slot_ids_json = json.dumps(sorted(curr_set))
+        bucket_row.baseline_calibration_polls = cal_before + 1
+        bucket_row.scanned_at = now
+        bucket_row.successful_poll_count = (bucket_row.successful_poll_count or 0) + 1
+        n_cal = bucket_row.baseline_calibration_polls
+        if n_cal >= DISCOVERY_BASELINE_CALIBRATION_POLLS:
+            bucket_row.baseline_calibration_complete = True
+            logger.info(
+                "Bucket %s: baseline calibration complete after %s polls (|S|=%s |V|=%s)",
+                bid,
+                n_cal,
+                len(slot_union),
+                len(venue_union),
+            )
+        else:
+            logger.info(
+                "Bucket %s: baseline calibration poll %s/%s (|S|=%s)",
+                bid,
+                n_cal,
+                DISCOVERY_BASELINE_CALIBRATION_POLLS,
+                len(slot_union),
+            )
+        db.commit()
+        return 0, len(curr_set), {
+            "B": len(slot_union),
+            "P": len(curr_set),
+            "C": len(curr_set),
+            "baseline_ready": bucket_row.baseline_calibration_complete,
+            "emitted": 0,
+            "baseline_echo": 0,
+            "prev_echo": 0,
+            "calibration": True,
+            "calibration_poll": n_cal,
+        }
 
     baseline_js = bucket_row.baseline_slot_ids_json
     if baseline_js is None:
-        if not curr_set:
-            # Resy returned 0 slots — this is likely a transient API issue or rate limit.
-            # Do NOT commit an empty baseline: an empty baseline_set means every future
-            # slot would pass the `drops = added - baseline_set` check and be treated as
-            # a true drop. Wait for a scan that actually returns slots before initialising.
-            logger.warning(
-                "Bucket %s: skipping baseline init — Resy returned 0 slots for date=%s "
-                "time_slot=%s. Will retry next poll.",
-                bid, date_str, time_slot,
-            )
-            return 0, 0, {"B": 0, "P": 0, "C": 0, "baseline_ready": False, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
-        js = json.dumps(sorted(curr_set))
-        bucket_row.baseline_slot_ids_json = js
-        bucket_row.baseline_venue_ids_json = json.dumps(_venue_ids_from_rows(rows))
-        bucket_row.prev_slot_ids_json = js
-        bucket_row.scanned_at = now
-        bucket_row.successful_poll_count = (bucket_row.successful_poll_count or 0) + 1
-        logger.info("Bucket %s: initialized baseline with %s slots", bid, len(curr_set))
-        db.commit()
-        return 0, len(curr_set), {"B": len(curr_set), "P": len(curr_set), "C": len(curr_set), "baseline_ready": True, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
+        logger.error("Bucket %s: baseline missing after calibration; skipping poll", bid)
+        db.rollback()
+        return 0, len(curr_set), {"error": "no_baseline_after_calibration"}
 
     baseline_set = _parse_slot_ids_json(baseline_js)
     prev_set = _parse_slot_ids_json(bucket_row.prev_slot_ids_json)

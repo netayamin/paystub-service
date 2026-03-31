@@ -40,6 +40,7 @@ from app.core.constants import (
     PUSH_JOB_ID,
 )
 from app.core.discovery_config import (
+    DISCOVERY_BASELINE_CALIBRATION_POLLS,
     DISCOVERY_BUCKET_COOLDOWN_SECONDS,
     DISCOVERY_MAX_CONCURRENT_BUCKETS,
     DISCOVERY_PARTY_SIZES,
@@ -248,6 +249,7 @@ def health() -> dict:
             "bucket_cooldown_seconds": DISCOVERY_BUCKET_COOLDOWN_SECONDS,
             "resy_per_page": DISCOVERY_RESY_PER_PAGE,
             "resy_max_pages": DISCOVERY_RESY_MAX_PAGES,
+            "baseline_calibration_polls": DISCOVERY_BASELINE_CALIBRATION_POLLS,
             "just_opened_inventory_minutes": JUST_OPENED_WITHIN_MINUTES,
             "live_feed_window_minutes": LIVE_FEED_WINDOW_MINUTES,
         },
