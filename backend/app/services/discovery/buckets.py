@@ -368,38 +368,37 @@ def _upsert_venue(
     payload: dict | None = None,
     market: str | None = None,
 ) -> None:
-    """Upsert venue profile when we see a live slot (image, neighborhood, Resy link)."""
+    """Upsert venue profile when we see a live slot (image, neighborhood, Resy link).
+    Uses ON CONFLICT DO UPDATE so concurrent polls for different buckets can safely
+    insert the same venue without raising venues_pkey UniqueViolation.
+    """
     if not venue_id or not str(venue_id).strip():
         return
     vid = str(venue_id).strip()
     name = (venue_name or "").strip() or None
     img, nbhd, resy = venue_profile_from_payload(payload)
     mkt = str(market).strip()[:32] if market and str(market).strip() else None
-    row = db.query(Venue).filter(Venue.venue_id == vid).first()
     now = datetime.now(timezone.utc)
-    if row:
-        if name:
-            row.venue_name = name
-        if img:
-            row.image_url = img
-        if nbhd:
-            row.neighborhood = nbhd
-        if resy:
-            row.resy_url = resy
-        if mkt:
-            row.market = mkt
-        row.last_seen_at = now
-    else:
-        db.add(
-            Venue(
-                venue_id=vid,
-                venue_name=name,
-                image_url=img,
-                neighborhood=nbhd,
-                resy_url=resy,
-                market=mkt,
-            )
-        )
+    stmt = pg_insert(Venue).values(
+        venue_id=vid,
+        venue_name=name,
+        image_url=img,
+        neighborhood=nbhd,
+        resy_url=resy,
+        market=mkt,
+    )
+    update_cols: dict = {"last_seen_at": now}
+    if name:
+        update_cols["venue_name"] = stmt.excluded.venue_name
+    if img:
+        update_cols["image_url"] = stmt.excluded.image_url
+    if nbhd:
+        update_cols["neighborhood"] = stmt.excluded.neighborhood
+    if resy:
+        update_cols["resy_url"] = stmt.excluded.resy_url
+    if mkt:
+        update_cols["market"] = stmt.excluded.market
+    db.execute(stmt.on_conflict_do_update(index_elements=["venue_id"], set_=update_cols))
 
 
 def run_baseline_for_bucket(
@@ -676,6 +675,17 @@ def run_poll_for_bucket(
             },
             where=text("slot_availability.updated_at < excluded.updated_at"),
         ))
+    # DEFENSIVE: reject any rows that somehow have null/unknown evidence before inserting.
+    # Every legitimate drop must have a known evidence type from _drop_eligibility_evidence_for_poll.
+    suspicious = [r for r in drop_rows if r.get("eligibility_evidence") in (None, "unknown")]
+    if suspicious:
+        logger.error(
+            "BUG: %d drop_rows with null/unknown evidence in bucket %s (P=%s B=%s polls=%s). "
+            "Dropping them to avoid polluting the feed.",
+            len(suspicious), bid, P, B, polls_before,
+        )
+        drop_rows = [r for r in drop_rows if r.get("eligibility_evidence") not in (None, "unknown")]
+
     emitted = len(drop_rows)  # DropEvents created this run (excl. TTL-deduped)
 
     # Bulk insert DropEvent in batches (on_conflict_do_nothing)
@@ -1618,11 +1628,14 @@ def get_just_opened_from_buckets(
         cutoff = now - timedelta(minutes=opened_within_minutes)
     else:
         cutoff = now - timedelta(minutes=10)
-    # Only slots that are "venue had 0 before" drops (have a DropEvent in the window) and are still open
+    # Only slots that are true drops (non-unknown evidence = baseline-subtraction verified)
     drop_pairs = [
         (r.bucket_id, r.slot_id)
         for r in db.query(DropEvent.bucket_id, DropEvent.slot_id)
-        .filter(DropEvent.user_facing_opened_at >= cutoff)
+        .filter(
+            DropEvent.user_facing_opened_at >= cutoff,
+            DropEvent.eligibility_evidence != "unknown",
+        )
         .distinct()
         .limit(limit_events)
         .all()
@@ -1757,7 +1770,10 @@ def get_still_open_from_buckets(
         recent_drop_pairs = [
             (r.bucket_id, r.slot_id)
             for r in db.query(DropEvent.bucket_id, DropEvent.slot_id)
-            .filter(DropEvent.user_facing_opened_at >= cutoff)
+            .filter(
+                DropEvent.user_facing_opened_at >= cutoff,
+                DropEvent.eligibility_evidence != "unknown",
+            )
             .distinct()
             .all()
         ]
