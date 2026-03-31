@@ -3,7 +3,6 @@ import SwiftUI
 // MARK: - Copy + formatting (Explore rows)
 
 enum ExploreCardFormatting {
-    /// "TONIGHT" when slot date matches selected explore day; else "FRI OCT 18" style.
     static func imageNightLabel(drop: Drop, selectedDateStr: String?) -> String {
         let slotDateOpt = drop.slots.first?.dateStr ?? drop.dateStr
         guard let slotDate = slotDateOpt, !slotDate.isEmpty else { return "TONIGHT" }
@@ -16,9 +15,7 @@ enum ExploreCardFormatting {
         guard parts.count == 3,
               let y = Int(parts[0]), let mo = Int(parts[1]), let d = Int(parts[2]) else { return nil }
         var c = DateComponents()
-        c.year = y
-        c.month = mo
-        c.day = d
+        c.year = y; c.month = mo; c.day = d
         guard let date = Calendar.current.date(from: c) else { return nil }
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
@@ -28,42 +25,14 @@ enum ExploreCardFormatting {
 
     static func paxParts(drop: Drop, partySegment: ExplorePartySegment) -> (number: String, suffix: String) {
         switch partySegment {
-        case .two:
-            return ("2", " PAX")
-        case .four:
-            return ("4", " PAX")
+        case .two:   return ("2", " PAX")
+        case .four:  return ("4", " PAX")
         case .anyParty:
-            if let p = drop.partySizesAvailable.sorted().first, p > 0 {
-                return ("\(p)", " PAX")
-            }
+            if let p = drop.partySizesAvailable.sorted().first, p > 0 { return ("\(p)", " PAX") }
             return ("2", " PAX")
         }
     }
 
-    /// Cuisine / descriptor • neighborhood (reference description line).
-    static func cuisineLine(drop: Drop) -> String {
-        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-            if !nb.isEmpty, s.count < 36 {
-                return "\(s) • \(nb)"
-            }
-            return s
-        }
-        if let line = drop.topOpportunitySubtitleLine?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !line.isEmpty, line.count < 42 {
-            if !nb.isEmpty { return "\(line) • \(nb)" }
-            return line
-        }
-        if !nb.isEmpty {
-            return "Prime tables • \(nb)"
-        }
-        if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
-            return "Tonight • \(loc)"
-        }
-        return "Tonight's inventory"
-    }
-
-    /// First slot time as `8:30 PM`; fallback when missing.
     static func slotTime12h(drop: Drop) -> String {
         guard let t = drop.slots.first?.time, !t.isEmpty else { return "Evening" }
         let p = t.split(separator: ":")
@@ -78,15 +47,16 @@ enum ExploreCardFormatting {
 
 // MARK: - Row card
 
-/// Full-width horizontal row: fixed thumbnail on the left, venue details on the right.
+/// Full-width row: square thumbnail on the left with a time badge overlay,
+/// restaurant name + description + PAX info on the white right panel.
 struct DSExploreInventoryCard: View {
     let drop: Drop
     var selectedDateStr: String?
     var partySegment: ExplorePartySegment
-    var cornerRadius: CGFloat = 0   // kept for call-site compatibility, unused
+    var cornerRadius: CGFloat = 0   // kept for call-site compat
     var onTap: () -> Void
 
-    private static let thumbSize: CGFloat = 86
+    private static let thumbSize: CGFloat = 110
 
     private var pax: (number: String, suffix: String) {
         ExploreCardFormatting.paxParts(drop: drop, partySegment: partySegment)
@@ -94,28 +64,24 @@ struct DSExploreInventoryCard: View {
     private var nightLabel: String {
         ExploreCardFormatting.imageNightLabel(drop: drop, selectedDateStr: selectedDateStr)
     }
-    private var timeLabel: String {
-        ExploreCardFormatting.slotTime12h(drop: drop)
-    }
+    private var timeLabel: String { ExploreCardFormatting.slotTime12h(drop: drop) }
     private var cuisineText: String? { cuisineLineIfMeaningful }
 
     var body: some View {
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: 0) {
                 thumbnail
-                details
+                rightPanel
             }
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CreamEditorialTheme.canvas)
+            .frame(maxWidth: .infinity, minHeight: Self.thumbSize)
+            .background(Color.white)
+            .overlay(
+                Rectangle()
+                    .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(CreamEditorialTheme.hairline)
-                .frame(height: 1)
-        }
     }
 
     // MARK: Thumbnail
@@ -124,38 +90,19 @@ struct DSExploreInventoryCard: View {
         ZStack(alignment: .bottomLeading) {
             thumbnailImage
 
-            LinearGradient(
-                stops: [
-                    .init(color: .black.opacity(0.0), location: 0.15),
-                    .init(color: .black.opacity(0.22), location: 0.5),
-                    .init(color: .black.opacity(0.72), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .allowsHitTesting(false)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(nightLabel)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
-                    .tracking(0.4)
-                    .lineLimit(1)
-
+            // Dark time badge at bottom-left of image (no gradient — details live on the right)
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.system(size: 9, weight: .medium))
                 Text(timeLabel)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-
-                (Text(pax.number).fontWeight(.semibold) + Text(pax.suffix).fontWeight(.regular))
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.88))
+                    .font(.system(size: 10, weight: .semibold))
                     .lineLimit(1)
             }
-            .padding(.horizontal, 8)
-            .padding(.bottom, 8)
+            .foregroundColor(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color.black.opacity(0.58))
+            .padding(8)
         }
         .frame(width: Self.thumbSize, height: Self.thumbSize)
         .clipped()
@@ -175,36 +122,53 @@ struct DSExploreInventoryCard: View {
         }
     }
 
-    // MARK: Details
+    // MARK: Right panel
 
-    private var details: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(drop.name)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .minimumScaleFactor(0.88)
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+    private var rightPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Name
+            Text(drop.name)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(CreamEditorialTheme.textPrimary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .minimumScaleFactor(0.88)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11, weight: .thin))
-                    .foregroundColor(Color(white: 0.55))
-                    .layoutPriority(1)
-            }
-
+            // Cuisine / neighborhood
             if let cuisine = cuisineText {
                 Text(cuisine)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundColor(CreamEditorialTheme.textSecondary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.88)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 5)
+            }
+
+            Spacer(minLength: 10)
+
+            // Night label + PAX — bottom-right, mimics "price" position
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(nightLabel)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(pax.number)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+                + Text(pax.suffix)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(CreamEditorialTheme.textSecondary)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: Self.thumbSize, alignment: .topLeading)
     }
 
     private var cuisineLineIfMeaningful: String? {
@@ -225,11 +189,12 @@ struct DSExploreInventoryCard: View {
 
 #Preview {
     ScrollView {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             DSExploreInventoryCard(drop: .preview, selectedDateStr: nil, partySegment: .two, onTap: {})
             DSExploreInventoryCard(drop: .previewTrending, selectedDateStr: nil, partySegment: .four, onTap: {})
         }
         .padding(.horizontal, 16)
+        .padding(.top, 16)
     }
     .background(CreamEditorialTheme.canvas)
 }

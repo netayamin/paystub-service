@@ -189,7 +189,7 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
         } else {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(items) { drop in
                     exploreInventoryCell(drop)
                 }
