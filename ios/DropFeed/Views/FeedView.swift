@@ -609,85 +609,106 @@ struct FeedView: View {
         Button {
             liveStreamOpenResy(drop)
         } label: {
-            ZStack(alignment: .bottomLeading) {
-                Group {
-                    if let raw = drop.imageUrl, let u = URL(string: raw), !raw.isEmpty {
-                        CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
-                            Color.black.opacity(0.28)
-                        }
-                    } else {
-                        LinearGradient(
-                            colors: [Color.black.opacity(0.65), Color.black.opacity(0.35)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
+            liveHeroShell {
+                ZStack(alignment: .bottomLeading) {
+                    liveHeroBackground(drop: drop)
+                    liveHeroOverlay
+                    liveHeroContent(drop: drop)
                 }
-                .frame(height: 232)
-                .clipped()
-
-                LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.78)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 18, height: 18)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.65), lineWidth: 3)
-                                    .scaleEffect(1.18)
-                            )
-                        Text("LIVE")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .tracking(0.8)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.black.opacity(0.35))
-                    .clipShape(Capsule())
-
-                    Text(drop.name)
-                        .font(.system(size: 34, weight: .semibold, design: .serif))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-
-                    HStack(alignment: .bottom) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(drop.neighborhood ?? "New York")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.92))
-                                .lineLimit(1)
-                            Text(drop.rowSecondaryMetric ?? "Live availability just opened")
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Text("BOOK")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.black.opacity(0.85))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    }
-                }
-                .padding(14)
             }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func liveHeroShell<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(Color.white.opacity(0.22), lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.2), radius: 14, x: 0, y: 8)
+    }
+
+    @ViewBuilder
+    private func liveHeroBackground(drop: Drop) -> some View {
+        if let raw = drop.imageUrl, let u = URL(string: raw), !raw.isEmpty {
+            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
+                Color.black.opacity(0.28)
+            }
+            .frame(height: 232)
+            .clipped()
+        } else {
+            LinearGradient(
+                colors: [Color.black.opacity(0.65), Color.black.opacity(0.35)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 232)
+            .clipped()
         }
-        .buttonStyle(.plain)
+    }
+
+    private var liveHeroOverlay: some View {
+        LinearGradient(
+            colors: [Color.clear, Color.black.opacity(0.78)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    private func liveHeroContent(drop: Drop) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            liveBadge
+
+            Text(drop.name)
+                .font(.system(size: 34, weight: .semibold, design: .serif))
+                .foregroundColor(.white)
+                .lineLimit(2)
+
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(drop.neighborhood ?? "New York")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.92))
+                        .lineLimit(1)
+                    Text(drop.rowSecondaryMetric ?? "Live availability just opened")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text("BOOK")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.black.opacity(0.85))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }
+        }
+        .padding(14)
+    }
+
+    private var liveBadge: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.white)
+                .frame(width: 18, height: 18)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.65), lineWidth: 3)
+                        .scaleEffect(1.18)
+                )
+            Text("LIVE")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.white)
+                .tracking(0.8)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.35))
+        .clipShape(Capsule())
     }
 
     private func liveMiniCard(drop: Drop) -> some View {
