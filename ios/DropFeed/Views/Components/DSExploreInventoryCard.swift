@@ -59,7 +59,7 @@ struct DSExploreInventoryCard: View {
     private var isHot: Bool { drop.feedHot == true || drop.isHotspot == true }
 
     /// Deduplicated slots sorted by time, capped at 6.
-    private var displaySlots: [SlotAvailability] {
+    private var displaySlots: [DropSlot] {
         var seen = Set<String>()
         return drop.slots
             .sorted { ($0.time ?? "") < ($1.time ?? "") }
@@ -175,7 +175,7 @@ struct DSExploreInventoryCard: View {
     // Each time pill is its own Button so it can open a slot-specific URL.
     // Inner .plain buttons within an outer .plain button correctly intercept
     // their own taps without triggering the outer action.
-    private func slotPill(_ slot: SlotAvailability) -> some View {
+    private func slotPill(_ slot: DropSlot) -> some View {
         Button {
             let urlString: String
             if let raw = slot.resyUrl, let url = URL(string: raw), !raw.isEmpty {
