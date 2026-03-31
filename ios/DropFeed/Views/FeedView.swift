@@ -612,7 +612,7 @@ struct FeedView: View {
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let raw = drop.imageUrl, let u = URL(string: raw), !raw.isEmpty {
-                        CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .darkOnDark) {
+                        CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
                             Color.black.opacity(0.28)
                         }
                     } else {
@@ -694,7 +694,7 @@ struct FeedView: View {
         ZStack(alignment: .bottomLeading) {
             Group {
                 if let raw = drop.imageUrl, let u = URL(string: raw), !raw.isEmpty {
-                    CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .darkOnDark) {
+                    CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
                         Color.black.opacity(0.22)
                     }
                 } else {
