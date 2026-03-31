@@ -13,6 +13,9 @@ class DiscoveryBucket(Base):
     time_slot = Column(String(5), nullable=False)  # "15:00" | "20:30"
     market = Column(String(32), nullable=True, index=True)  # e.g. "nyc", "miami"
     baseline_slot_ids_json = Column(Text, nullable=True)  # JSON array of slot_id strings (original snapshot)
+    # Venue IDs that had ≥1 open slot in the baseline snapshot — used to suppress false "drops"
+    # when slot_id hashes drift (time-string format) but the venue was already bookable at baseline.
+    baseline_venue_ids_json = Column(Text, nullable=True)  # JSON array of venue_id strings
     prev_slot_ids_json = Column(Text, nullable=True)  # JSON array from last poll
     scanned_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     successful_poll_count = Column(Integer, nullable=False, server_default="0")

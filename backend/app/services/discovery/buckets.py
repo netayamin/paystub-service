@@ -1,10 +1,11 @@
 """
 Discovery: per-bucket state and drop formula (scalable pattern).
 
-- Bucket = QueryKey (date_str, time_slot). We compare only to previous snapshot, not to initial baseline.
-- Each poll: curr = fetch from Resy; added = curr - prev; update prev = curr. Baseline is only for the first prev.
-- We write all added to SlotAvailability (feed shows them). We only create DropEvent for added slots not in
-  "notified recently" (TTL dedupe: same bucket+slot within NOTIFIED_DEDUPE_MINUTES → no duplicate notification).
+- Bucket = QueryKey (date_str, time_slot). Baseline = first successful snapshot; prev = last poll.
+- Each poll: curr = fetch from Resy; added = curr - prev; drops = (curr − prev) − baseline_set (slot-level).
+- Then venue-level: drop candidates whose venue_id is in baseline_venue_ids (snapshot had ≥1 slot there) are
+  excluded — fixes false drops when slot_id drifts (e.g. time string format) but the venue was already open.
+- We write all `slot`-level added to SlotAvailability. Drops get DropEvent after TTL/dup_open dedupe.
 - DropEvent rows set user_facing_opened_at (same instant as opened_at / slot_availability.opened_at), eligibility
   evidence from prev/baseline geometry, prior_prev_slot_count, and prior_snapshot_included_slot=false for adds.
 - successful_poll_count increments on each completed baseline init or full poll (not on advisory lock skip).
@@ -218,6 +219,22 @@ def _parse_slot_ids_json(js: str | None) -> set[str]:
         return set()
 
 
+def _venue_ids_from_rows(rows: list[dict]) -> list[str]:
+    """Unique non-empty venue_id strings from poll rows (same fetch as baseline_slot_ids)."""
+    s = {str(r.get("venue_id") or "").strip() for r in rows if str(r.get("venue_id") or "").strip()}
+    return sorted(s)
+
+
+def _parse_venue_ids_json(js: str | None) -> set[str]:
+    if not js:
+        return set()
+    try:
+        arr = json.loads(js)
+        return {str(x).strip() for x in arr if x and str(x).strip()}
+    except (TypeError, json.JSONDecodeError):
+        return set()
+
+
 def _drop_eligibility_evidence_for_poll(
     prior_count: int,
     baseline_count: int,
@@ -411,12 +428,14 @@ def run_baseline_for_bucket(
     """
     rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider, market=market)
     slot_ids = [r["slot_id"] for r in rows]
+    venue_js = json.dumps(_venue_ids_from_rows(rows))
     now = datetime.now(timezone.utc)
     row = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id == bid).first()
     js = json.dumps(sorted(slot_ids))
     if row:
         # Overwrite previous baseline and prev with new snapshot (previous one is replaced, not kept)
         row.baseline_slot_ids_json = js
+        row.baseline_venue_ids_json = venue_js
         row.prev_slot_ids_json = js
         row.scanned_at = now
         row.successful_poll_count = (row.successful_poll_count or 0) + 1
@@ -430,6 +449,7 @@ def run_baseline_for_bucket(
                 time_slot=time_slot,
                 market=market,
                 baseline_slot_ids_json=js,
+                baseline_venue_ids_json=venue_js,
                 prev_slot_ids_json=js,
                 scanned_at=now,
                 successful_poll_count=1,
@@ -510,6 +530,7 @@ def run_poll_for_bucket(
 
     if not bucket_row:
         js = json.dumps(sorted(curr_set))
+        vjs = json.dumps(_venue_ids_from_rows(rows))
         db.add(
             DiscoveryBucket(
                 bucket_id=bid,
@@ -517,6 +538,7 @@ def run_poll_for_bucket(
                 time_slot=time_slot,
                 market=market,
                 baseline_slot_ids_json=js,
+                baseline_venue_ids_json=vjs,
                 prev_slot_ids_json=js,
                 scanned_at=now,
                 successful_poll_count=1,
@@ -540,6 +562,7 @@ def run_poll_for_bucket(
             return 0, 0, {"B": 0, "P": 0, "C": 0, "baseline_ready": False, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
         js = json.dumps(sorted(curr_set))
         bucket_row.baseline_slot_ids_json = js
+        bucket_row.baseline_venue_ids_json = json.dumps(_venue_ids_from_rows(rows))
         bucket_row.prev_slot_ids_json = js
         bucket_row.scanned_at = now
         bucket_row.successful_poll_count = (bucket_row.successful_poll_count or 0) + 1
@@ -562,9 +585,38 @@ def run_poll_for_bucket(
     # Slots that were available at baseline were never fully booked — exclude them.
     drops = added - baseline_set
 
+    by_slot = {r["slot_id"]: r for r in rows}
+    # Venue-level guard: venues that already had ≥1 open slot in the baseline snapshot
+    # must not produce new "drops" when slot_id drifts (e.g. Resy time string format changes)
+    # but the venue was clearly bookable at baseline (e.g. West Bank Cafe).
+    baseline_venues = _parse_venue_ids_json(bucket_row.baseline_venue_ids_json)
+    inferred_venues = {
+        str(r.get("venue_id") or "").strip()
+        for r in rows
+        if r.get("slot_id") in baseline_set and str(r.get("venue_id") or "").strip()
+    }
+    if inferred_venues:
+        merged_v = baseline_venues | inferred_venues
+        if merged_v != baseline_venues or bucket_row.baseline_venue_ids_json is None:
+            bucket_row.baseline_venue_ids_json = json.dumps(sorted(merged_v))
+            baseline_venues = merged_v
+    if baseline_venues:
+        before_drop = len(drops)
+        drops = {
+            sid
+            for sid in drops
+            if str((by_slot.get(sid) or {}).get("venue_id") or "").strip() not in baseline_venues
+        }
+        n_venue_fp = before_drop - len(drops)
+        if n_venue_fp:
+            logger.info(
+                "Bucket %s: excluded %s drop(s) — venue already had baseline availability",
+                bid,
+                n_venue_fp,
+            )
+
     run_id = str(uuid.uuid4())
     time_bucket_val = _time_bucket_from_slot(time_slot)
-    by_slot = {r["slot_id"]: r for r in rows}
     # TTL dedupe: don't create DropEvent if we already notified for this (bucket_id, slot_id) recently
     cutoff = now - timedelta(minutes=NOTIFIED_DEDUPE_MINUTES)
     recently_notified = {
