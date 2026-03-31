@@ -817,7 +817,7 @@ private struct SearchResultCard: View {
                         }
                     }
                     .frame(width: 64, height: 64)
-                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardImageCornerRadius, style: .continuous))
 
                     // Elite flame badge on thumbnail
                     if isElite {
@@ -947,11 +947,11 @@ private struct SearchResultCard: View {
             }
         }
         .background(Color.white)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .shadow(color: isElite ? palette.accentRed.opacity(0.10) : .black.opacity(0.05),
                 radius: isElite ? 10 : 6, x: 0, y: 2)
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                 .stroke(isElite ? palette.accentRed.opacity(0.25) : Color.clear, lineWidth: 1.5)
         )
     }

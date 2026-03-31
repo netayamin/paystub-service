@@ -26,6 +26,11 @@ enum AppTheme {
     // Borders / dividers
     static let border = Color(white: 0.22).opacity(0.45)
 
+    // Card chrome — consistent rounded rects on feed / explore surfaces
+    static let cardCornerRadius: CGFloat = 14
+    /// Thumbnails inside cards (tighter than the outer card radius).
+    static let cardImageCornerRadius: CGFloat = 10
+
     // Badges
     static let badgeNew       = accentRed.opacity(0.75)
     static let badgeHot       = accentRed.opacity(0.65)

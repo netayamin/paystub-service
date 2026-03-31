@@ -137,9 +137,9 @@ struct TopOpportunityCardView: View {
             }
         }
         .frame(width: 300, height: 280)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                 .strokeBorder(AppTheme.border, lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 4)

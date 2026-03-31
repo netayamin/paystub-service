@@ -157,20 +157,16 @@ struct DSPremiumHeroCard: View {
             }
             .clipped()
 
-        Group {
-            if let r = innerClipCornerRadius {
-                bounded.clipped()
-            } else {
-                bounded
+        let outerRadius = innerClipCornerRadius ?? AppTheme.cardCornerRadius
+        bounded
+            .clipShape(RoundedRectangle(cornerRadius: outerRadius, style: .continuous))
+            .compositingGroup()
+            .overlay {
+                if useSharpRectangleBorder {
+                    RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                }
             }
-        }
-        .compositingGroup()
-        .overlay {
-            if useSharpRectangleBorder {
-                Rectangle()
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
-            }
-        }
     }
 
     /// Image, gradient, labels — drawn inside a **fixed** overlay rect only.

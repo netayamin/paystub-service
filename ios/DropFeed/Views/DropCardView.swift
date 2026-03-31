@@ -61,7 +61,7 @@ struct DropCardView: View {
                 }
             }
             .frame(width: 72, height: 72)
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardImageCornerRadius, style: .continuous))
             
             // Content
             VStack(alignment: .leading, spacing: 6) {
@@ -168,9 +168,9 @@ struct DropCardView: View {
         }
         .padding(12)
         .background(AppTheme.surface)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                 .stroke(AppTheme.border, lineWidth: 0.5)
         )
     }
@@ -204,6 +204,7 @@ struct DropCardView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(hasLink ? AppTheme.surfaceElevated : AppTheme.surfaceElevated.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     
     private var imageFallback: some View {

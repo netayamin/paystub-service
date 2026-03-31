@@ -49,6 +49,11 @@ struct DSExploreInventoryCard: View {
     var cornerRadius: CGFloat = 0   // kept for call-site compat
     var onTap: () -> Void
 
+    /// When `cornerRadius` is 0, use shared app card radius.
+    private var effectiveOuterRadius: CGFloat {
+        cornerRadius > 0 ? cornerRadius : AppTheme.cardCornerRadius
+    }
+
     private static let thumbSize: CGFloat = 80
     private static let imgPad:    CGFloat = 10
 
@@ -77,13 +82,13 @@ struct DSExploreInventoryCard: View {
             }
             .frame(maxWidth: .infinity)
             .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous)
                     .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.07), radius: 8, x: 0, y: 2)
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -93,7 +98,7 @@ struct DSExploreInventoryCard: View {
     private var thumbnail: some View {
         ZStack(alignment: .topTrailing) {
             thumbnailImage
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardImageCornerRadius, style: .continuous))
 
             if isHot {
                 Text("HOT")

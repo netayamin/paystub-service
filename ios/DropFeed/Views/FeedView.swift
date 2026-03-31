@@ -569,192 +569,38 @@ struct FeedView: View {
                     QuietCuratorLiveStreamCenteredTitle()
                         .padding(.horizontal, 18)
 
-                    liveShowcaseStack(drops: drops)
-                        .padding(.horizontal, 18)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                            removal: .opacity
-                        ))
+                    // Single bordered container, rows separated by dividers
+                    VStack(spacing: 0) {
+                        ForEach(Array(drops.enumerated()), id: \.element.id) { idx, drop in
+                            LiveStreamOpenCard(
+                                drop: drop,
+                                preferredParty: mockPreferredParty(for: drop),
+                                todayDateStr: vm.todayDateStr,
+                                onTap: { liveStreamOpenResy(drop) }
+                            )
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal:   .opacity
+                            ))
+
+                            if idx < drops.count - 1 {
+                                Divider()
+                                    .background(CreamEditorialTheme.hairline)
+                                    .padding(.horizontal, 16)
+                            }
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.4), value: drops.map(\.id))
+                    .background(CreamEditorialTheme.cardWhite)
+                    .overlay(
+                        Rectangle()
+                            .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+                    )
+                    .padding(.horizontal, 18)
                 }
-                .animation(.spring(response: 0.48, dampingFraction: 0.84), value: drops.map(\.id))
                 .padding(.bottom, 10)
             }
         }
-    }
-
-    @ViewBuilder
-    private func liveShowcaseStack(drops: [Drop]) -> some View {
-        let hero = drops.first
-        let minis = Array(drops.dropFirst().prefix(3))
-        VStack(alignment: .leading, spacing: 0) {
-            if let hero {
-                liveHeroCard(drop: hero)
-                    .zIndex(2)
-            }
-            if !minis.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(minis, id: \.id) { drop in
-                        liveMiniCard(drop: drop)
-                            .onTapGesture { liveStreamOpenResy(drop) }
-                    }
-                }
-                .padding(.horizontal, 10)
-                .offset(y: -16)
-                .zIndex(3)
-            }
-        }
-    }
-
-    private func liveHeroCard(drop: Drop) -> some View {
-        Button {
-            liveStreamOpenResy(drop)
-        } label: {
-            liveHeroShell {
-                ZStack(alignment: .bottomLeading) {
-                    liveHeroBackground(drop: drop)
-                    liveHeroOverlay
-                    liveHeroContent(drop: drop)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func liveHeroShell<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.white.opacity(0.22), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.2), radius: 14, x: 0, y: 8)
-    }
-
-    @ViewBuilder
-    private func liveHeroBackground(drop: Drop) -> some View {
-        if let raw = drop.imageUrl, let u = URL(string: raw), !raw.isEmpty {
-            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
-                Color.black.opacity(0.28)
-            }
-            .frame(height: 232)
-            .clipped()
-        } else {
-            LinearGradient(
-                colors: [Color.black.opacity(0.65), Color.black.opacity(0.35)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 232)
-            .clipped()
-        }
-    }
-
-    private var liveHeroOverlay: some View {
-        LinearGradient(
-            colors: [Color.clear, Color.black.opacity(0.78)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-
-    private func liveHeroContent(drop: Drop) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            liveBadge
-
-            Text(drop.name)
-                .font(.system(size: 34, weight: .semibold, design: .serif))
-                .foregroundColor(.white)
-                .lineLimit(2)
-
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(drop.neighborhood ?? "New York")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.92))
-                        .lineLimit(1)
-                    Text(
-                        drop.metricsSubtitle
-                            ?? drop.metricsSecondaryCompact
-                            ?? drop.latestDropSubtitleMetrics
-                            ?? drop.liveStreamVelocityBadge
-                            ?? drop.rowPrimaryMetric
-                            ?? "Live availability just opened"
-                    )
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.8))
-                        .lineLimit(1)
-                }
-                Spacer()
-                Text("BOOK")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.black.opacity(0.85))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            }
-        }
-        .padding(14)
-    }
-
-    private var liveBadge: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(Color.white)
-                .frame(width: 18, height: 18)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.65), lineWidth: 3)
-                        .scaleEffect(1.18)
-                )
-            Text("LIVE")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.white)
-                .tracking(0.8)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Color.black.opacity(0.35))
-        .clipShape(Capsule())
-    }
-
-    private func liveMiniCard(drop: Drop) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            Group {
-                if let raw = drop.imageUrl, let u = URL(string: raw), !raw.isEmpty {
-                    CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .heroMuted) {
-                        Color.black.opacity(0.22)
-                    }
-                } else {
-                    Color.black.opacity(0.18)
-                }
-            }
-            .frame(width: 118, height: 84)
-            .clipped()
-
-            LinearGradient(
-                colors: [Color.clear, Color.black.opacity(0.62)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(drop.name)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                Text("Live")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.85))
-            }
-            .padding(8)
-        }
-        .frame(width: 118, height: 84)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.28), lineWidth: 1)
-        )
     }
 
     private func liveStreamOpenResy(_ drop: Drop) {
@@ -930,9 +776,9 @@ struct FeedView: View {
             }
             .padding(16)
             .background(Color(white: 0.14))
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
             .overlay(
-                Rectangle()
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                     .stroke(Color.white.opacity(0.08), lineWidth: 1)
             )
         }
@@ -1691,11 +1537,11 @@ private struct LiveGlanceCompactCard: View {
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(
-                Rectangle()
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                     .fill(Color(white: 0.11))
             )
             .overlay(
-                Rectangle()
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                     .stroke(Color.white.opacity(0.07), lineWidth: 1)
             )
         }
@@ -2244,10 +2090,9 @@ private struct MarketLeaderHeroCard: View {
         }
         .frame(height: Self.cardHeight)
         .frame(maxWidth: .infinity)
-        .clipped()
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
@@ -2411,9 +2256,9 @@ private struct FeedPredictWillOpenSection: View {
                 .frame(width: 148, alignment: .leading)
             }
             .frame(width: 148, height: 188)
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
             .overlay(
-                Rectangle()
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                     .stroke(
                         editorialCream ? CreamEditorialTheme.hairline : Color.white.opacity(0.08),
                         lineWidth: 1
@@ -2920,7 +2765,7 @@ private struct CrownJewelCard: View {
             .frame(width: cardWidth, height: cardHeight, alignment: .bottom)
         }
         .frame(width: cardWidth, height: cardHeight)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 }
@@ -3246,7 +3091,7 @@ private struct BarebonesDropRow: View {
                 )
             }
             .frame(width: 56, height: 56)
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardImageCornerRadius, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(drop.name)
@@ -3304,9 +3149,9 @@ private struct BarebonesDropRow: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 16)
         .background(AppTheme.surface)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                 .stroke(AppTheme.border, lineWidth: 0.5)
         )
     }
@@ -3409,9 +3254,9 @@ private struct RareDropCard: View {
         }
         .frame(width: 160)
         .background(AppTheme.surface)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                 .stroke(AppTheme.scarcityRare.opacity(0.4), lineWidth: 0.5)
         )
     }
@@ -3500,9 +3345,9 @@ private struct TrendingDropCard: View {
         }
         .frame(width: 150)
         .background(AppTheme.surface)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                 .stroke(AppTheme.liveDot.opacity(0.3), lineWidth: 0.5)
         )
     }
@@ -3568,7 +3413,7 @@ struct LatestDropRowView: View {
                     }
                 }
                 .frame(width: 58, height: 58)
-                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardImageCornerRadius, style: .continuous))
 
                 // Name + badges + sublabel
                 VStack(alignment: .leading, spacing: 4) {
@@ -3616,9 +3461,9 @@ struct LatestDropRowView: View {
             }
             .padding(12)
             .background(AppTheme.surface)
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
             .overlay(
-                Rectangle()
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
                     .stroke(AppTheme.border, lineWidth: 0.5)
             )
         }
@@ -3664,7 +3509,6 @@ struct HotRightNowCard: View {
                 }
                 .frame(width: 120, height: 80)
                 .clipped()
-                .clipped()
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
@@ -3681,8 +3525,16 @@ struct HotRightNowCard: View {
                         Text(m).font(.system(size: 9, weight: .medium)).foregroundColor(AppTheme.textTertiary).lineLimit(1)
                     }
                 }
-                .frame(width: 120)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
             }
+            .frame(width: 120, alignment: .leading)
+            .background(AppTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
+                    .stroke(AppTheme.border, lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
     }

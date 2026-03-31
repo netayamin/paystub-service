@@ -91,7 +91,7 @@ struct LiveStreamOpenCard: View {
                     }
                 }
                 .frame(width: 72, height: 72)
-                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardImageCornerRadius, style: .continuous))
 
                 // Text stack
                 VStack(alignment: .leading, spacing: 3) {
@@ -143,6 +143,14 @@ struct LiveStreamOpenCard: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
+                    .fill(Color(red: 0.99, green: 0.99, blue: 0.99))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardCornerRadius, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
