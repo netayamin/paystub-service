@@ -13,8 +13,8 @@ enum ExploreCardFormatting {
         }
     }
 
-    static func slotTime12h(drop: Drop) -> String {
-        guard let t = drop.slots.first?.time, !t.isEmpty else { return "Evening" }
+    static func slotTime12h(_ timeStr: String?) -> String {
+        guard let t = timeStr, !t.isEmpty else { return "Evening" }
         let p = t.split(separator: ":")
         guard let h = p.first.flatMap({ Int($0) }) else { return t }
         let mm = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
@@ -24,7 +24,8 @@ enum ExploreCardFormatting {
         return "\(h12) \(ap)"
     }
 
-    // kept for any external callers
+    // kept for external callers
+    static func slotTime12h(drop: Drop) -> String { slotTime12h(drop.slots.first?.time) }
     static func imageNightLabel(drop: Drop, selectedDateStr: String?) -> String { "TONIGHT" }
     static func cuisineLine(drop: Drop) -> String {
         let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -54,11 +55,21 @@ struct DSExploreInventoryCard: View {
     private var pax: (number: String, suffix: String) {
         ExploreCardFormatting.paxParts(drop: drop, partySegment: partySegment)
     }
-    private var timeLabel: String { ExploreCardFormatting.slotTime12h(drop: drop) }
     private var cuisineText: String? { cuisineLineIfMeaningful }
     private var isHot: Bool { drop.feedHot == true || drop.isHotspot == true }
 
+    /// Deduplicated slots sorted by time, capped at 6.
+    private var displaySlots: [SlotAvailability] {
+        var seen = Set<String>()
+        return drop.slots
+            .sorted { ($0.time ?? "") < ($1.time ?? "") }
+            .filter { seen.insert($0.time ?? "").inserted }
+            .prefix(6)
+            .map { $0 }
+    }
+
     var body: some View {
+        // Outer tap = open best booking URL (fallback for tapping image / name area)
         Button(action: onTap) {
             HStack(alignment: .center, spacing: 0) {
                 thumbnail
@@ -84,7 +95,6 @@ struct DSExploreInventoryCard: View {
             thumbnailImage
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            // HOT badge — only shown when feedHot or on hotspot list
             if isHot {
                 Text("HOT")
                     .font(.system(size: 8, weight: .black))
@@ -118,7 +128,7 @@ struct DSExploreInventoryCard: View {
     // MARK: Right panel
 
     private var rightPanel: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             // Name
             Text(drop.name)
                 .font(.system(size: 15, weight: .bold))
@@ -137,29 +147,57 @@ struct DSExploreInventoryCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // Time button + PAX
-            HStack(spacing: 8) {
-                // Time pill — tappable feel, same action as the card
-                Text(timeLabel)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.burgundy)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(CreamEditorialTheme.peachBadgeFill)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            // Time slot pills (scrollable) + PAX
+            HStack(spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(displaySlots.enumerated()), id: \.offset) { _, slot in
+                            slotPill(slot)
+                        }
+                    }
+                }
 
-                Spacer()
+                Spacer(minLength: 8)
 
-                // PAX
                 (Text(pax.number).fontWeight(.bold) + Text(pax.suffix).fontWeight(.regular))
-                    .font(.system(size: 12))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .font(.system(size: 11))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .lineLimit(1)
+                    .fixedSize()
             }
         }
         .padding(.leading, 4)
-        .padding(.trailing, 14)
+        .padding(.trailing, 12)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    // Each time pill is its own Button so it can open a slot-specific URL.
+    // Inner .plain buttons within an outer .plain button correctly intercept
+    // their own taps without triggering the outer action.
+    private func slotPill(_ slot: SlotAvailability) -> some View {
+        Button {
+            let urlString: String
+            if let raw = slot.resyUrl, let url = URL(string: raw), !raw.isEmpty {
+                urlString = raw
+            } else if let best = drop.effectiveResyBookingURL {
+                urlString = best
+            } else {
+                return
+            }
+            if let url = URL(string: urlString) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            Text(ExploreCardFormatting.slotTime12h(slot.time))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(CreamEditorialTheme.burgundy)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(CreamEditorialTheme.peachBadgeFill)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
     }
 
     private var cuisineLineIfMeaningful: String? {
