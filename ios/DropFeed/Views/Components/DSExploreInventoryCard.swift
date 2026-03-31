@@ -91,8 +91,9 @@ struct DSExploreInventoryCard: View {
     private var thumbnail: some View {
         ZStack(alignment: .bottomLeading) {
             thumbnailImage
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            // Dark time badge at bottom-left of image (no gradient — details live on the right)
+            // Dark time badge at bottom-left of image
             HStack(spacing: 4) {
                 Image(systemName: "clock")
                     .font(.system(size: 9, weight: .medium))
@@ -104,10 +105,11 @@ struct DSExploreInventoryCard: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
             .background(Color.black.opacity(0.58))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .padding(8)
         }
-        .frame(width: Self.thumbSize, height: Self.thumbSize)
-        .clipped()
+        .padding(10)
+        .frame(width: Self.thumbSize + 20, height: Self.thumbSize + 20)
     }
 
     @ViewBuilder
@@ -117,7 +119,6 @@ struct DSExploreInventoryCard: View {
                 Color(white: 0.91)
             }
             .frame(width: Self.thumbSize, height: Self.thumbSize)
-            .clipped()
         } else {
             Color(white: 0.91)
                 .frame(width: Self.thumbSize, height: Self.thumbSize)
