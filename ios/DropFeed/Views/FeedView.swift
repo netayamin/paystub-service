@@ -105,6 +105,7 @@ struct FeedView: View {
     private let partySizeOptions = [2, 3, 4, 5, 6]
 
     @State private var showFilterSheet = false
+    @State private var liveGlowPulse = false
 
     private var viewStateId: String {
         if vm.isLoading && vm.drops.isEmpty { return "loading" }
@@ -136,6 +137,7 @@ struct FeedView: View {
         .task {
             await vm.refresh()
             vm.startPolling()
+            liveGlowPulse = true
         }
     }
 
@@ -345,8 +347,15 @@ struct FeedView: View {
 
     private var referenceFeedScroll: some View {
         ZStack(alignment: .bottom) {
+            liveBackdrop
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    snagLiveHeader
+                        .padding(.horizontal, 18)
+                        .padding(.top, 6)
+                        .padding(.bottom, 8)
+                    snagDateRail
+                        .padding(.bottom, 14)
                     CuratorTopBar(
                         lastRefreshed: vm.lastRefreshed,
                         lastScanFallback: vm.lastScanText,
@@ -359,10 +368,12 @@ struct FeedView: View {
                     if !quietCuratorHottestCarouselDrops.isEmpty {
                         quietCuratorHottestHeader
                         quietCuratorHottestCarousel(drops: quietCuratorHottestCarouselDrops)
+                            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
                         Color.clear.frame(height: 24)
                     }
 
                     quietCuratorLiveStreamSection
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     quietCuratorExploreButton
                     quietCuratorTacticalForecast
                     Color.clear.frame(height: vm.newDropsCount > 0 ? 96 : 28)
@@ -376,11 +387,98 @@ struct FeedView: View {
                 }
                 if vm.newDropsCount > 0 {
                     floatingNewDropsPill
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .padding(.bottom, 6)
         }
-        .background(CreamEditorialTheme.canvas)
+        .background(Color.black)
+        .animation(.spring(response: 0.45, dampingFraction: 0.86), value: vm.newDropsCount)
+    }
+
+    private var liveBackdrop: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.06, green: 0.04, blue: 0.02),
+                    Color(red: 0.03, green: 0.03, blue: 0.04),
+                    Color.black
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            RadialGradient(
+                colors: [
+                    Color.orange.opacity(liveGlowPulse ? 0.22 : 0.12),
+                    .clear
+                ],
+                center: .top,
+                startRadius: 10,
+                endRadius: 360
+            )
+            .animation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true), value: liveGlowPulse)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var snagLiveHeader: some View {
+        HStack {
+            Text("NYC · Tonight ⚡")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.white, Color.orange.opacity(0.95)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            Spacer()
+            Circle()
+                .fill(Color.orange)
+                .frame(width: 7, height: 7)
+                .shadow(color: Color.orange.opacity(0.8), radius: 8)
+            Text("LIVE")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(Color.orange.opacity(0.95))
+                .tracking(0.7)
+        }
+    }
+
+    private var snagDateRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(vm.dateOptions.prefix(7)), id: \.dateStr) { d in
+                    let active = d.dateStr == vm.todayDateStr
+                    Text(active ? "Today" : d.dayName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(active ? .white : Color.white.opacity(0.7))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    active
+                                    ? LinearGradient(
+                                        colors: [Color.orange.opacity(0.95), Color.orange.opacity(0.55)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.08)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(active ? Color.orange.opacity(0.95) : Color.white.opacity(0.16), lineWidth: 1)
+                        )
+                        .shadow(color: active ? Color.orange.opacity(0.55) : .clear, radius: 8)
+                }
+            }
+            .padding(.horizontal, 18)
+        }
     }
 
     /// Featured hero — left-mockup style single spotlight.
@@ -461,12 +559,17 @@ struct FeedView: View {
     private func quietCuratorHottestCarouselCardChrome<V: View>(_ content: V) -> some View {
         let r: CGFloat = 16
         return content
+            .clipShape(RoundedRectangle(cornerRadius: r, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: r, style: .continuous)
+                    .fill(Color.white.opacity(0.03))
+            )
             .clipped()
             .overlay(
-                Rectangle()
-                    .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                RoundedRectangle(cornerRadius: r, style: .continuous)
+                    .stroke(Color.orange.opacity(0.35), lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 5)
+            .shadow(color: Color.orange.opacity(0.22), radius: 12, x: 0, y: 5)
     }
 
     @ViewBuilder
@@ -537,18 +640,18 @@ struct FeedView: View {
         return HStack(alignment: .center, spacing: 10) {
             Text("HOTTEST DROPS")
                 .font(.system(size: 13, weight: .heavy))
-                .foregroundColor(CreamEditorialTheme.textPrimary)
+                .foregroundColor(.white.opacity(0.95))
                 .tracking(1.0)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             Text("WEEK \(week)")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(CreamEditorialTheme.textTertiary)
+                .foregroundColor(Color.orange.opacity(0.95))
                 .tracking(0.4)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color(red: 0.93, green: 0.93, blue: 0.95))
+                .background(Color.white.opacity(0.08))
                 .clipShape(Capsule())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -582,20 +685,23 @@ struct FeedView: View {
                                 insertion: .opacity.combined(with: .move(edge: .top)),
                                 removal:   .opacity
                             ))
+                            .animation(.spring(response: 0.42, dampingFraction: 0.84), value: vm.liveListShuffleToken)
 
                             if idx < drops.count - 1 {
                                 Divider()
-                                    .background(CreamEditorialTheme.hairline)
+                                    .background(Color.white.opacity(0.14))
                                     .padding(.horizontal, 16)
                             }
                         }
                     }
                     .animation(.easeInOut(duration: 0.4), value: drops.map(\.id))
-                    .background(CreamEditorialTheme.cardWhite)
+                    .background(Color.white.opacity(0.06))
                     .overlay(
-                        Rectangle()
-                            .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: Color.orange.opacity(0.18), radius: 12, y: 4)
                     .padding(.horizontal, 18)
                 }
                 .padding(.bottom, 10)
@@ -791,6 +897,8 @@ struct FeedView: View {
             Circle()
                 .fill(Color.white.opacity(0.95))
                 .frame(width: 6, height: 6)
+                .scaleEffect(liveGlowPulse ? 1.15 : 0.9)
+                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: liveGlowPulse)
             Text("SYNCING…")
                 .font(.system(size: 12, weight: .heavy))
                 .foregroundColor(.white)
