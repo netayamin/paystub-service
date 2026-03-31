@@ -1,11 +1,19 @@
 """
 Discovery: per-bucket state and drop formula (scalable pattern).
 
-- Bucket = QueryKey (date_str, time_slot). Baseline = first successful snapshot; prev = last poll.
-- Each poll: curr = fetch from Resy; added = curr - prev; drops = (curr − prev) − baseline_set (slot-level).
-- Then venue-level: drop candidates whose venue_id is in baseline_venue_ids (snapshot had ≥1 slot there) are
-  excluded — fixes false drops when slot_id drifts (e.g. time string format) but the venue was already open.
-- We write all `slot`-level added to SlotAvailability. Drops get DropEvent after TTL/dup_open dedupe.
+**Product rule (what counts as a “drop”):** we only care when a venue had **no** reservation
+times showing in our **baseline** snapshot (for us, that place was fully booked / not bookable
+in that scan). We do **not** care about “another time opened” at a venue that **already** had
+at least one time in baseline — that is not a reopening story.
+
+**Mechanics:** Baseline = first successful snapshot; prev = last poll. Slot-level:
+`added = curr − prev`, `drops = added − baseline_set` (new slot lines since baseline, deduped
+by prev). **Venue gate:** `baseline_venue_ids_json` lists every venue that had ≥1 slot in
+baseline; any drop candidate whose venue is in that set is discarded (including when Resy
+returns a different time string so `slot_id` hashes don’t match baseline).
+
+We write slot-level adds to SlotAvailability. DropEvents (after TTL/dup_open dedupe) only for
+candidates that pass the venue gate.
 - DropEvent rows set user_facing_opened_at (same instant as opened_at / slot_availability.opened_at), eligibility
   evidence from prev/baseline geometry, prior_prev_slot_count, and prior_snapshot_included_slot=false for adds.
 - successful_poll_count increments on each completed baseline init or full poll (not on advisory lock skip).
@@ -578,17 +586,15 @@ def run_poll_for_bucket(
     drop_evidence = _drop_eligibility_evidence_for_poll(P, B, polls_before)
     prior_prev_slot_count = P
 
-    # New since last poll (prev used only for deduplication / "already emitted" detection)
+    # prev: dedupe “already seen this poll line” / close detection. Not the product definition of “drop”.
     added = curr_set - prev_set
-    # TRUE DROP definition: slot was NOT in the baseline scan, meaning it was fully
-    # booked (or didn't exist) when we first started watching this date/time slot.
-    # Slots that were available at baseline were never fully booked — exclude them.
+    # Slot-level: new lines vs baseline snapshot (hashes). Still allows “new time” at a venue
+    # that already had other times at baseline — venue filter below removes those.
     drops = added - baseline_set
 
     by_slot = {r["slot_id"]: r for r in rows}
-    # Venue-level guard: venues that already had ≥1 open slot in the baseline snapshot
-    # must not produce new "drops" when slot_id drifts (e.g. Resy time string format changes)
-    # but the venue was clearly bookable at baseline (e.g. West Bank Cafe).
+    # Product gate: only venues with **no** times at all in baseline qualify. If baseline
+    # already showed any slot for this venue, we ignore further “new times” (and hash drift).
     baseline_venues = _parse_venue_ids_json(bucket_row.baseline_venue_ids_json)
     inferred_venues = {
         str(r.get("venue_id") or "").strip()
@@ -610,7 +616,7 @@ def run_poll_for_bucket(
         n_venue_fp = before_drop - len(drops)
         if n_venue_fp:
             logger.info(
-                "Bucket %s: excluded %s drop(s) — venue already had baseline availability",
+                "Bucket %s: excluded %s slot candidate(s) — venue had ≥1 time in baseline (not a full-booking reopen)",
                 bid,
                 n_venue_fp,
             )

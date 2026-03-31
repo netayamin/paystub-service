@@ -1,16 +1,17 @@
 """
 Snag drop eligibility — predicates over stored drop_events facts.
 
-TRUE DROP DEFINITION (v2):
-  A slot is a true drop if and only if it was NOT present in the baseline scan
-  (the first successful poll for that bucket). This means the venue was fully
-  booked (or that slot didn't exist) when we started watching. Any later
-  appearance is a genuine reopening.
+TRUE DROP DEFINITION (v2 + venue gate):
+  Product intent: we only surface places that had **no** reservation times in the
+  baseline snapshot (fully booked / not bookable in that scan). We do **not** surface
+  “another time opened” at a venue that already had ≥1 time in baseline.
 
-  This is enforced at write time in buckets.py:
+  Enforced at write time in buckets.py:
       drops = (curr_set - prev_set) - baseline_set
+      then remove any candidate whose venue_id is in baseline_venue_ids (venues that
+      had any slot in the baseline snapshot).
 
-  Therefore every DropEvent row in the DB is already a confirmed true drop.
+  Therefore every DropEvent row in the DB matches that product rule.
   This module's only job is to filter out legacy/backfill rows that pre-date
   the baseline-subtraction logic (evidence = "unknown").
 
