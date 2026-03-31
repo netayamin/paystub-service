@@ -528,19 +528,23 @@ def run_poll_for_bucket(
 
     baseline_js = bucket_row.baseline_slot_ids_json
     if baseline_js is None:
+        if not curr_set:
+            # Resy returned 0 slots — this is likely a transient API issue or rate limit.
+            # Do NOT commit an empty baseline: an empty baseline_set means every future
+            # slot would pass the `drops = added - baseline_set` check and be treated as
+            # a true drop. Wait for a scan that actually returns slots before initialising.
+            logger.warning(
+                "Bucket %s: skipping baseline init — Resy returned 0 slots for date=%s "
+                "time_slot=%s. Will retry next poll.",
+                bid, date_str, time_slot,
+            )
+            return 0, 0, {"B": 0, "P": 0, "C": 0, "baseline_ready": False, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
         js = json.dumps(sorted(curr_set))
         bucket_row.baseline_slot_ids_json = js
         bucket_row.prev_slot_ids_json = js
         bucket_row.scanned_at = now
         bucket_row.successful_poll_count = (bucket_row.successful_poll_count or 0) + 1
-        n = len(curr_set)
-        if n > 0:
-            logger.info("Bucket %s: initialized baseline (was None), %s slots (no bootstrap write to slot_availability)", bid, n)
-        else:
-            logger.warning(
-                "Bucket %s: initialized baseline with 0 slots — Resy returned no availability for date=%s time_slot=%s. Check RESY_API_KEY/RESY_AUTH_TOKEN and backend logs.",
-                bid, date_str, time_slot,
-            )
+        logger.info("Bucket %s: initialized baseline with %s slots", bid, len(curr_set))
         db.commit()
         return 0, len(curr_set), {"B": len(curr_set), "P": len(curr_set), "C": len(curr_set), "baseline_ready": True, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
 
