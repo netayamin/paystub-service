@@ -75,11 +75,13 @@ struct DSExploreInventoryCard: View {
             }
             .frame(maxWidth: .infinity, minHeight: Self.thumbSize)
             .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
-                Rectangle()
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
             )
-            .contentShape(Rectangle())
+            .shadow(color: .black.opacity(0.07), radius: 8, x: 0, y: 2)
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
