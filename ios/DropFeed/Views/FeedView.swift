@@ -672,7 +672,14 @@ struct FeedView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white.opacity(0.92))
                         .lineLimit(1)
-                    Text(drop.rowSecondaryMetric ?? "Live availability just opened")
+                    Text(
+                        drop.metricsSubtitle
+                            ?? drop.metricsSecondaryCompact
+                            ?? drop.latestDropSubtitleMetrics
+                            ?? drop.liveStreamVelocityBadge
+                            ?? drop.rowPrimaryMetric
+                            ?? "Live availability just opened"
+                    )
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.8))
                         .lineLimit(1)
