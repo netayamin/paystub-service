@@ -1,6 +1,5 @@
 """Unit tests for discovery eligibility gates and multipliers."""
 from app.services.discovery.eligibility import (
-    MIN_POLLS_FOR_BASELINE_TRUST,
     push_notification_allowed,
     qualified_for_home_feed,
     rank_strength_multiplier,
@@ -16,12 +15,12 @@ def test_stronger_eligibility_evidence_ordering():
 
 
 def test_qualified_for_home_feed():
+    # v2: any non-unknown evidence qualifies (baseline-subtraction guarantees at write time).
     assert qualified_for_home_feed("unknown", 99) is False
-    assert qualified_for_home_feed("first_poll_bucket", 99) is False
+    assert qualified_for_home_feed("first_poll_bucket", 0) is True
     assert qualified_for_home_feed("nonempty_prev_delta", 0) is True
     assert qualified_for_home_feed("empty_prev_delta", 0) is True
-    assert qualified_for_home_feed("baseline_only", MIN_POLLS_FOR_BASELINE_TRUST - 1) is False
-    assert qualified_for_home_feed("baseline_only", MIN_POLLS_FOR_BASELINE_TRUST) is True
+    assert qualified_for_home_feed("baseline_only", 0) is True
 
 
 def test_rank_strength_multiplier_tiers():
