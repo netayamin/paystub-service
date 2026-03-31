@@ -11,8 +11,6 @@ struct ExploreView: View {
     @State private var showFilterSheet = false
     @State private var showExploreMenu = false
 
-    private var gridColumnSpacing: CGFloat { DropFeedTokens.Layout.gridColumnSpacing }
-    private var gridRowSpacing: CGFloat { DropFeedTokens.Layout.gridRowSpacing }
     private var exploreCardCorner: CGFloat { DropFeedTokens.Layout.exploreCardCornerRadius }
 
     var body: some View {
@@ -191,11 +189,7 @@ struct ExploreView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
         } else {
-            let columns = [
-                GridItem(.flexible(), spacing: gridColumnSpacing, alignment: .top),
-                GridItem(.flexible(), spacing: gridColumnSpacing, alignment: .top),
-            ]
-            LazyVGrid(columns: columns, alignment: .leading, spacing: gridRowSpacing) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(items) { drop in
                     exploreInventoryCell(drop)
                 }

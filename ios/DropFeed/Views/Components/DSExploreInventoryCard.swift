@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Copy + formatting (Explore grid)
+// MARK: - Copy + formatting (Explore rows)
 
 enum ExploreCardFormatting {
     /// "TONIGHT" when slot date matches selected explore day; else "FRI OCT 18" style.
@@ -60,30 +60,7 @@ enum ExploreCardFormatting {
         if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
             return "Tonight • \(loc)"
         }
-        return "Tonight’s inventory"
-    }
-
-    /// Lightning pill: opening chance, liquidity, or server tags.
-    static func inventoryStatusLine(drop: Drop) -> String {
-        if let tag = drop.exploreStatusTag?.trimmingCharacters(in: .whitespacesAndNewlines), !tag.isEmpty {
-            return tag.uppercased()
-        }
-        if let sc = drop.feedScarcityLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !sc.isEmpty {
-            return sc.uppercased()
-        }
-        if let s = drop.snagScore {
-            return "\(min(99, max(1, s)))% OPENING CHANCE"
-        }
-        if drop.velocityUrgent == true || drop.speedTier == "fast" {
-            return "HIGH LIQUIDITY"
-        }
-        if let r = drop.rarityPoints, r > 0, r <= 12 {
-            return "\(r) TABLES LEFT"
-        }
-        if drop.exploreSnagAvailable != false, drop.effectiveResyBookingURL != nil {
-            return "INSTANT CONFIRM"
-        }
-        return "LIVE SLOT"
+        return "Tonight's inventory"
     }
 
     /// First slot time as `8:30 PM`; fallback when missing.
@@ -99,110 +76,112 @@ enum ExploreCardFormatting {
     }
 }
 
-// MARK: - Card (reference: image + overlay copy, then title / arrow / line / pill)
+// MARK: - Row card
 
-/// Live inventory tile — square photo area, date + time + PAX on image; metadata + status pill below.
-///
-/// **Layout:** `Color.clear` + `aspectRatio` defines the square; the image lives in an `overlay` so a loaded
-/// `UIImage`’s pixel size cannot inflate the card (avoids full-screen blow-up in `ScrollView`).
+/// Full-width horizontal row: fixed thumbnail on the left, venue details on the right.
 struct DSExploreInventoryCard: View {
     let drop: Drop
     var selectedDateStr: String?
     var partySegment: ExplorePartySegment
-    var cornerRadius: CGFloat = DropFeedTokens.Layout.exploreCardCornerRadius
+    var cornerRadius: CGFloat = 0   // kept for call-site compatibility, unused
     var onTap: () -> Void
+
+    private static let thumbSize: CGFloat = 86
 
     private var pax: (number: String, suffix: String) {
         ExploreCardFormatting.paxParts(drop: drop, partySegment: partySegment)
     }
+    private var nightLabel: String {
+        ExploreCardFormatting.imageNightLabel(drop: drop, selectedDateStr: selectedDateStr)
+    }
+    private var timeLabel: String {
+        ExploreCardFormatting.slotTime12h(drop: drop)
+    }
+    private var cuisineText: String? { cuisineLineIfMeaningful }
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 0) {
-                imageSection
-                infoSection
+            HStack(alignment: .center, spacing: 14) {
+                thumbnail
+                details
             }
+            .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CreamEditorialTheme.cardWhite)
-            .clipped()
-            .overlay(
-                Rectangle()
-                    .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
-            )
+            .background(CreamEditorialTheme.canvas)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(CreamEditorialTheme.hairline)
+                .frame(height: 1)
+        }
     }
 
-    private var imageSection: some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .overlay {
-                ZStack(alignment: .bottomLeading) {
-                    exploreImageLayer
-                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                        .clipped()
+    // MARK: Thumbnail
 
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.0), location: 0.2),
-                            .init(color: .black.opacity(0.25), location: 0.55),
-                            .init(color: .black.opacity(0.72), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .allowsHitTesting(false)
+    private var thumbnail: some View {
+        ZStack(alignment: .bottomLeading) {
+            thumbnailImage
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(ExploreCardFormatting.imageNightLabel(drop: drop, selectedDateStr: selectedDateStr))
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white.opacity(0.95))
-                            .tracking(0.5)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.0), location: 0.15),
+                    .init(color: .black.opacity(0.22), location: 0.5),
+                    .init(color: .black.opacity(0.72), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .allowsHitTesting(false)
 
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(ExploreCardFormatting.slotTime12h(drop: drop))
-                                .font(.system(size: 26, weight: .bold))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.55)
-                                .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(nightLabel)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white.opacity(0.85))
+                    .tracking(0.4)
+                    .lineLimit(1)
 
-                            (Text(pax.number).fontWeight(.semibold) + Text(pax.suffix).fontWeight(.regular))
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.92))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 14)
-                    .padding(.top, 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                }
-                .clipped()
+                Text(timeLabel)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+
+                (Text(pax.number).fontWeight(.semibold) + Text(pax.suffix).fontWeight(.regular))
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.88))
+                    .lineLimit(1)
             }
-            .clipped()
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
+        }
+        .frame(width: Self.thumbSize, height: Self.thumbSize)
+        .clipped()
     }
 
     @ViewBuilder
-    private var exploreImageLayer: some View {
+    private var thumbnailImage: some View {
         if let s = drop.imageUrl, let u = URL(string: s) {
             CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
-                Color(white: 0.93)
+                Color(white: 0.91)
             }
+            .frame(width: Self.thumbSize, height: Self.thumbSize)
+            .clipped()
         } else {
-            Color(white: 0.93)
+            Color(white: 0.91)
+                .frame(width: Self.thumbSize, height: Self.thumbSize)
         }
     }
 
-    private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+    // MARK: Details
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(drop.name)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(CreamEditorialTheme.textPrimary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -210,12 +189,12 @@ struct DSExploreInventoryCard: View {
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 12, weight: .thin))
+                    .font(.system(size: 11, weight: .thin))
                     .foregroundColor(Color(white: 0.55))
                     .layoutPriority(1)
             }
 
-            if let cuisine = cuisineLineIfMeaningful {
+            if let cuisine = cuisineText {
                 Text(cuisine)
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(CreamEditorialTheme.textSecondary)
@@ -225,13 +204,9 @@ struct DSExploreInventoryCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    /// Returns the cuisine/neighborhood line only when there's real data — never the generic fallback.
     private var cuisineLineIfMeaningful: String? {
         let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
@@ -250,23 +225,11 @@ struct DSExploreInventoryCard: View {
 
 #Preview {
     ScrollView {
-        HStack(alignment: .top, spacing: 14) {
-            DSExploreInventoryCard(
-                drop: .preview,
-                selectedDateStr: nil,
-                partySegment: .two,
-                onTap: {}
-            )
-            .frame(maxWidth: .infinity)
-            DSExploreInventoryCard(
-                drop: .previewTrending,
-                selectedDateStr: nil,
-                partySegment: .four,
-                onTap: {}
-            )
-            .frame(maxWidth: .infinity)
+        VStack(spacing: 0) {
+            DSExploreInventoryCard(drop: .preview, selectedDateStr: nil, partySegment: .two, onTap: {})
+            DSExploreInventoryCard(drop: .previewTrending, selectedDateStr: nil, partySegment: .four, onTap: {})
         }
-        .padding()
+        .padding(.horizontal, 16)
     }
     .background(CreamEditorialTheme.canvas)
 }
