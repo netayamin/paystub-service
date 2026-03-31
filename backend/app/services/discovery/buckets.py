@@ -544,16 +544,20 @@ def run_poll_for_bucket(
         db.commit()
         return 0, len(curr_set), {"B": len(curr_set), "P": len(curr_set), "C": len(curr_set), "baseline_ready": True, "emitted": 0, "baseline_echo": 0, "prev_echo": 0}
 
+    baseline_set = _parse_slot_ids_json(baseline_js)
     prev_set = _parse_slot_ids_json(bucket_row.prev_slot_ids_json)
-    B = len(_parse_slot_ids_json(baseline_js))
+    B = len(baseline_set)
     P, C = len(prev_set), len(curr_set)
     polls_before = int(bucket_row.successful_poll_count or 0)
     drop_evidence = _drop_eligibility_evidence_for_poll(P, B, polls_before)
     prior_prev_slot_count = P
 
-    # New since last poll only (no comparison to initial baseline forever)
+    # New since last poll (prev used only for deduplication / "already emitted" detection)
     added = curr_set - prev_set
-    drops = added
+    # TRUE DROP definition: slot was NOT in the baseline scan, meaning it was fully
+    # booked (or didn't exist) when we first started watching this date/time slot.
+    # Slots that were available at baseline were never fully booked — exclude them.
+    drops = added - baseline_set
 
     run_id = str(uuid.uuid4())
     time_bucket_val = _time_bucket_from_slot(time_slot)

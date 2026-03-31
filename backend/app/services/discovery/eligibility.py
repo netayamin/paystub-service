@@ -1,26 +1,27 @@
 """
-Snag drop eligibility (Task 3.1) — predicates over **stored** `drop_events` facts.
+Snag drop eligibility — predicates over stored drop_events facts.
 
-Ground truth: we do not have Resy "fully booked"; "new" is diff-based. This module
-decides **whether** a persisted row (or its summary fields on a feed card) is
-strong enough to treat as a **home-feed / push–worthy** "Snag drop", separate
-from Task 3.1b **ordering**.
+TRUE DROP DEFINITION (v2):
+  A slot is a true drop if and only if it was NOT present in the baseline scan
+  (the first successful poll for that bucket). This means the venue was fully
+  booked (or that slot didn't exist) when we started watching. Any later
+  appearance is a genuine reopening.
 
-Disqualifiers (conservative Phase A):
-- **unknown** — legacy / backfill / missing writer; do not market as diff-proven.
-- **first_poll_bucket** — no stable prev chain; thin history.
-- **baseline_only** when the bucket has **not** completed enough successful polls
-  (`successful_poll_count` < MIN_POLLS_FOR_BASELINE_TRUST).
+  This is enforced at write time in buckets.py:
+      drops = (curr_set - prev_set) - baseline_set
 
-**empty_prev_delta** stays on the feed (ambiguous but observable empty prior).
-**nonempty_prev_delta** is the strongest diff signal.
+  Therefore every DropEvent row in the DB is already a confirmed true drop.
+  This module's only job is to filter out legacy/backfill rows that pre-date
+  the baseline-subtraction logic (evidence = "unknown").
 
-See also: `docs/RANKING_SPEC.md` (Task 3.1b) and `TARGET_SCHEMA_AND_INVARIANTS.md` §4.
+Evidence labels (what they mean under v2):
+- nonempty_prev_delta : strongest — both prev comparison and baseline confirm the drop
+- empty_prev_delta    : prev was empty on this poll (unusual); baseline still guarantees the drop
+- baseline_only       : edge case — baseline had slots but prev was empty; slot proven not-in-baseline
+- first_poll_bucket   : baseline was empty (venue fully booked at scan start); slot is a true drop
+- unknown             : legacy backfill; no guarantee — disqualified from home feed
 """
 from __future__ import annotations
-
-# Bucket must have this many completed polls before baseline_only rows qualify.
-MIN_POLLS_FOR_BASELINE_TRUST = 3
 
 _EVIDENCE_RANK = {
     "nonempty_prev_delta": 4,
@@ -40,16 +41,16 @@ def stronger_eligibility_evidence(a: str | None, b: str | None) -> str:
 
 def qualified_for_home_feed(
     eligibility_evidence: str | None,
-    bucket_successful_poll_count: int | None,
+    bucket_successful_poll_count: int | None,  # kept for API compat, no longer used
 ) -> bool:
-    """True if a just-opened contribution may appear on ranked/ticker boards."""
+    """True if a drop event may appear on ranked/ticker boards.
+
+    Under v2 (baseline-subtraction), all non-unknown evidence is qualified:
+    the slot was guaranteed to not be present in the baseline scan.
+    Only 'unknown' (legacy backfill) rows are rejected.
+    """
     ev = (eligibility_evidence or "unknown").strip() or "unknown"
-    polls = int(bucket_successful_poll_count or 0)
-    if ev in ("unknown", "first_poll_bucket"):
-        return False
-    if ev == "baseline_only" and polls < MIN_POLLS_FOR_BASELINE_TRUST:
-        return False
-    return True
+    return ev != "unknown"
 
 
 def rank_strength_multiplier(eligibility_evidence: str | None) -> float:
