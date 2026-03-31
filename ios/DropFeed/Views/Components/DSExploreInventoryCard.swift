@@ -199,7 +199,7 @@ struct DSExploreInventoryCard: View {
     }
 
     private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(drop.name)
                     .font(.system(size: 16, weight: .bold))
@@ -224,12 +224,11 @@ struct DSExploreInventoryCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 13)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     /// Returns the cuisine/neighborhood line only when there's real data — never the generic fallback.
