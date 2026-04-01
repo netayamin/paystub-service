@@ -1,6 +1,7 @@
 # Backend for paystub-service (FastAPI + discovery). Run with docker-compose next to Postgres.
 # Pass GIT_SHA at build so /health shows the commit: docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) ...
-FROM python:3.11-slim
+# Official image via AWS Public ECR (same bits as Docker Hub); avoids flaky pulls to registry-1.docker.io from EC2.
+FROM public.ecr.aws/docker/library/python:3.11-slim
 
 # No default: when not passed, GIT_SHA is unset and /health shows pyproject version (0.1.0)
 ARG GIT_SHA

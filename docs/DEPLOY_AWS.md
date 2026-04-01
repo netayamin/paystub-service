@@ -421,6 +421,23 @@ If you need to **copy all data** from your local Postgres to RDS (e.g. first-tim
 
 You can also run the workflow manually: **Actions** → **Deploy to AWS** → **Run workflow**.
 
+### Deploy fails: `docker build` — Docker Hub timeout (`registry-1.docker.io` i/o timeout)
+
+The build on EC2 runs `docker build`, which must pull the base image over **HTTPS (443)**. A timeout to `registry-1.docker.io` means the instance cannot complete that request in time (blocked outbound, no NAT in a private subnet, or Docker Hub congestion).
+
+**Checks (on EC2 after SSH):**
+
+```bash
+curl -sI --max-time 15 https://registry-1.docker.io/v2/
+curl -sI --max-time 15 https://public.ecr.aws/v2/
+```
+
+- If **both** time out: fix **outbound** access — security group allows egress (default “All traffic” to `0.0.0.0/0` is fine), and if the instance is in a **private** subnet, attach a **NAT Gateway** (or use a public subnet with a public IP for this box).
+- If Docker Hub fails but **public.ecr.aws** works: the **Dockerfile** in this repo uses `FROM public.ecr.aws/docker/library/python:3.11-slim` so the first pull does not depend on Docker Hub. Re-run the workflow after pulling that image once:  
+  `sudo docker pull public.ecr.aws/docker/library/python:3.11-slim`
+
+**Quick retry:** Sometimes the failure is transient — re-run the failed job in **Actions**.
+
 ---
 
 ## Security (recommended)

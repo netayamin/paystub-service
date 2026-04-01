@@ -2,7 +2,7 @@
 # Repo secrets required: EC2_HOST, EC2_SSH_KEY (see docs/DEPLOY_AWS.md).
 #
 # Strategy: GitHub Actions pushes code to EC2 via SCP, then SSHs in to build.
-# This means EC2 never needs outbound access to github.com.
+# EC2 must reach a container registry (HTTPS 443) to pull the base image; see backend/Dockerfile + DEPLOY_AWS.md.
 
 name: Deploy to AWS
 
