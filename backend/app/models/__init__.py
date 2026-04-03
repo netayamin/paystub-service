@@ -1,6 +1,8 @@
 from app.models.availability_session import AvailabilitySession
 from app.models.availability_state import AvailabilityState
 from app.models.discovery_bucket import DiscoveryBucket
+from app.models.opportunity_event import OpportunityEvent
+from app.models.opportunity_poll_run import OpportunityPollRun
 from app.models.drop_event import DropEvent
 from app.models.feed_cache import FeedCache
 from app.models.market_metrics import MarketMetrics
@@ -13,12 +15,15 @@ from app.models.venue_metrics import VenueMetrics
 from app.models.user_behavior_event import UserBehaviorEvent
 from app.models.user_notification import UserNotification
 from app.models.venue_rolling_metrics import VenueRollingMetrics
+from app.models.venue_bucket_state import VenueBucketState
 
 __all__ = [
     "AvailabilitySession",
     "AvailabilityState",
     "DiscoveryBucket",
     "DropEvent",
+    "OpportunityEvent",
+    "OpportunityPollRun",
     "FeedCache",
     "MarketMetrics",
     "NotifyPreference",
@@ -30,4 +35,5 @@ __all__ = [
     "Venue",
     "VenueMetrics",
     "VenueRollingMetrics",
+    "VenueBucketState",
 ]

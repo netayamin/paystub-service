@@ -24,6 +24,9 @@ from app.models.user_notification import UserNotification  # noqa: F401
 from app.models.venue import Venue  # noqa: F401
 from app.models.venue_metrics import VenueMetrics  # noqa: F401
 from app.models.venue_rolling_metrics import VenueRollingMetrics  # noqa: F401
+from app.models.opportunity_poll_run import OpportunityPollRun  # noqa: F401
+from app.models.opportunity_event import OpportunityEvent  # noqa: F401
+from app.models.venue_bucket_state import VenueBucketState  # noqa: F401
 
 load_dotenv()
 

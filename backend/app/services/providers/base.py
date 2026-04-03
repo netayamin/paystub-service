@@ -1,7 +1,7 @@
 """Protocol for availability providers. All clients return the same normalized shape."""
 from typing import Protocol
 
-from app.services.providers.types import NormalizedSlotResult
+from app.services.providers.types import NormalizedSlotResult, PollAvailabilityOutcome
 
 
 class AvailabilityProvider(Protocol):
@@ -17,9 +17,9 @@ class AvailabilityProvider(Protocol):
         date_str: str,
         time_slot: str,
         party_sizes: list[int],
-    ) -> list[NormalizedSlotResult]:
+    ) -> PollAvailabilityOutcome:
         """
         Fetch current availability for one bucket (date + time anchor).
-        Returns one NormalizedSlotResult per (venue, time) slot.
+        Returns PollAvailabilityOutcome with slots and optional raw Resy merged hits.
         """
         ...

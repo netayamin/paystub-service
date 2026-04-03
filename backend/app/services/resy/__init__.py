@@ -203,6 +203,91 @@ def _has_availability(hit: dict[str, Any]) -> bool:
     return len(slots) > 0
 
 
+def fetch_inclusive_merged_hits(
+    day: Any,
+    party_sizes: list[int],
+    *,
+    query: str = "",
+    per_page: int = 100,
+    max_pages: int = 5,
+    time_filter: str | None = None,
+    time_window_hours: int = 1,
+    venue_filter: dict[str, Any] | None = None,
+    timeout: float = 20.0,
+    bounding_box: list[float] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    All Resy search hits for the bucket, merged by venue (includes venues with availability=null / no slots).
+
+    Returns (merged_hits, error_count). Used for explicit BOOKABLE vs UNBOOKABLE vs ABSENT state tracking.
+    """
+    day_str = _day_to_iso(day)
+    if not day_str:
+        return [], 1
+    if not party_sizes:
+        return [], 0
+
+    time_str = str(time_filter).strip() if time_filter else None
+    all_hits_list: list[list[dict[str, Any]]] = []
+    errors = 0
+
+    for party_size in party_sizes:
+        try:
+            ps = int(party_size)
+        except (TypeError, ValueError):
+            errors += 1
+            continue
+        if ps < 1:
+            errors += 1
+            continue
+
+        if time_str:
+            time_filters = _time_filter_window(time_str, window_hours=time_window_hours)
+            for t in time_filters:
+                raw = default_client.search_with_availability(
+                    day_str,
+                    ps,
+                    query=query.strip(),
+                    per_page=per_page,
+                    max_pages=max_pages,
+                    time_filter=t,
+                    venue_filter=venue_filter,
+                    timeout=timeout,
+                    bounding_box=bounding_box,
+                )
+                if raw.get("error"):
+                    errors += 1
+                    logger.debug(
+                        "Resy inclusive fetch time_filter=%s party=%s failed: %s",
+                        t,
+                        ps,
+                        raw.get("error"),
+                    )
+                    continue
+                hits = (raw.get("search") or {}).get("hits") or []
+                all_hits_list.append(hits)
+        else:
+            raw = default_client.search_with_availability(
+                day_str,
+                ps,
+                query=query.strip(),
+                per_page=per_page,
+                max_pages=max_pages,
+                time_filter=None,
+                venue_filter=venue_filter,
+                timeout=timeout,
+                bounding_box=bounding_box,
+            )
+            if raw.get("error"):
+                errors += 1
+                continue
+            hits = (raw.get("search") or {}).get("hits") or []
+            all_hits_list.append(hits)
+
+    merged = _merge_hits_by_venue(all_hits_list) if all_hits_list else []
+    return merged, errors
+
+
 def search_with_availability(
     day: Any,
     party_size: int = 2,
@@ -226,46 +311,22 @@ def search_with_availability(
         return {"error": "party_size must be a number."}
     if ps < 1:
         return {"error": "party_size must be at least 1."}
-    time_str = str(time_filter).strip() if time_filter else None
-    if time_str:
-        time_filters = _time_filter_window(time_str, window_hours=time_window_hours)
-        all_hits_list: list[list[dict[str, Any]]] = []
-        for t in time_filters:
-            raw = default_client.search_with_availability(
-                day_str,
-                ps,
-                query=query.strip(),
-                per_page=per_page,
-                max_pages=max_pages,
-                time_filter=t,
-                venue_filter=venue_filter,
-                timeout=timeout,
-                bounding_box=bounding_box,
-            )
-            if raw.get("error"):
-                # Skip this time filter and continue; partial results are better than 0 (avoids one timeout killing the whole bucket)
-                logger.debug("Resy search time_filter=%s failed: %s (continuing with other times)", t, raw.get("error"))
-                continue
-            hits = (raw.get("search") or {}).get("hits") or []
-            all_hits_list.append(hits)
-        hits = _merge_hits_by_venue(all_hits_list)
-    else:
-        raw = default_client.search_with_availability(
-            day_str,
-            ps,
-            query=query.strip(),
-            per_page=per_page,
-            max_pages=max_pages,
-            time_filter=None,
-            venue_filter=venue_filter,
-            timeout=timeout,
-            bounding_box=bounding_box,
-        )
-        if raw.get("error"):
-            return raw
-        hits = (raw.get("search") or {}).get("hits") or []
-    # Only include venues that have availability; pass date and party_size so resy_url is built for the booking link
-    hits_with_availability = [h for h in hits if _has_availability(h)]
+
+    merged, errs = fetch_inclusive_merged_hits(
+        day,
+        [ps],
+        query=query,
+        per_page=per_page,
+        max_pages=max_pages,
+        time_filter=time_filter,
+        time_window_hours=time_window_hours,
+        venue_filter=venue_filter,
+        timeout=timeout,
+        bounding_box=bounding_box,
+    )
+    if errs > 0 and not merged:
+        return {"error": "Resy search failed for all time windows", "venues": []}
+    hits_with_availability = [h for h in merged if _has_availability(h)]
     return {"venues": [_extract_venue(h, date_str=day_str, party_size=ps) for h in hits_with_availability]}
 
 
@@ -282,6 +343,7 @@ __all__ = [
     "ResyClient",
     "ResyConfig",
     "default_client",
+    "fetch_inclusive_merged_hits",
     "search_with_availability",
     "ResyLocation",
     "ResySearchHit",

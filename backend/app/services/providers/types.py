@@ -1,5 +1,6 @@
 """Normalized types for all availability providers. Same shape regardless of Resy/OpenTable/etc."""
 import hashlib
+from dataclasses import dataclass
 from typing import Any
 
 # Payload is a dict that must include at least:
@@ -45,3 +46,12 @@ class NormalizedSlotResult:
             "venue_name": self.venue_name,
             "payload": self.payload,
         }
+
+
+@dataclass
+class PollAvailabilityOutcome:
+    """Result of a provider poll: normalized bookable slots plus optional raw Resy hits (inclusive)."""
+
+    slots: list[NormalizedSlotResult]
+    raw_merged_hits: list[dict[str, Any]] | None = None
+    raw_error_count: int = 0

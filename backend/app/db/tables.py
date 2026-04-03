@@ -23,6 +23,9 @@ ALL_TABLE_NAMES = (
     "notify_preferences",
     "user_notifications",
     "user_behavior_events",
+    "opportunity_poll_runs",
+    "venue_bucket_states",
+    "opportunity_events",
 )
 
 # Tables cleared when resetting discovery state (TRUNCATE). Order matters for FK if any.

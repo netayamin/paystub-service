@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.services.providers.types import NormalizedSlotResult, slot_id
+from app.services.providers.types import NormalizedSlotResult, PollAvailabilityOutcome, slot_id
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class OpenTableProvider:
         date_str: str,
         time_slot: str,
         party_sizes: list[int],
-    ) -> list[NormalizedSlotResult]:
+    ) -> PollAvailabilityOutcome:
         """Async fetch: does not block the event loop. Use from API routes."""
         party_size = party_sizes[0] if party_sizes else 2
         time_param = time_slot.strip() if time_slot else "19:30"
@@ -149,15 +149,16 @@ class OpenTableProvider:
                 data = resp.json()
         except Exception as e:
             logger.warning("OpenTable search failed: %s", e)
-            return []
-        return _parse_response(data, self.provider_id, time_param, party_size)
+            return PollAvailabilityOutcome(slots=[])
+        slots = _parse_response(data, self.provider_id, time_param, party_size)
+        return PollAvailabilityOutcome(slots=slots)
 
     def search_availability(
         self,
         date_str: str,
         time_slot: str,
         party_sizes: list[int],
-    ) -> list[NormalizedSlotResult]:
+    ) -> PollAvailabilityOutcome:
         """Sync fetch for use in sync jobs (e.g. discovery buckets)."""
         party_size = party_sizes[0] if party_sizes else 2
         time_param = time_slot.strip() if time_slot else "19:30"
@@ -171,5 +172,6 @@ class OpenTableProvider:
                 data = resp.json()
         except Exception as e:
             logger.warning("OpenTable search failed: %s", e)
-            return []
-        return _parse_response(data, self.provider_id, time_param, party_size)
+            return PollAvailabilityOutcome(slots=[])
+        slots = _parse_response(data, self.provider_id, time_param, party_size)
+        return PollAvailabilityOutcome(slots=slots)

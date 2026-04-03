@@ -20,7 +20,8 @@ def main() -> int:
 
         today_str = date.today().isoformat()
         provider = get_provider("opentable")
-        slots = provider.search_availability(today_str, "19:30", [2, 4])
+        out = provider.search_availability(today_str, "19:30", [2, 4])
+        slots = out.slots
     except Exception as e:
         out = {"ok": False, "error": str(e), "hint": "OpenTable GQL may be rate-limited or changed."}
         print(json.dumps(out))

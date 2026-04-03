@@ -104,6 +104,7 @@ from app.models.user_notification import UserNotification
 from app.models.venue import Venue
 from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.discovery.drop_reads import latest_drop_row_per_pair, successful_poll_count_by_bucket
+from app.services.discovery.opportunity_engine import process_opportunity_poll
 from app.services.discovery.eligibility import qualified_for_home_feed, stronger_eligibility_evidence
 from app.services.discovery.likely_open_scoring import score_likely_open_rank
 from app.services.discovery.venue_profile import normalize_http_url, venue_profile_from_payload
@@ -211,17 +212,20 @@ def fetch_for_bucket(
     party_sizes: list[int],
     provider: str = "resy",
     market: str = "nyc",
-) -> list[dict]:
+) -> tuple[list[dict], list[dict] | None, int]:
     """
     Fetch current availability for one bucket via the given provider.
-    Returns one row per (venue, actual_time): { "slot_id", "venue_id", "venue_name", "payload" }.
-    All providers (Resy, OpenTable, etc.) return the same normalized shape.
+    Returns (rows, raw_merged_hits, raw_error_count).
+    rows: one per (venue, actual_time): { "slot_id", "venue_id", "venue_name", "payload" }.
+    raw_merged_hits: Resy inclusive search hits (BOOKABLE + UNBOOKABLE in response); else None.
     """
+    from app.services.providers.types import PollAvailabilityOutcome
+
     try:
         prov = get_provider(provider)
     except KeyError:
         logger.warning("Unknown provider %s, skipping bucket %s", provider, bucket_id(date_str, time_slot, market))
-        return []
+        return [], None, 0
     bid = bucket_id(date_str, time_slot, market)
     try:
         results = prov.search_availability(date_str, time_slot, party_sizes, market=market)
@@ -230,11 +234,17 @@ def fetch_for_bucket(
         results = prov.search_availability(date_str, time_slot, party_sizes)
     except Exception as e:
         logger.warning("Provider %s search failed bucket=%s: %s", provider, bid, e)
-        return []
-    rows = [r.to_row() for r in results]
+        return [], None, 0
+    if isinstance(results, PollAvailabilityOutcome):
+        rows = [r.to_row() for r in results.slots]
+        raw = results.raw_merged_hits
+        err_n = int(results.raw_error_count or 0)
+    else:
+        rows = [r.to_row() for r in results]
+        raw, err_n = None, 0
     if not rows:
         logger.debug("Provider %s returned 0 slots for bucket=%s (date=%s time_slot=%s market=%s) — baseline will be 0", provider, bid, date_str, time_slot, market)
-    return rows
+    return rows, raw, err_n
 
 
 def _parse_slot_ids_json(js: str | None) -> set[str]:
@@ -482,7 +492,7 @@ def run_baseline_for_bucket(
     Does NOT write new slot_availability or availability_state rows from baseline.
     Returns slot count.
     """
-    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider, market=market)
+    rows, _, _ = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider, market=market)
     slot_ids = [r["slot_id"] for r in rows]
     venue_js = json.dumps(_venue_ids_from_rows(rows))
     now = datetime.now(timezone.utc)
@@ -587,7 +597,9 @@ def run_poll_for_bucket(
     Returns (drops_emitted, current_slot_count, invariant_stats).
     """
     # Network I/O first (no DB transaction)
-    rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=provider, market=market)
+    rows, merged_hits, raw_err_count = fetch_for_bucket(
+        date_str, time_slot, PARTY_SIZES, provider=provider, market=market
+    )
     curr_set = {r["slot_id"] for r in rows}
 
     bucket_row = db.query(DiscoveryBucket).filter(DiscoveryBucket.bucket_id == bid).first()
@@ -706,6 +718,18 @@ def run_poll_for_bucket(
                 DISCOVERY_BASELINE_CALIBRATION_POLLS,
                 len(slot_union),
             )
+        try:
+            process_opportunity_poll(
+                db,
+                bucket_id=bid,
+                merged_hits=merged_hits,
+                raw_error_count=raw_err_count,
+                provider=provider,
+                time_slot=time_slot,
+                now=now,
+            )
+        except Exception as e:
+            logger.warning("Opportunity poll processing failed bucket=%s: %s", bid, e)
         db.commit()
         return 0, len(curr_set), {
             "B": len(slot_union),
@@ -1022,6 +1046,18 @@ def run_poll_for_bucket(
         "emitted": emitted,
         "closed_emitted": len(to_aggregate),
     }
+    try:
+        process_opportunity_poll(
+            db,
+            bucket_id=bid,
+            merged_hits=merged_hits,
+            raw_error_count=raw_err_count,
+            provider=provider,
+            time_slot=time_slot,
+            now=now,
+        )
+    except Exception as e:
+        logger.warning("Opportunity poll processing failed bucket=%s: %s", bid, e)
     try:
         db.commit()
     except Exception as e:
@@ -2094,7 +2130,7 @@ def get_feed_item_debug(
         bid_val = getattr(event, "bucket_id", "")
         mkt, date_str, time_slot = _parse_bucket_id(bid_val)
         prov = (getattr(event, "provider", None) or "resy").strip() or "resy"
-        rows = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=prov, market=mkt)
+        rows, _, _ = fetch_for_bucket(date_str, time_slot, PARTY_SIZES, provider=prov, market=mkt)
         curr_set = {r["slot_id"] for r in rows}
         in_curr = event.slot_id in curr_set
     # Reason: if currently in baseline/prev that's a signal (baseline = should not have been emitted)
