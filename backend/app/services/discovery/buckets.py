@@ -76,6 +76,25 @@ def window_start_date() -> date:
         return now.date() - timedelta(days=1)
     return date.today() - timedelta(days=1)
 
+
+def _discovery_calendar_today() -> date:
+    """Today's calendar date in DISCOVERY_DATE_TIMEZONE (not window_start, which is yesterday)."""
+    try:
+        tz = ZoneInfo(DISCOVERY_DATE_TIMEZONE)
+        return datetime.now(tz).date()
+    except Exception:
+        return date.today()
+
+
+def _bucket_date_before_discovery_today(date_str: str) -> bool:
+    """True if bucket's date is strictly before app \"today\" (trailing window day — Resy often empty)."""
+    try:
+        d = date.fromisoformat(date_str)
+    except ValueError:
+        return False
+    return d < _discovery_calendar_today()
+
+
 from app.models.availability_state import AvailabilityState
 from app.models.discovery_bucket import DiscoveryBucket
 from app.models.drop_event import DropEvent
@@ -624,13 +643,24 @@ def run_poll_for_bucket(
     if not bucket_row.baseline_calibration_complete:
         if not curr_set:
             if bucket_row.baseline_slot_ids_json is None:
-                logger.warning(
-                    "Bucket %s: skipping baseline init — Resy returned 0 slots for date=%s "
-                    "time_slot=%s. Will retry next poll.",
-                    bid,
-                    date_str,
-                    time_slot,
-                )
+                # Window includes \"yesterday\" in app TZ for West Coast; Resy often returns 0 for that day — don't spam WARN.
+                if _bucket_date_before_discovery_today(date_str):
+                    logger.debug(
+                        "Bucket %s: skipping baseline init — Resy returned 0 slots for date=%s "
+                        "time_slot=%s (before app today in %s; trailing window). Will retry.",
+                        bid,
+                        date_str,
+                        time_slot,
+                        DISCOVERY_DATE_TIMEZONE,
+                    )
+                else:
+                    logger.warning(
+                        "Bucket %s: skipping baseline init — Resy returned 0 slots for date=%s "
+                        "time_slot=%s. Will retry next poll.",
+                        bid,
+                        date_str,
+                        time_slot,
+                    )
             else:
                 logger.warning(
                     "Bucket %s: calibration poll skipped — empty response (date=%s time_slot=%s). Will retry.",
