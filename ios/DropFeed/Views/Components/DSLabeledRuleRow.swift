@@ -19,13 +19,15 @@ struct DSLabeledRuleRow: View {
                 .fill(CreamEditorialTheme.hairline)
                 .frame(height: 1)
                 .frame(maxWidth: .infinity)
-            Text(trailingLabel)
-                .font(.system(size: 10, weight: .heavy))
-                .foregroundColor(trailingColor)
-                .tracking(0.5)
-                .textCase(.uppercase)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+            if !trailingLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(trailingLabel)
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundColor(trailingColor)
+                    .tracking(0.5)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
         }
         .frame(maxWidth: .infinity)
     }

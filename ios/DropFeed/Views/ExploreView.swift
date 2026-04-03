@@ -154,8 +154,24 @@ struct ExploreView: View {
     private var liveInventoryHeader: some View {
         DSLabeledRuleRow(
             leadingLabel: "LIVE INVENTORY",
-            trailingLabel: "NEW YORK"
+            trailingLabel: exploreInventoryTrailingLabel
         )
+    }
+
+    /// When every loaded result shares one neighborhood (or location if no neighborhood), show it; otherwise no city label.
+    private var exploreInventoryTrailingLabel: String {
+        let items = vm.rankedResults
+        guard !items.isEmpty else { return "" }
+
+        let hoods = items.compactMap { $0.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let hoodKeys = Set(hoods.map { $0.lowercased() })
+        if hoodKeys.count == 1, let one = hoods.first { return one }
+
+        let locs = items.compactMap { $0.location?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let locKeys = Set(locs.map { $0.lowercased() })
+        if hoods.isEmpty, locKeys.count == 1, let one = locs.first { return one }
+
+        return ""
     }
 
     private func errorBanner(_ message: String) -> some View {

@@ -197,14 +197,12 @@ struct DSExploreInventoryCard: View {
         return CreamEditorialTheme.textPrimary
     }
 
+    /// Area for the pin row: neighborhood-first (never raw market slugs like "NYC").
     private var areaLabel: String {
         let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !nb.isEmpty { return nb }
         if let pill = drop.exploreVenuePill?.trimmingCharacters(in: .whitespacesAndNewlines), !pill.isEmpty {
             return pill
-        }
-        if let m = drop.market?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
-            return m.uppercased()
         }
         if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
             return loc
