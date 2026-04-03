@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>API_BASE_URL</key>
-	<string>https://db2f-70-23-64-225.ngrok-free.app</string>
+	<string>http://18.118.55.231:8000</string>
 	<key>CFBundleDisplayName</key>
 	<string>Snag</string>
 	<key>NSAppTransportSecurity</key>
