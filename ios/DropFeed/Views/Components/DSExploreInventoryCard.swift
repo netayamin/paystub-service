@@ -112,6 +112,11 @@ struct DSExploreInventoryCard: View {
             statsRow
                 .padding(.top, 2)
 
+            if let opp = drop.exploreOpportunityBadge {
+                opportunitySignalPill(opp, isStrong: drop.opportunityEventType == "STRONG_OPEN")
+                    .padding(.top, 4)
+            }
+
             if !displaySlots.isEmpty {
                 slotPillsRow
                     .padding(.top, 4)
@@ -224,6 +229,20 @@ struct DSExploreInventoryCard: View {
         let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !nb.isEmpty { return nb }
         return nil
+    }
+
+    private func opportunitySignalPill(_ text: String, isStrong: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 10, weight: .bold))
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .foregroundColor(isStrong ? .white : CreamEditorialTheme.burgundy)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(isStrong ? CreamEditorialTheme.burgundy : CreamEditorialTheme.peachBadgeFill)
+        .clipShape(Capsule())
     }
 
     // MARK: - Thumbnail (right)

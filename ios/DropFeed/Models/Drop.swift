@@ -117,6 +117,10 @@ struct Drop: Codable, Identifiable {
     let bucketSuccessfulPollCount: Int?
     /// Resy venue URL slug (e.g. "le-gratin") — used to build a booking URL for any date.
     let resySlug: String?
+    /// From `opportunity_events` via Explore inventory: STRONG_OPEN / WEAK_OPEN when present.
+    let opportunityEventType: String?
+    let opportunityScore: Double?
+    let opportunityDetectedAt: String?
     
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -193,6 +197,9 @@ struct Drop: Codable, Identifiable {
         userFacingOpenedAt = try c.decodeIfPresent(String.self, forKey: .userFacingOpenedAt)
         bucketSuccessfulPollCount = Self.decodeFlexibleInt(c, forKey: .bucketSuccessfulPollCount)
         resySlug = try c.decodeIfPresent(String.self, forKey: .resySlug)
+        opportunityEventType = try c.decodeIfPresent(String.self, forKey: .opportunityEventType)
+        opportunityScore = try c.decodeIfPresent(Double.self, forKey: .opportunityScore)
+        opportunityDetectedAt = try c.decodeIfPresent(String.self, forKey: .opportunityDetectedAt)
     }
 
     private static func decodeFlexibleInt(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Int? {
@@ -275,7 +282,10 @@ struct Drop: Codable, Identifiable {
         eligibilityEvidence: String? = nil,
         userFacingOpenedAt: String? = nil,
         bucketSuccessfulPollCount: Int? = nil,
-        resySlug: String? = nil
+        resySlug: String? = nil,
+        opportunityEventType: String? = nil,
+        opportunityScore: Double? = nil,
+        opportunityDetectedAt: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -338,6 +348,9 @@ struct Drop: Codable, Identifiable {
         self.userFacingOpenedAt = userFacingOpenedAt
         self.bucketSuccessfulPollCount = bucketSuccessfulPollCount
         self.resySlug = resySlug
+        self.opportunityEventType = opportunityEventType
+        self.opportunityScore = opportunityScore
+        self.opportunityDetectedAt = opportunityDetectedAt
     }
 
     /// First non-empty Resy / book URL on the card or any slot.
@@ -371,6 +384,16 @@ struct Drop: Codable, Identifiable {
     var exploreCanSnag: Bool {
         if effectiveResyBookingURL != nil { return true }
         return exploreSnagAvailable ?? false
+    }
+
+    /// Short label for Explore when `opportunity_events` matched this venue.
+    var exploreOpportunityBadge: String? {
+        guard let t = opportunityEventType?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        switch t {
+        case "STRONG_OPEN": return "Rare opening"
+        case "WEAK_OPEN": return "New tables"
+        default: return nil
+        }
     }
 
     private static func firstNonEmptyBookingURL(_ parts: String?...) -> String? {
@@ -455,6 +478,9 @@ struct Drop: Codable, Identifiable {
         case userFacingOpenedAt = "user_facing_opened_at"
         case bucketSuccessfulPollCount = "bucket_successful_poll_count"
         case resySlug = "resy_slug"
+        case opportunityEventType = "opportunity_event_type"
+        case opportunityScore = "opportunity_score"
+        case opportunityDetectedAt = "opportunity_detected_at"
     }
     
     // MARK: - Scarcity helpers
@@ -720,6 +746,7 @@ struct JustOpenedResponse {
             }
         }()
         let det = laterISO(a.detectedAt, b.detectedAt)
+        let (oppType, oppScore, oppAt) = mergeOpportunityFields(a, b)
         return Drop(
             id: id,
             name: name,
@@ -746,8 +773,37 @@ struct JustOpenedResponse {
             eligibilityEvidence: a.eligibilityEvidence ?? b.eligibilityEvidence,
             userFacingOpenedAt: laterISO(a.userFacingOpenedAt, b.userFacingOpenedAt),
             bucketSuccessfulPollCount: a.bucketSuccessfulPollCount ?? b.bucketSuccessfulPollCount,
-            resySlug: a.resySlug ?? b.resySlug
+            resySlug: a.resySlug ?? b.resySlug,
+            opportunityEventType: oppType,
+            opportunityScore: oppScore,
+            opportunityDetectedAt: oppAt
         )
+    }
+
+    private static func opportunityRank(_ t: String?) -> Int {
+        guard let t = t?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return 0 }
+        switch t {
+        case "STRONG_OPEN": return 3
+        case "WEAK_OPEN": return 2
+        default: return 1
+        }
+    }
+
+    private static func mergeOpportunityFields(_ a: Drop, _ b: Drop) -> (String?, Double?, String?) {
+        let ra = opportunityRank(a.opportunityEventType)
+        let rb = opportunityRank(b.opportunityEventType)
+        let bestType: String?
+        if ra >= rb, a.opportunityEventType != nil {
+            bestType = a.opportunityEventType
+        } else if rb > ra, b.opportunityEventType != nil {
+            bestType = b.opportunityEventType
+        } else {
+            bestType = a.opportunityEventType ?? b.opportunityEventType
+        }
+        let scores = [a.opportunityScore, b.opportunityScore].compactMap { $0 }
+        let bestScore = scores.max()
+        let bestAt = laterISO(a.opportunityDetectedAt, b.opportunityDetectedAt)
+        return (bestType, bestScore, bestAt)
     }
 
     private static func laterISO(_ x: String?, _ y: String?) -> String? {
@@ -763,7 +819,12 @@ struct JustOpenedResponse {
                   let venues = day["venues"] as? [[String: Any]] else { continue }
             for venue in venues {
                 guard let name = (venue["name"] as? String)?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { continue }
-                let venueKey = (venue["venue_id"] as? String).map { "\($0)" } ?? (venue["name"] as? String) ?? name
+                let venueKey: String = {
+                    if let s = venue["venue_id"] as? String, !s.isEmpty { return s }
+                    if let n = venue["venue_id"] as? NSNumber { return n.stringValue }
+                    if let i = venue["venue_id"] as? Int { return "\(i)" }
+                    return (venue["name"] as? String) ?? name
+                }()
                 let times = venue["availability_times"] as? [String] ?? []
                 let resyUrl = venue["resy_url"] as? String ?? venue["resyUrl"] as? String
                 let slots: [DropSlot] = times.isEmpty
@@ -798,7 +859,10 @@ struct JustOpenedResponse {
                     eligibilityEvidence: venue["eligibility_evidence"] as? String,
                     userFacingOpenedAt: venue["user_facing_opened_at"] as? String,
                     bucketSuccessfulPollCount: (venue["bucket_successful_poll_count"] as? NSNumber)?.intValue,
-                    resySlug: venue["resy_slug"] as? String
+                    resySlug: venue["resy_slug"] as? String,
+                    opportunityEventType: venue["opportunity_event_type"] as? String,
+                    opportunityScore: venue["opportunity_score"] as? Double,
+                    opportunityDetectedAt: venue["opportunity_detected_at"] as? String
                 )
                 result.append(drop)
             }
@@ -940,7 +1004,9 @@ extension Drop {
             resyUrl: "https://resy.com/places/pastis",
             feedHot: false,
             availabilityRate14d: 0.35,
-            daysWithDrops: 5
+            daysWithDrops: 5,
+            opportunityEventType: "WEAK_OPEN",
+            opportunityScore: 0.84
         )
     }
     

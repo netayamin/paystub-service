@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.opportunity_event import OpportunityEvent
@@ -310,3 +311,64 @@ def process_opportunity_poll(
         stats["updated"] += 1
 
     return stats
+
+
+def attach_opportunity_fields_to_explore_days(
+    db: Session,
+    *,
+    just_opened: list[dict[str, Any]] | None,
+    still_open: list[dict[str, Any]] | None,
+    date_filter: list[str],
+    max_age_hours: int = 48,
+) -> None:
+    """
+    Merge latest opportunity_events onto venue dicts in just_opened / still_open day buckets
+    (keys: opportunity_event_type, opportunity_score, opportunity_detected_at) for the iOS Explore client.
+    """
+    if not date_filter:
+        return
+    preds = []
+    for ds in date_filter:
+        ds = (ds or "").strip()
+        if len(ds) >= 10:
+            preds.append(OpportunityEvent.bucket_id.contains(f"_{ds[:10]}_"))
+    if not preds:
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    rows = (
+        db.query(OpportunityEvent)
+        .filter(OpportunityEvent.detected_at >= cutoff)
+        .filter(or_(*preds))
+        .order_by(OpportunityEvent.detected_at.desc())
+        .limit(4000)
+        .all()
+    )
+    best: dict[str, OpportunityEvent] = {}
+    for ev in rows:
+        vid = (ev.venue_id or "").strip()
+        if not vid or vid in best:
+            continue
+        best[vid] = ev
+
+    def _enrich(days: list[dict[str, Any]] | None) -> None:
+        if not days:
+            return
+        for day in days:
+            for v in day.get("venues") or []:
+                if not isinstance(v, dict):
+                    continue
+                raw = v.get("venue_id")
+                vid = str(raw).strip() if raw is not None else ""
+                if not vid:
+                    continue
+                ev = best.get(vid)
+                if not ev:
+                    continue
+                v["opportunity_event_type"] = ev.event_type
+                if ev.opportunity_score is not None:
+                    v["opportunity_score"] = float(ev.opportunity_score)
+                if ev.detected_at is not None:
+                    v["opportunity_detected_at"] = ev.detected_at.isoformat()
+
+    _enrich(just_opened)
+    _enrich(still_open)

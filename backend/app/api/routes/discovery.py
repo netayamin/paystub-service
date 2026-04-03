@@ -45,6 +45,7 @@ from app.services.discovery.feed import (
 from app.services.discovery.feed_display import attach_feed_card_display_fields
 from app.services.discovery.follow_activity import follow_activity_timeline, follow_status_for_recipient
 from app.services.discovery.likely_open_scoring import enrich_likely_open_item
+from app.services.discovery.opportunity_engine import attach_opportunity_fields_to_explore_days
 from app.services.discovery.snapshot_store import (
     filter_inventory_for_drops,
     filter_snapshot_for_request,
@@ -363,6 +364,12 @@ async def list_drops(
                 date_filter=date_filter,
                 party_sizes=party_size_list,
             )
+            attach_opportunity_fields_to_explore_days(
+                db,
+                just_opened=payload.get("just_opened"),
+                still_open=payload.get("still_open"),
+                date_filter=date_filter,
+            )
             payload["next_scan_at"] = _next_scan_iso(request)
             return Response(
                 content=json.dumps(payload, separators=(",", ":"), default=str).encode(),
@@ -394,6 +401,12 @@ async def list_drops(
         for day in still_open:
             for v in day.get("venues") or []:
                 v["is_hotspot"] = is_hotspot(v.get("name"), v.get("market") or "nyc")
+        attach_opportunity_fields_to_explore_days(
+            db,
+            just_opened=just_opened,
+            still_open=still_open,
+            date_filter=date_filter,
+        )
         payload = {**info, "just_opened": just_opened, "still_open": still_open, "next_scan_at": _next_scan_iso(request)}
         return Response(
             content=json.dumps(payload, separators=(",", ":"), default=str).encode(),
