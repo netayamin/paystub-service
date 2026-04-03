@@ -24,7 +24,6 @@ enum ExploreCardFormatting {
         return "\(h12) \(ap)"
     }
 
-    // kept for external callers
     static func slotTime12h(drop: Drop) -> String { slotTime12h(drop.slots.first?.time) }
     static func imageNightLabel(drop: Drop, selectedDateStr: String?) -> String { "TONIGHT" }
     static func cuisineLine(drop: Drop) -> String {
@@ -40,30 +39,25 @@ enum ExploreCardFormatting {
     }
 }
 
-// MARK: - Card
+// MARK: - Card (reference: left copy + metrics row, right square thumb, rounded card on gray canvas)
 
 struct DSExploreInventoryCard: View {
     let drop: Drop
     var selectedDateStr: String?
     var partySegment: ExplorePartySegment
-    var cornerRadius: CGFloat = 0   // kept for call-site compat
+    var cornerRadius: CGFloat = 0
     var onTap: () -> Void
 
-    /// When `cornerRadius` is 0, use shared app card radius.
     private var effectiveOuterRadius: CGFloat {
         cornerRadius > 0 ? cornerRadius : AppTheme.cardCornerRadius
     }
 
-    private static let thumbSize: CGFloat = 80
-    private static let imgPad:    CGFloat = 10
+    private static let thumbSize: CGFloat = 88
 
-    private var pax: (number: String, suffix: String) {
-        ExploreCardFormatting.paxParts(drop: drop, partySegment: partySegment)
-    }
-    private var cuisineText: String? { cuisineLineIfMeaningful }
+    private static let starGold = Color(red: 0.92, green: 0.72, blue: 0.12)
+
     private var isHot: Bool { drop.feedHot == true || drop.isHotspot == true }
 
-    /// Deduplicated slots sorted by time, capped at 6.
     private var displaySlots: [DropSlot] {
         var seen = Set<String>()
         return drop.slots
@@ -74,14 +68,16 @@ struct DSExploreInventoryCard: View {
     }
 
     var body: some View {
-        // Outer tap = open best booking URL (fallback for tapping image / name area)
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                leftColumn
                 thumbnail
-                rightPanel
             }
-            .frame(maxWidth: .infinity)
-            .background(Color.white)
+            .padding(.leading, 16)
+            .padding(.trailing, 12)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(CreamEditorialTheme.cardWhite)
             .clipShape(RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous)
@@ -93,7 +89,146 @@ struct DSExploreInventoryCard: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Thumbnail
+    // MARK: - Left column
+
+    private var leftColumn: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(drop.name)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(CreamEditorialTheme.textPrimary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.88)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let cuisine = cuisineSubtitle {
+                Text(cuisine)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(CreamEditorialTheme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.88)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            statsRow
+                .padding(.top, 2)
+
+            if !displaySlots.isEmpty {
+                slotPillsRow
+                    .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Star · rating · clock · status · pin · area (matches reference hierarchy).
+    private var statsRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            HStack(spacing: 4) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Self.starGold)
+                Text(ratingLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(CreamEditorialTheme.textPrimary)
+            }
+            .layoutPriority(1)
+
+            metricDot
+
+            HStack(spacing: 4) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                Text(statusLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(statusColor)
+                    .lineLimit(1)
+            }
+            .layoutPriority(1)
+
+            metricDot
+
+            HStack(spacing: 4) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                Text(areaLabel)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(CreamEditorialTheme.textTertiary)
+                    .lineLimit(1)
+            }
+            .layoutPriority(0)
+
+            Spacer(minLength: 0)
+        }
+        .minimumScaleFactor(0.78)
+        .lineLimit(1)
+    }
+
+    private var metricDot: some View {
+        Text("·")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.55))
+            .padding(.horizontal, 6)
+    }
+
+    private var ratingLabel: String {
+        guard let r = drop.ratingAverage, r > 0 else { return "—" }
+        return String(format: "%.1f", r)
+    }
+
+    private var statusLabel: String {
+        if drop.exploreSnagAvailable == false {
+            return "Taken"
+        }
+        if let tag = drop.exploreStatusTag?.trimmingCharacters(in: .whitespacesAndNewlines), !tag.isEmpty {
+            return tag
+        }
+        if !drop.slots.isEmpty {
+            return "Open"
+        }
+        return drop.exploreCanSnag ? "Open" : "Check Resy"
+    }
+
+    private var statusColor: Color {
+        if drop.exploreSnagAvailable == false {
+            return CreamEditorialTheme.streamRed
+        }
+        return CreamEditorialTheme.textPrimary
+    }
+
+    private var areaLabel: String {
+        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !nb.isEmpty { return nb }
+        if let pill = drop.exploreVenuePill?.trimmingCharacters(in: .whitespacesAndNewlines), !pill.isEmpty {
+            return pill
+        }
+        if let m = drop.market?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
+            return m.uppercased()
+        }
+        if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
+            return loc
+        }
+        return "—"
+    }
+
+    private var cuisineSubtitle: String? {
+        if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+            return s
+        }
+        if let pill = drop.exploreVenuePill?.trimmingCharacters(in: .whitespacesAndNewlines), !pill.isEmpty {
+            return pill
+        }
+        if let line = drop.topOpportunitySubtitleLine?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !line.isEmpty, line.count < 52 {
+            return line
+        }
+        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !nb.isEmpty { return nb }
+        return nil
+    }
+
+    // MARK: - Thumbnail (right)
 
     private var thumbnail: some View {
         ZStack(alignment: .topTrailing) {
@@ -112,9 +247,15 @@ struct DSExploreInventoryCard: View {
                     .padding(6)
             }
         }
-        .padding(Self.imgPad)
-        .frame(width: Self.thumbSize + Self.imgPad * 2,
-               height: Self.thumbSize + Self.imgPad * 2)
+        .overlay(alignment: .topLeading) {
+            if drop.exploreShowDot == true {
+                Circle()
+                    .fill(CreamEditorialTheme.liveDot)
+                    .frame(width: 8, height: 8)
+                    .padding(6)
+            }
+        }
+        .frame(width: Self.thumbSize, height: Self.thumbSize)
     }
 
     @ViewBuilder
@@ -130,60 +271,22 @@ struct DSExploreInventoryCard: View {
         }
     }
 
-    // MARK: Right panel
+    // MARK: - Slot pills
 
-    private var rightPanel: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Name
-            Text(drop.name)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundColor(CreamEditorialTheme.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Cuisine / neighborhood
-            if let cuisine = cuisineText {
-                Text(cuisine)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.88)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            // Time slot pills (scrollable) + PAX
-            HStack(spacing: 0) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(displaySlots.enumerated()), id: \.offset) { _, slot in
-                            slotPill(slot)
-                        }
-                    }
+    private var slotPillsRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(displaySlots.enumerated()), id: \.offset) { _, slot in
+                    slotPill(slot)
                 }
-
-                Spacer(minLength: 8)
-
-                (Text(pax.number).fontWeight(.bold) + Text(pax.suffix).fontWeight(.regular))
-                    .font(.system(size: 11))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .lineLimit(1)
-                    .fixedSize()
             }
         }
-        .padding(.leading, 4)
-        .padding(.trailing, 12)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    // Each time pill is its own Button so it can open a slot-specific URL.
-    // Inner .plain buttons within an outer .plain button correctly intercept
-    // their own taps without triggering the outer action.
     private func slotPill(_ slot: DropSlot) -> some View {
         Button {
             let urlString: String
-            if let raw = slot.resyUrl, let url = URL(string: raw), !raw.isEmpty {
+            if let raw = slot.resyUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
                 urlString = raw
             } else if let best = drop.effectiveResyBookingURL {
                 urlString = best
@@ -195,29 +298,14 @@ struct DSExploreInventoryCard: View {
             }
         } label: {
             Text(ExploreCardFormatting.slotTime12h(slot.time))
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(CreamEditorialTheme.burgundy)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
                 .background(CreamEditorialTheme.peachBadgeFill)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-    }
-
-    private var cuisineLineIfMeaningful: String? {
-        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-            if !nb.isEmpty, s.count < 36 { return "\(s) • \(nb)" }
-            return s
-        }
-        if let line = drop.topOpportunitySubtitleLine?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !line.isEmpty, line.count < 42 {
-            if !nb.isEmpty { return "\(line) • \(nb)" }
-            return line
-        }
-        if !nb.isEmpty { return nb }
-        return nil
     }
 }
 
