@@ -50,8 +50,8 @@ jobs:
             SHORT_SHA="${GIT_SHA:0:7}"
             echo "==> docker build (GIT_SHA=$SHORT_SHA)..."
             sudo docker build --build-arg GIT_SHA="$SHORT_SHA" --no-cache -t paystub-service-backend ./backend
-            echo "==> migrations..."
-            $DC run --rm backend alembic upgrade head || true
+            echo "==> migrations (must succeed or deploy is broken)..."
+            $DC run --rm --no-deps backend alembic upgrade head
             echo "==> up -d --force-recreate backend..."
             $DC up -d --force-recreate backend
             $DC ps

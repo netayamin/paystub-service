@@ -375,6 +375,8 @@ If `docker-compose -f docker-compose.prod.yml ps` shows the backend as **Restart
   sudo docker compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
   ```
 
+- **Empty iOS feed but `/health` is ok:** `/health` only checks that Postgres accepts a connection. If **`/explore/drops`** returns an error like `relation "discovery_buckets" does not exist`, Alembic never created discovery tables on that database — run the command above and confirm it exits **0**. The GitHub deploy workflow runs the same migration step; if it failed in the past, fix `DATABASE_URL` in `backend/.env` on EC2 and re-run migrations.
+
 ---
 
 ## Copying local DB data to RDS (full dump/restore)
