@@ -7,9 +7,9 @@
 | File | Was | Now |
 |------|-----|-----|
 | `backend/.env` | `DATABASE_URL=...@localhost:5432/paystub` | `DATABASE_URL=...@database-1....rds.amazonaws.com:5432/postgres` (RDS) |
-| `ios/DropFeed/Info.plist` | `API_BASE_URL` (local) | `API_BASE_URL=http://YOUR_EC2:8000` or ngrok HTTPS |
+| `ios/DropFeed/Info.plist` | `API_BASE_URL` (local) | `API_BASE_URL=http://YOUR_EC2:8000` (or Mac LAN IP for device + local API) |
 
-So: **backend** uses RDS; **iOS** calls the EC2 (or ngrok) API.
+So: **backend** uses RDS; **iOS** calls the EC2 API (or your Mac on LAN for dev).
 
 ---
 
@@ -32,7 +32,7 @@ DATABASE_URL=postgresql://paystub:paystub@localhost:5432/paystub
 Start local DB: `make db-up`. Then run backend: `make dev-backend`.
 
 **2. iOS**  
-In `ios/DropFeed/Info.plist` set `API_BASE_URL` to `http://127.0.0.1:8000` (simulator) or your Mac’s LAN IP / ngrok URL (device). Rebuild the app.
+In `ios/DropFeed/Info.plist` set `API_BASE_URL` to `http://127.0.0.1:8000` (simulator) or your Mac’s LAN IP / EC2 URL (device). Rebuild the app.
 
 ---
 

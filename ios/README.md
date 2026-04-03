@@ -8,27 +8,20 @@ Native iOS app for the Drop Feed backend. Shows Top Opportunities, Hot Right Now
 2. Start the backend: `make dev-backend` (from project root).
 3. Select an iPhone simulator and press **Run** (⌘R).
 
-The app reads the API base URL from **Info.plist** → `API_BASE_URL` (default `http://127.0.0.1:8000` for simulator).
+The app reads the API base URL from **Info.plist** → `API_BASE_URL`.
 
-## Run on Your Phone (ngrok — works off WiFi)
+- **Simulator:** use `http://127.0.0.1:8000` with `make dev-backend` on your Mac.
+- **Production (typical):** set `API_BASE_URL` to your **EC2** API origin (e.g. `http://x.x.x.x:8000`). Add the host under **NSAppTransportSecurity** if you use plain HTTP.
 
-From repo root, run **`make ios-phone`** for the checklist.
+## Run on Your Phone
 
-**Recommended flow (no hand-editing Info.plist):**
+From repo root, **`make ios-phone`** prints a short checklist.
 
-1. **Terminal A:** `make dev-backend` (listens on `0.0.0.0:8000`).
-2. **Terminal B:** `ngrok http 8000` (leave it running; free ngrok account is fine).
-3. **Xcode:** select your iPhone and **Run** (⌘R). A build phase reads ngrok’s local API (`127.0.0.1:4040`) and writes the **HTTPS tunnel URL** into the **built** app’s `Info.plist`. The file in git stays `http://127.0.0.1:8000` (simulator still uses your Mac).
+**Against your Mac (same Wi‑Fi):** set `API_BASE_URL` to `http://YOUR_MAC_LAN_IP:8000`, run `make dev-backend`, then build to device in Xcode.
 
-If ngrok is **not** running when you build for a device, the app falls back to the deploy server (see `APIService` — localhost in the bundle is ignored on device).
+**Against EC2:** set `API_BASE_URL` to your server URL (committed default may already be production). Rebuild after any change.
 
-**Phone sign-in testing:** set `AUTH_OTP_FIXED=123456` in `backend/.env`, restart the backend, then enter `123456` in the app.
-
-**Optional:** `make ngrok-ios` still patches `ios/DropFeed/Info.plist` in the repo; the build-time inject above is usually enough.
-
-**Timeouts / “can’t reach server” on device:** Free ngrok URLs change every time you restart ngrok. If `Info.plist` in git still has an old `https://….ngrok-free.app`, either run **`make ios-phone`** / build with ngrok’s API up so the URL is injected, or paste the **current** tunnel URL into `API_BASE_URL` and rebuild. Keep **`make dev-backend`** (or uvicorn) running on the Mac.
-
-**Same Wi‑Fi only:** set `API_BASE_URL` in `Info.plist` to `http://YOUR_MAC_IP:8000` and rebuild.
+**Sign-in testing:** optional `AUTH_OTP_FIXED=123456` in `backend/.env`.
 
 ## Build & run from Cursor (Sweetpad)
 

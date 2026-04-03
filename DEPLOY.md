@@ -2,12 +2,11 @@
 
 The product is the **native iOS app** in `ios/` talking to the **FastAPI** backend. There is no web frontend in this repo.
 
-## Quick test with ngrok (local Mac)
+## Quick test on a physical iPhone (local Mac)
 
 1. **Postgres**: `docker compose up -d db`
-2. **Backend**: `make dev-backend` — wait for **BACKEND READY**.
-3. **ngrok**: `ngrok http 8000` — copy the HTTPS URL.
-4. **iOS**: set `API_BASE_URL` to that URL (see `ios/README.md`, `make ios-phone`, or Xcode inject). Rebuild/run on device.
+2. **Backend**: `make dev-backend` — wait for **BACKEND READY** (listens on `0.0.0.0:8000`).
+3. **iOS**: set `ios/DropFeed/Info.plist` → `API_BASE_URL` to `http://YOUR_MAC_LAN_IP:8000` (same Wi‑Fi as the phone). Rebuild/run on device. See `make ios-phone`.
 
 ## Hosted API (e.g. Railway, EC2, Render)
 

@@ -13,29 +13,17 @@ install:
 # Run backend only (port 8000). You should see "BACKEND READY" in this terminal when it starts.
 dev: dev-backend
 
-# Expose backend via ngrok (use when phone is not on same WiFi).
-# Run: make dev-backend (Terminal 1), then either:
-#   make ngrok        — foreground; copy the https URL into Info.plist API_BASE_URL and rebuild iOS
-#   make ngrok-ios    — start ngrok in background and set API_BASE_URL in Info.plist; then rebuild iOS
-ngrok:
-	@echo "Exposing backend on port 8000. Copy the https URL and set API_BASE_URL in Info.plist, then rebuild iOS."
-	ngrok http 8000
-
-# Start ngrok in background and set ios/DropFeed/Info.plist API_BASE_URL to the ngrok HTTPS URL. Then rebuild the app.
-ngrok-ios:
-	@chmod +x scripts/ngrok-ios.sh 2>/dev/null || true
-	./scripts/ngrok-ios.sh
-
-# Print steps for testing the iOS app on a real phone against your Mac (ngrok URL is injected at Xcode build time).
+# Print steps for testing the iOS app on a real phone against your Mac (same Wi‑Fi).
 ios-phone:
 	@echo ""
-	@echo "iPhone + Mac API (sign-in flow)"
-	@echo "-------------------------------"
-	@echo "1) Terminal A (repo root):  make dev-backend"
-	@echo "2) Terminal B:               ngrok http 8000   (keep running)"
+	@echo "iPhone + Mac API (same Wi‑Fi)"
+	@echo "-----------------------------"
+	@echo "1) Set ios/DropFeed/Info.plist → API_BASE_URL to http://YOUR_MAC_LAN_IP:8000"
+	@echo "2) Terminal (repo root):  make dev-backend   (listens on 0.0.0.0:8000)"
 	@echo "3) Xcode: Product → Run on your iPhone"
-	@echo "   Build injects ngrok HTTPS into the built app (source Info.plist unchanged)."
-	@echo "4) Use fixed OTP from backend/.env: AUTH_OTP_FIXED=123456"
+	@echo "4) Optional: AUTH_OTP_FIXED=123456 in backend/.env for easy sign-in"
+	@echo ""
+	@echo "Production: point API_BASE_URL at your EC2 API (e.g. http://x.x.x.x:8000) — no Mac needed."
 	@echo ""
 
 # Quick checks: Postgres on 5432, DATABASE_URL, app import. Run if the backend won't start.

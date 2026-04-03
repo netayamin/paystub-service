@@ -1,7 +1,0 @@
-# Run: ngrok start --all --config=ngrok.yml
-# iOS: point API_BASE_URL at the HTTPS URL for the `backend` tunnel (see ios/README.md).
-version: "2"
-tunnels:
-  backend:
-    addr: 8000
-    proto: http

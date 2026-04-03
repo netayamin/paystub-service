@@ -55,7 +55,7 @@ make dev-backend
 - API docs: http://127.0.0.1:8000/docs  
 - **Endpoint overview for the app:** `backend/docs/API_IOS.md`
 
-See `ios/README.md` for simulator, device, and ngrok.
+See `ios/README.md` for simulator, device, and production API URL setup.
 
 ## Database: clear and rebuild
 

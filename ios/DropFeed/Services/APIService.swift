@@ -1,9 +1,9 @@
 import Foundation
 
 /// API service for the Drop Feed backend.
-/// Base URL is read from Info.plist key `API_BASE_URL` (e.g. set by `make ngrok-ios`).
+/// Base URL is read from Info.plist key `API_BASE_URL` (e.g. production EC2 or `http://192.168.x.x:8000` for local device testing).
 ///
-/// On a **physical device**, `http://127.0.0.1` / `localhost` in Info.plist is ignored (that’s the phone, not your Mac); the app falls back to the deploy host unless you set a real URL (ngrok HTTPS, or `http://192.168.x.x:8000` on the same Wi‑Fi).
+/// On a **physical device**, `http://127.0.0.1` / `localhost` in Info.plist is ignored (that’s the phone, not your Mac); the app falls back to the bundled deploy host unless you set a reachable URL.
 final class APIService {
     static let shared = APIService()
 
@@ -46,11 +46,9 @@ final class APIService {
     
     init() {
         let config = URLSessionConfiguration.default
-        // Ngrok / dev tunnels and cold servers often exceed 15s; device feed polling uses this session.
+        // EC2 cold start / slow paths; device feed polling uses this session.
         config.timeoutIntervalForRequest = 45
         config.timeoutIntervalForResource = 120
-        // Free ngrok can show an interstitial for browser-like clients; this header skips it for API calls.
-        config.httpAdditionalHeaders = ["ngrok-skip-browser-warning": "69420"]
         session = URLSession(configuration: config)
         decoder = JSONDecoder()
     }
@@ -81,19 +79,19 @@ final class APIService {
             return """
             Can’t reach \(Self.sharedBaseURLDisplay).
 
-            On a real iPhone: use ngrok or your Mac’s LAN IP (not 127.0.0.1).
+            On a real iPhone: use your **EC2/production** URL or your **Mac’s LAN IP** (not 127.0.0.1).
 
-            • ngrok: from repo root run make ngrok-ios, then rebuild the app (updates Info.plist).
-            • Same Wi‑Fi: set API_BASE_URL to http://192.168.x.x:8000 and run uvicorn with --host 0.0.0.0 --port 8000.
+            • Production: set API_BASE_URL in Info.plist to http://YOUR_SERVER:8000 and rebuild.
+            • Same Wi‑Fi as Mac: set API_BASE_URL to http://192.168.x.x:8000 and run the backend with --host 0.0.0.0 --port 8000.
 
-            If Info.plist still has 127.0.0.1, this build ignores it and uses the deploy server instead.
+            If Info.plist has 127.0.0.1, this build ignores it on device and uses the bundled deploy host instead.
             """
             #endif
         case .timedOut:
             return """
             Request timed out (\(Self.sharedBaseURLDisplay)).
 
-            • If you use ngrok: the tunnel may be cold — try again; keep `make ngrok-ios` / uvicorn running.
+            • Server may be cold or overloaded — try again.
             • Rebuild the app after changing API_BASE_URL.
             """
         case .notConnectedToInternet:
@@ -400,7 +398,7 @@ final class APIService {
         return (try? JSONDecoder().decode(E.self, from: data))?.detail
     }
 
-    /// Use for feed / explore errors so timeouts and ngrok hints match auth flows.
+    /// Use for feed / explore errors so timeouts match auth flows.
     static func userFacingRequestError(_ error: Error) -> String {
         if let api = error as? APIError {
             switch api {

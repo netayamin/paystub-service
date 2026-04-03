@@ -25,13 +25,17 @@ from app.models.discovery_bucket import DiscoveryBucket
 from app.models.notify_preference import NotifyPreference
 from app.models.venue_rolling_metrics import VenueRollingMetrics
 from app.services.discovery.buckets import (
+    STALE_BUCKET_HOURS,
     all_bucket_ids,
+    get_baseline_snapshot,
+    get_bucket_health,
     get_just_opened_from_buckets,
     get_last_scan_info_buckets,
     get_likely_to_open_venues,
     get_still_open_from_buckets,
     window_start_date,
 )
+from app.services.discovery.scan import get_discovery_fast_checks
 from app.services.discovery.feed import (
     attach_likely_open_labels,
     build_feed,
@@ -638,4 +642,55 @@ async def list_just_opened(
         logger.warning("list_just_opened failed: %s", e, exc_info=True)
         return {"just_opened": [], "still_open": [], "last_scan_at": None, "total_venues_scanned": 0, "next_scan_at": _next_scan_iso(request)}
 
+
+@router.get("/discovery/health")
+@router.get("/chat/watches/discovery-health")
+async def discovery_ops_health(request: Request, db: Session = Depends(get_db)):
+    """
+    Operations: job heartbeat, fast checks, per-bucket `baseline_count` / `last_scan_at` / `stale`.
+
+    Canonical path: **`GET /discovery/health`**. Legacy alias: **`GET /chat/watches/discovery-health`**
+    (scripts and older docs).
+    """
+    today = window_start_date()
+    base = get_discovery_fast_checks(db)
+    bucket_health = get_bucket_health(db, today)
+    stale_ids = [b["bucket_id"] for b in bucket_health if b.get("stale")]
+    out = {
+        **base,
+        "bucket_health": bucket_health,
+        "next_scan_at": _next_scan_iso(request),
+        "stale_bucket_count": len(stale_ids),
+        "stale_bucket_ids": stale_ids[:80],
+        "all_buckets_fresh": len(stale_ids) == 0,
+    }
+    if stale_ids:
+        out["critical"] = True
+        out["message"] = (
+            f"{len(stale_ids)} bucket(s) not scanned within {STALE_BUCKET_HOURS}h; "
+            "just-opened / still-open exclude stale buckets. Check scheduler and logs."
+        )
+    else:
+        out["critical"] = False
+        out["message"] = None
+    return out
+
+
+@router.get("/discovery/baseline")
+@router.get("/chat/watches/baseline")
+async def discovery_baseline(
+    db: Session = Depends(get_db),
+    include_slot_ids: bool = Query(False, description="If true, include full baseline_slot_id lists (very large)."),
+):
+    """
+    Per-bucket baseline snapshot metadata. Default omits `baseline_slot_ids` to keep responses small.
+
+    Canonical: **`GET /discovery/baseline`**. Legacy: **`GET /chat/watches/baseline`**.
+    """
+    snap = get_baseline_snapshot(db, window_start_date())
+    if not include_slot_ids:
+        for b in snap.get("buckets") or []:
+            b.pop("baseline_slot_ids", None)
+    snap["include_slot_ids"] = include_slot_ids
+    return snap
 

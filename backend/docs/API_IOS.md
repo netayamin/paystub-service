@@ -75,12 +75,13 @@ Headers: `X-Recipient-Id` (optional; defaults to `default` for dev).
 
 ---
 
-## Removed from this repo (iOS-only backend)
+## Operations (not used by the iOS app)
 
-The following are **not** exposed anymore (were web/debug/admin or unused by the app):
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/discovery/health` | Discovery job heartbeat, `feed_updating`, per-bucket `baseline_count`, `stale`, `stale_bucket_count` |
+| GET | `/discovery/baseline` | Per-bucket baseline counts; add `?include_slot_ids=1` for full hash lists (huge) |
 
-- Web React app under `frontend/` (removed).
-- `/chat-ui` HTML test page.
-- Discovery debug/test routes (`resy-test`, `discovery-health`, `feed-item-debug`, DB admin posts, etc.).
+Legacy aliases (same handlers): **`GET /chat/watches/discovery-health`**, **`GET /chat/watches/baseline`**.
 
-If you need operational tooling, use **`/docs`**, **`/health`**, logs, and direct DB access.
+Other removed surfaces: web `frontend/`, `/chat-ui`, `resy-test`, `feed-item-debug`, DB admin posts, etc.

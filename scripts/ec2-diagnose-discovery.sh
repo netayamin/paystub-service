@@ -18,7 +18,7 @@ curl -s -o /dev/null -w "   HTTP %{http_code}\n" "$BASE_URL/health" || true
 echo ""
 
 echo "2. Discovery health (job heartbeat, last_scan_at, bucket status)"
-curl -s "$BASE_URL/chat/watches/discovery-health" | python3 -c "
+curl -s "$BASE_URL/discovery/health" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -41,8 +41,8 @@ except Exception as e:
 " 2>/dev/null || echo "   (curl or parse failed)"
 echo ""
 
-echo "3. Just-opened (snapshot) – total venues"
-curl -s "$BASE_URL/chat/watches/just-opened" | python3 -c "
+echo "3. Feed live (snapshot path unless debug) – ranked_board / just_opened counts"
+curl -s "$BASE_URL/feed/live" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -57,8 +57,8 @@ except Exception as e:
 " 2>/dev/null || echo "   (parse failed)"
 echo ""
 
-echo "4. Just-opened with debug=1 (bypass snapshot, hit DB) – same?"
-curl -s "$BASE_URL/chat/watches/just-opened?debug=1" | python3 -c "
+echo "4. Feed live with debug=1 (bypass snapshot, hit DB) – same?"
+curl -s "$BASE_URL/feed/live?debug=1" | python3 -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
