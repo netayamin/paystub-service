@@ -1335,15 +1335,6 @@ private func feedFormatTime12h(_ t: String) -> String {
     return m > 0 ? "\(h12):\(String(format: "%02d", m)) \(ap)" : "\(h12) \(ap)"
 }
 
-/// Compact 12h clock for slot chips (e.g. 7:15) — design reference omits AM/PM on pills.
-private func feedFormatTimeCompact(_ t: String) -> String {
-    let p = t.split(separator: ":")
-    guard let h = p.first.flatMap({ Int($0) }) else { return t.isEmpty ? "—" : String(t.prefix(5)) }
-    let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
-    let h12 = h % 12 == 0 ? 12 : h % 12
-    return m > 0 ? "\(h12):\(String(format: "%02d", m))" : "\(h12)"
-}
-
 /// Hot hero CTA: show reservation window (first slot date + time) instead of generic “claim” copy.
 private func feedHeroBookingCTALabel(for drop: Drop) -> String {
     let slot = drop.slots.first
@@ -3348,21 +3339,7 @@ private struct TrendingDropCard: View {
     }
 }
 
-// MARK: - Latest Drop Row (with rich metrics)
-
-/// Light editorial card — white surface, serif title, red freshness, slot chips (design reference Apr 2026).
-private enum LatestDropCardChrome {
-    static let cardFill = Color.white
-    static let title = Color.black
-    static let meta = Color(red: 0.557, green: 0.557, blue: 0.576) // ~ system gray / #8E8E93
-    static let accentRed = Color(red: 1.0, green: 0.271, blue: 0.227) // ~ #FF453A
-    static let slotBorder = Color(red: 0.78, green: 0.78, blue: 0.80)
-    static let slotTime = Color.black
-    static let slotParty = Color(red: 0.557, green: 0.557, blue: 0.576)
-    static let imageCorner: CGFloat = 12
-    static let cardCorner: CGFloat = 22
-    static let redBarWidth: CGFloat = 3
-}
+// MARK: - Latest Drop Row (shared editorial card + bookmark / NEW / RARE)
 
 struct LatestDropRowView: View {
     let drop: Drop
@@ -3371,9 +3348,9 @@ struct LatestDropRowView: View {
 
     private var statusBadge: (text: String, color: Color)? {
         if drop.brandNewDrop == true {
-            return ("NEW", LatestDropCardChrome.accentRed)
+            return ("NEW", EditorialReservationCardTokens.accentRed)
         }
-        if drop.feedsRareCarousel == true { return ("RARE", LatestDropCardChrome.accentRed) }
+        if drop.feedsRareCarousel == true { return ("RARE", EditorialReservationCardTokens.accentRed) }
         return nil
     }
 
@@ -3382,175 +3359,22 @@ struct LatestDropRowView: View {
         return URL(string: s)
     }
 
-    /// Uppercased relative freshness, e.g. "1M AGO" (minutes) / "2H AGO".
-    private var freshnessUppercased: String {
-        if let iso = drop.userFacingOpenedAt ?? drop.detectedAt ?? drop.createdAt,
-           let d = Drop.parseISO(iso) {
-            let sec = max(0, Int(-d.timeIntervalSinceNow))
-            if sec < 50 { return "NOW" }
-            if sec < 3600 {
-                let m = max(1, sec / 60)
-                return "\(m)M AGO"
-            }
-            if sec < 86400 {
-                let h = max(1, sec / 3600)
-                return "\(h)H AGO"
-            }
-            let days = max(1, sec / 86400)
-            return "\(days)D AGO"
-        }
-        let fallback = drop.serverFreshnessLabel ?? "Live"
-        return fallback.uppercased()
-    }
-
-    private var metaCapsLine: String {
-        var parts: [String] = []
-        if let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines), !nb.isEmpty {
-            parts.append(nb.uppercased())
-        }
-        if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
-            let nbl = (drop.neighborhood ?? "").lowercased()
-            if loc.lowercased() != nbl { parts.append(loc.uppercased()) }
-        }
-        if !parts.isEmpty { return parts.joined(separator: " • ") }
-        if let m = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
-            return m.uppercased()
-        }
-        return ""
-    }
-
     private var defaultParty: Int {
         drop.partySizesAvailable.sorted().first ?? 2
     }
 
-    private var slotChips: [DropSlot] {
-        let raw = drop.slots
-        if raw.isEmpty, drop.dateStr != nil || drop.effectiveResyBookingURL != nil {
-            return [DropSlot(dateStr: drop.dateStr, time: nil, resyUrl: drop.resyUrl)]
-        }
-        return Array(raw.prefix(8))
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                // Square image + vertical red accent (trailing edge)
-                Button {
-                    if let url = resyUrl { UIApplication.shared.open(url) }
-                } label: {
-                    HStack(spacing: 0) {
-                        Group {
-                            if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
-                                CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
-                                    Color(white: 0.94)
-                                }
-                            } else {
-                                Color(white: 0.94)
-                            }
-                        }
-                        .frame(width: 76, height: 76)
-                        .clipped()
-
-                        Rectangle()
-                            .fill(LatestDropCardChrome.accentRed)
-                            .frame(width: LatestDropCardChrome.redBarWidth)
-                            .frame(height: 76)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: LatestDropCardChrome.imageCorner, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: LatestDropCardChrome.imageCorner, style: .continuous)
-                            .stroke(LatestDropCardChrome.slotBorder.opacity(0.6), lineWidth: 0.5)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(drop.name)
-                            .font(.system(size: 20, weight: .bold, design: .serif))
-                            .foregroundColor(LatestDropCardChrome.title)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-
-                        Spacer(minLength: 4)
-
-                        VStack(alignment: .trailing, spacing: 6) {
-                            Text(freshnessUppercased)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(LatestDropCardChrome.accentRed)
-                            Button { onToggleWatch(drop.name) } label: {
-                                Image(systemName: isWatched ? "bookmark.fill" : "bookmark")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(isWatched ? LatestDropCardChrome.accentRed : LatestDropCardChrome.meta)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(isWatched ? "Remove from saved" : "Save venue")
-                        }
-                    }
-
-                    if let badge = statusBadge {
-                        Text(badge.text)
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(badge.color)
-                            .clipShape(Capsule())
-                    }
-
-                    if !metaCapsLine.isEmpty {
-                        Text(metaCapsLine)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(LatestDropCardChrome.meta)
-                            .lineLimit(2)
-                    }
-                }
+        EditorialReservationCard(
+            drop: drop,
+            partyPeopleText: "\(defaultParty) PEOPLE",
+            showBookmark: true,
+            isWatched: isWatched,
+            onToggleWatch: onToggleWatch,
+            statusBadge: statusBadge,
+            onHeroTap: {
+                if let url = resyUrl { UIApplication.shared.open(url) }
             }
-
-            if !slotChips.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(slotChips.enumerated()), id: \.offset) { _, slot in
-                            let timeRaw = (slot.time ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                            let timeLabel = timeRaw.isEmpty ? "Book" : feedFormatTimeCompact(timeRaw)
-                            let urlStr = slot.resyUrl ?? drop.effectiveResyBookingURL
-                            Button {
-                                if let s = urlStr, let u = URL(string: s) { UIApplication.shared.open(u) }
-                            } label: {
-                                VStack(spacing: 2) {
-                                    Text(timeLabel)
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(LatestDropCardChrome.slotTime)
-                                    Text("\(defaultParty)P")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(LatestDropCardChrome.slotParty)
-                                }
-                                .frame(minWidth: 52)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(LatestDropCardChrome.cardFill)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .stroke(LatestDropCardChrome.slotBorder, lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(urlStr == nil)
-                            .opacity(urlStr == nil ? 0.45 : 1)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(14)
-        .background(LatestDropCardChrome.cardFill)
-        .clipShape(RoundedRectangle(cornerRadius: LatestDropCardChrome.cardCorner, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: LatestDropCardChrome.cardCorner, style: .continuous)
-                .stroke(LatestDropCardChrome.slotBorder.opacity(0.9), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 }
 
