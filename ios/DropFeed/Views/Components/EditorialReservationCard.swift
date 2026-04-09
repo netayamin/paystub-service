@@ -46,7 +46,6 @@ struct EditorialReservationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Keep photo on the physical left (RTL would otherwise mirror this row).
             HStack(alignment: .top, spacing: 12) {
                 leadingThumbnail
                     .onTapGesture { onHeroTap() }
@@ -87,7 +86,6 @@ struct EditorialReservationCard: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onHeroTap() }
             }
-            .environment(\.layoutDirection, .leftToRight)
 
             if !displaySlots.isEmpty {
                 slotPillsRow
@@ -102,6 +100,8 @@ struct EditorialReservationCard: View {
                 .stroke(EditorialReservationCardTokens.slotBorder.opacity(0.95), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
+        // RTL locales mirror HStacks: thumbnail jumped to the trailing edge and [image|red] flipped.
+        .flipsForRightToLeftLayoutDirection(false)
     }
 
     private var leadingThumbnail: some View {
@@ -128,7 +128,6 @@ struct EditorialReservationCard: View {
                 .frame(width: EditorialReservationCardTokens.redBarWidth)
                 .frame(height: EditorialReservationCardTokens.thumb)
         }
-        .environment(\.layoutDirection, .leftToRight)
         .clipShape(RoundedRectangle(cornerRadius: EditorialReservationCardTokens.imageCorner, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: EditorialReservationCardTokens.imageCorner, style: .continuous)
