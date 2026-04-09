@@ -19,7 +19,8 @@ enum DropFeedTokens {
         static let gridRowSpacing: CGFloat = 20
         /// Explore tiles use a **square** image (`aspectRatio 1:1`); kept for rare fixed-height layouts.
         static let exploreCardImageHeight: CGFloat = 178
-        static let exploreCardCornerRadius: CGFloat = 10
+        /// Calendar / Explore inventory cards (editorial reservation reference).
+        static let exploreCardCornerRadius: CGFloat = 22
     }
 
     /// Named fills that are not yet on ``CreamEditorialTheme``.

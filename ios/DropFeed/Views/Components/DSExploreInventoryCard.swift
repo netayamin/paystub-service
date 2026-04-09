@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Formatting helpers
 
@@ -11,6 +12,12 @@ enum ExploreCardFormatting {
             if let p = drop.partySizesAvailable.sorted().first, p > 0 { return ("\(p)", " PAX") }
             return ("2", " PAX")
         }
+    }
+
+    /// Slot row party label — calendar reference: "2 PEOPLE".
+    static func peopleLabel(drop: Drop, partySegment: ExplorePartySegment) -> String {
+        let (n, _) = paxParts(drop: drop, partySegment: partySegment)
+        return "\(n) PEOPLE"
     }
 
     static func slotTime12h(_ timeStr: String?) -> String {
@@ -26,6 +33,7 @@ enum ExploreCardFormatting {
 
     static func slotTime12h(drop: Drop) -> String { slotTime12h(drop.slots.first?.time) }
     static func imageNightLabel(drop: Drop, selectedDateStr: String?) -> String { "TONIGHT" }
+
     static func cuisineLine(drop: Drop) -> String {
         let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
@@ -37,9 +45,64 @@ enum ExploreCardFormatting {
         }
         return !nb.isEmpty ? "Prime tables • \(nb)" : "Tonight's inventory"
     }
+
+    /// "West Village • Italian" style for calendar cards (neighborhood • cuisine/secondary).
+    static func neighborhoodCuisineMeta(drop: Drop) -> String {
+        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let sub = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !nb.isEmpty && !loc.isEmpty && loc.lowercased() != nb.lowercased() {
+            return "\(nb) • \(loc)"
+        }
+        if !nb.isEmpty && !sub.isEmpty {
+            return "\(nb) • \(sub)"
+        }
+        if !nb.isEmpty { return nb }
+        if !loc.isEmpty { return loc }
+        return sub
+    }
+
+    /// Uppercased recency fragment, e.g. "2M AGO" / "NOW".
+    static func freshnessMagnitudeAgo(drop: Drop) -> String {
+        if let iso = drop.userFacingOpenedAt ?? drop.detectedAt ?? drop.createdAt,
+           let d = Drop.parseISO(iso) {
+            let sec = max(0, Int(-d.timeIntervalSinceNow))
+            if sec < 50 { return "NOW" }
+            if sec < 3600 { return "\(max(1, sec / 60))M AGO" }
+            if sec < 86400 { return "\(max(1, sec / 3600))H AGO" }
+            return "\(max(1, sec / 86400))D AGO"
+        }
+        if let f = drop.serverFreshnessLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !f.isEmpty {
+            return f.uppercased()
+        }
+        let s = drop.secondsSinceDetected
+        if s < 90 { return "NOW" }
+        if s < 3600 { return "\(max(1, s / 60))M AGO" }
+        if s < 86400 { return "\(max(1, s / 3600))H AGO" }
+        return "\(max(1, s / 86400))D AGO"
+    }
+
+    /// "DROPPED 2M AGO" (calendar reference).
+    static func droppedAgoLine(drop: Drop) -> String {
+        "DROPPED \(freshnessMagnitudeAgo(drop: drop))"
+    }
 }
 
-// MARK: - Card (reference: left copy + metrics row, right square thumb, rounded card on gray canvas)
+// MARK: - Calendar / Explore card chrome (reference: white, #E3524F accent)
+
+private enum ExploreCalendarCardChrome {
+    static let cardFill = Color.white
+    static let title = Color.black
+    static let meta = Color(red: 0.557, green: 0.557, blue: 0.576)
+    static let accentRed = Color(red: 227 / 255, green: 82 / 255, blue: 79 / 255)
+    static let slotBorder = Color(red: 0.78, green: 0.78, blue: 0.80)
+    static let slotFill = Color(red: 0.97, green: 0.97, blue: 0.98)
+    static let imageCorner: CGFloat = 12
+    static let redBarWidth: CGFloat = 3
+    static let thumb: CGFloat = 76
+}
+
+// MARK: - Card (calendar reference: left image + red bar, serif name, meta · DROPPED, slot grid)
 
 struct DSExploreInventoryCard: View {
     let drop: Drop
@@ -49,250 +112,114 @@ struct DSExploreInventoryCard: View {
     var onTap: () -> Void
 
     private var effectiveOuterRadius: CGFloat {
-        cornerRadius > 0 ? cornerRadius : AppTheme.cardCornerRadius
+        cornerRadius > 0 ? cornerRadius : 22
     }
-
-    private static let thumbSize: CGFloat = 88
-
-    private static let starGold = Color(red: 0.92, green: 0.72, blue: 0.12)
-
-    private var isHot: Bool { drop.feedHot == true || drop.isHotspot == true }
 
     private var displaySlots: [DropSlot] {
         var seen = Set<String>()
         return drop.slots
             .sorted { ($0.time ?? "") < ($1.time ?? "") }
             .filter { seen.insert($0.time ?? "").inserted }
-            .prefix(6)
+            .prefix(8)
             .map { $0 }
     }
 
-    var body: some View {
-        Button(action: onTap) {
-            HStack(alignment: .center, spacing: 14) {
-                leftColumn
-                thumbnail
-            }
-            .padding(.leading, 16)
-            .padding(.trailing, 12)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(CreamEditorialTheme.cardWhite)
-            .clipShape(RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous)
-                    .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.07), radius: 8, x: 0, y: 2)
-            .contentShape(RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous))
-        }
-        .buttonStyle(.plain)
+    private var metaLine: String {
+        ExploreCardFormatting.neighborhoodCuisineMeta(drop: drop)
     }
 
-    // MARK: - Left column
+    private var droppedLine: String {
+        ExploreCardFormatting.droppedAgoLine(drop: drop)
+    }
 
-    private var leftColumn: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(drop.name)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(CreamEditorialTheme.textPrimary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.88)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                leadingThumbnail
+                    .onTapGesture { onTap() }
 
-            if let cuisine = cuisineSubtitle {
-                Text(cuisine)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(CreamEditorialTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.88)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(drop.name)
+                        .font(.system(size: 20, weight: .bold, design: .serif))
+                        .foregroundColor(ExploreCalendarCardChrome.title)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.88)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            statsRow
-                .padding(.top, 2)
-
-            if let opp = drop.exploreOpportunityBadge {
-                opportunitySignalPill(opp, isStrong: drop.opportunityEventType == "STRONG_OPEN")
-                    .padding(.top, 4)
+                    metaAndDroppedRow
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { onTap() }
             }
 
             if !displaySlots.isEmpty {
                 slotPillsRow
-                    .padding(.top, 4)
             }
         }
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ExploreCalendarCardChrome.cardFill)
+        .clipShape(RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: effectiveOuterRadius, style: .continuous)
+                .stroke(ExploreCalendarCardChrome.slotBorder.opacity(0.95), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 
-    /// Star · rating · clock · status · pin · area (matches reference hierarchy).
-    private var statsRow: some View {
+    private var leadingThumbnail: some View {
+        HStack(spacing: 0) {
+            Group {
+                if let s = drop.imageUrl, let u = URL(string: s) {
+                    CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
+                        Color(white: 0.94)
+                    }
+                } else {
+                    Color(white: 0.94)
+                }
+            }
+            .frame(width: ExploreCalendarCardChrome.thumb, height: ExploreCalendarCardChrome.thumb)
+            .clipped()
+
+            Rectangle()
+                .fill(ExploreCalendarCardChrome.accentRed)
+                .frame(width: ExploreCalendarCardChrome.redBarWidth)
+                .frame(height: ExploreCalendarCardChrome.thumb)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: ExploreCalendarCardChrome.imageCorner, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ExploreCalendarCardChrome.imageCorner, style: .continuous)
+                .stroke(ExploreCalendarCardChrome.slotBorder.opacity(0.65), lineWidth: 0.5)
+        )
+    }
+
+    /// "West Village • Italian · DROPPED 2M AGO" — gray meta, dot, red dropped label.
+    private var metaAndDroppedRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
-            HStack(spacing: 4) {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Self.starGold)
-                Text(ratingLabel)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(CreamEditorialTheme.textPrimary)
-            }
-            .layoutPriority(1)
-
-            metricDot
-
-            HStack(spacing: 4) {
-                Image(systemName: "clock.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                Text(statusLabel)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(statusColor)
+            if !metaLine.isEmpty {
+                Text(metaLine)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(ExploreCalendarCardChrome.meta)
                     .lineLimit(1)
+                Text(" · ")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(ExploreCalendarCardChrome.meta)
             }
-            .layoutPriority(1)
-
-            metricDot
-
-            HStack(spacing: 4) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                Text(areaLabel)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(CreamEditorialTheme.textTertiary)
-                    .lineLimit(1)
-            }
-            .layoutPriority(0)
-
+            Text(droppedLine)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(ExploreCalendarCardChrome.accentRed)
+                .lineLimit(1)
             Spacer(minLength: 0)
         }
-        .minimumScaleFactor(0.78)
+        .minimumScaleFactor(0.75)
         .lineLimit(1)
     }
 
-    private var metricDot: some View {
-        Text("·")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundColor(CreamEditorialTheme.textTertiary.opacity(0.55))
-            .padding(.horizontal, 6)
-    }
-
-    private var ratingLabel: String {
-        guard let r = drop.ratingAverage, r > 0 else { return "—" }
-        return String(format: "%.1f", r)
-    }
-
-    private var statusLabel: String {
-        if drop.exploreSnagAvailable == false {
-            return "Taken"
-        }
-        if let tag = drop.exploreStatusTag?.trimmingCharacters(in: .whitespacesAndNewlines), !tag.isEmpty {
-            return tag
-        }
-        if !drop.slots.isEmpty {
-            return "Open"
-        }
-        return drop.exploreCanSnag ? "Open" : "Check Resy"
-    }
-
-    private var statusColor: Color {
-        if drop.exploreSnagAvailable == false {
-            return CreamEditorialTheme.streamRed
-        }
-        return CreamEditorialTheme.textPrimary
-    }
-
-    /// Area for the pin row: neighborhood-first (never raw market slugs like "NYC").
-    private var areaLabel: String {
-        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !nb.isEmpty { return nb }
-        if let pill = drop.exploreVenuePill?.trimmingCharacters(in: .whitespacesAndNewlines), !pill.isEmpty {
-            return pill
-        }
-        if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
-            return loc
-        }
-        return "—"
-    }
-
-    private var cuisineSubtitle: String? {
-        if let s = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
-            return s
-        }
-        if let pill = drop.exploreVenuePill?.trimmingCharacters(in: .whitespacesAndNewlines), !pill.isEmpty {
-            return pill
-        }
-        if let line = drop.topOpportunitySubtitleLine?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !line.isEmpty, line.count < 52 {
-            return line
-        }
-        let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !nb.isEmpty { return nb }
-        return nil
-    }
-
-    private func opportunitySignalPill(_ text: String, isStrong: Bool) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 10, weight: .bold))
-            Text(text)
-                .font(.system(size: 11, weight: .semibold))
-        }
-        .foregroundColor(isStrong ? .white : CreamEditorialTheme.burgundy)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(isStrong ? CreamEditorialTheme.burgundy : CreamEditorialTheme.peachBadgeFill)
-        .clipShape(Capsule())
-    }
-
-    // MARK: - Thumbnail (right)
-
-    private var thumbnail: some View {
-        ZStack(alignment: .topTrailing) {
-            thumbnailImage
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardImageCornerRadius, style: .continuous))
-
-            if isHot {
-                Text("HOT")
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundColor(.white)
-                    .tracking(0.5)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(CreamEditorialTheme.burgundy)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .padding(6)
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            if drop.exploreShowDot == true {
-                Circle()
-                    .fill(CreamEditorialTheme.liveDot)
-                    .frame(width: 8, height: 8)
-                    .padding(6)
-            }
-        }
-        .frame(width: Self.thumbSize, height: Self.thumbSize)
-    }
-
-    @ViewBuilder
-    private var thumbnailImage: some View {
-        if let s = drop.imageUrl, let u = URL(string: s) {
-            CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
-                Color(white: 0.91)
-            }
-            .frame(width: Self.thumbSize, height: Self.thumbSize)
-        } else {
-            Color(white: 0.91)
-                .frame(width: Self.thumbSize, height: Self.thumbSize)
-        }
-    }
-
-    // MARK: - Slot pills
-
     private var slotPillsRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ForEach(Array(displaySlots.enumerated()), id: \.offset) { _, slot in
                     slotPill(slot)
                 }
@@ -314,13 +241,24 @@ struct DSExploreInventoryCard: View {
                 UIApplication.shared.open(url)
             }
         } label: {
-            Text(ExploreCardFormatting.slotTime12h(slot.time))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(CreamEditorialTheme.burgundy)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(CreamEditorialTheme.peachBadgeFill)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+            VStack(spacing: 3) {
+                Text(ExploreCardFormatting.slotTime12h(slot.time))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(ExploreCalendarCardChrome.title)
+                Text(ExploreCardFormatting.peopleLabel(drop: drop, partySegment: partySegment))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(ExploreCalendarCardChrome.meta)
+            }
+            .multilineTextAlignment(.center)
+            .frame(minWidth: 56)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(ExploreCalendarCardChrome.slotFill)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(ExploreCalendarCardChrome.slotBorder, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
