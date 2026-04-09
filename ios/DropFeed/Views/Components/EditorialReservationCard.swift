@@ -46,6 +46,7 @@ struct EditorialReservationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Keep photo on the physical left (RTL would otherwise mirror this row).
             HStack(alignment: .top, spacing: 12) {
                 leadingThumbnail
                     .onTapGesture { onHeroTap() }
@@ -86,6 +87,7 @@ struct EditorialReservationCard: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onHeroTap() }
             }
+            .environment(\.layoutDirection, .leftToRight)
 
             if !displaySlots.isEmpty {
                 slotPillsRow
@@ -104,6 +106,7 @@ struct EditorialReservationCard: View {
 
     private var leadingThumbnail: some View {
         HStack(spacing: 0) {
+            // Image first (card-leading); red bar sits on the inner trailing edge of the thumb.
             Group {
                 if let s = drop.imageUrl, let u = URL(string: s) {
                     CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
@@ -113,7 +116,11 @@ struct EditorialReservationCard: View {
                     Color(white: 0.94)
                 }
             }
-            .frame(width: EditorialReservationCardTokens.thumb, height: EditorialReservationCardTokens.thumb)
+            .frame(
+                width: EditorialReservationCardTokens.thumb,
+                height: EditorialReservationCardTokens.thumb,
+                alignment: .leading
+            )
             .clipped()
 
             Rectangle()
@@ -121,6 +128,7 @@ struct EditorialReservationCard: View {
                 .frame(width: EditorialReservationCardTokens.redBarWidth)
                 .frame(height: EditorialReservationCardTokens.thumb)
         }
+        .environment(\.layoutDirection, .leftToRight)
         .clipShape(RoundedRectangle(cornerRadius: EditorialReservationCardTokens.imageCorner, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: EditorialReservationCardTokens.imageCorner, style: .continuous)
