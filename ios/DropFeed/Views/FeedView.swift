@@ -565,38 +565,25 @@ struct FeedView: View {
             if drops.isEmpty {
                 EmptyView()
             } else {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     QuietCuratorLiveStreamCenteredTitle()
                         .padding(.horizontal, 18)
 
-                    // Single bordered container, rows separated by dividers
-                    VStack(spacing: 0) {
-                        ForEach(Array(drops.enumerated()), id: \.element.id) { idx, drop in
-                            LiveStreamOpenCard(
-                                drop: drop,
-                                preferredParty: mockPreferredParty(for: drop),
-                                todayDateStr: vm.todayDateStr,
-                                onTap: { liveStreamOpenResy(drop) }
-                            )
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
-                                removal:   .opacity
-                            ))
-
-                            if idx < drops.count - 1 {
-                                Divider()
-                                    .background(CreamEditorialTheme.hairline)
-                                    .padding(.horizontal, 16)
-                            }
-                        }
+                    // One card = one live detectable event (distinct from editorial list rows).
+                    ForEach(drops) { drop in
+                        LiveStreamEventCard(
+                            drop: drop,
+                            preferredParty: mockPreferredParty(for: drop),
+                            todayDateStr: vm.todayDateStr,
+                            onTap: { liveStreamOpenResy(drop) }
+                        )
+                        .padding(.horizontal, 18)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity
+                        ))
                     }
                     .animation(.easeInOut(duration: 0.4), value: drops.map(\.id))
-                    .background(CreamEditorialTheme.cardWhite)
-                    .overlay(
-                        Rectangle()
-                            .stroke(CreamEditorialTheme.hairline, lineWidth: 1)
-                    )
-                    .padding(.horizontal, 18)
                 }
                 .padding(.bottom, 10)
             }
