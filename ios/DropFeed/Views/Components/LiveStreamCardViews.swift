@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Formatting
 
@@ -37,6 +38,30 @@ enum LiveStreamCardFormatting {
         if seconds < 3600 { return "\(max(1, seconds / 60))m ago" }
         return "\(seconds / 3600)h ago"
     }
+
+    /// Compact clock for slot pills (e.g. 7:15) — matches editorial feed cards.
+    static func slotTimeCompact(_ t: String) -> String {
+        let p = t.split(separator: ":")
+        guard let h = p.first.flatMap({ Int($0) }) else { return t.isEmpty ? "—" : String(t.prefix(5)) }
+        let m = p.count > 1 ? (Int(p[1].prefix(2)) ?? 0) : 0
+        let h12 = h % 12 == 0 ? 12 : h % 12
+        return m > 0 ? "\(h12):\(String(format: "%02d", m))" : "\(h12)"
+    }
+}
+
+// MARK: - Editorial reservation card (live stream — same spec as Latest drops reference)
+
+private enum EditorialReservationCardChrome {
+    static let cardFill = Color.white
+    static let title = Color.black
+    static let meta = Color(red: 0.557, green: 0.557, blue: 0.576)
+    static let accentRed = Color(red: 1.0, green: 0.271, blue: 0.227)
+    static let slotBorder = Color(red: 0.78, green: 0.78, blue: 0.80)
+    static let slotTime = Color.black
+    static let slotParty = Color(red: 0.557, green: 0.557, blue: 0.576)
+    static let imageCorner: CGFloat = 12
+    static let cardCorner: CGFloat = 22
+    static let redBarWidth: CGFloat = 3
 }
 
 // MARK: - Open row
@@ -156,198 +181,166 @@ struct LiveStreamOpenCard: View {
     }
 }
 
-// MARK: - Live event variant (Quiet Curator stream)
+// MARK: - Live stream card (Quiet Curator — matches editorial reservation reference)
 
-/// One card = one detectable moment (just dropped / table spotted) — distinct from editorial “open row” tiles.
+/// Same layout as the “L’Artusi” reference: white card, image + red bar, serif name, red freshness,
+/// caps meta row, horizontal time / party pills; thin border, minimal shadow.
 struct LiveStreamEventCard: View {
     let drop: Drop
     let preferredParty: Int
-    let todayDateStr: String
     var onTap: () -> Void
 
-    private var imageURL: URL? {
-        guard let s = drop.imageUrl, !s.isEmpty else { return nil }
-        return URL(string: s)
-    }
-
-    private var agoLabel: String {
-        LiveStreamCardFormatting.dropAgoLabel(seconds: drop.secondsSinceDetected)
-    }
-
-    private var eventBadge: String {
-        if drop.brandNewDrop == true || drop.showNewBadge == true { return "JUST DROPPED" }
-        if let t = drop.exploreStatusTag, !t.isEmpty {
-            let u = t.uppercased()
-            return u.count <= 20 ? u : String(u.prefix(18)) + "…"
+    /// Uppercased relative freshness, e.g. "1M AGO" (aligned with Latest drops cards).
+    private var freshnessUppercased: String {
+        if let iso = drop.userFacingOpenedAt ?? drop.detectedAt ?? drop.createdAt,
+           let d = Drop.parseISO(iso) {
+            let sec = max(0, Int(-d.timeIntervalSinceNow))
+            if sec < 50 { return "NOW" }
+            if sec < 3600 {
+                let m = max(1, sec / 60)
+                return "\(m)M AGO"
+            }
+            if sec < 86400 {
+                let h = max(1, sec / 3600)
+                return "\(h)H AGO"
+            }
+            let days = max(1, sec / 86400)
+            return "\(days)D AGO"
         }
-        if drop.velocityUrgent == true { return "HOT OPENING" }
-        return "LIVE SPOT"
+        let fallback = drop.serverFreshnessLabel ?? LiveStreamCardFormatting.dropAgoLabel(seconds: drop.secondsSinceDetected)
+        return fallback.uppercased()
     }
 
-    private var eventSubtitle: String {
-        if let ds = drop.dateStr, !ds.isEmpty, ds == todayDateStr {
-            return "New bookable window · tonight"
-        }
-        return "New bookable slot on the feed"
-    }
-
-    private var neighborhoodLine: String {
+    private var metaCapsLine: String {
         var parts: [String] = []
         if let nb = drop.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines), !nb.isEmpty {
-            parts.append(nb)
+            parts.append(nb.uppercased())
         }
-        parts.append("\(preferredParty) guests")
-        if let slot = drop.slots.first?.time, !slot.isEmpty {
-            parts.append(LiveStreamCardFormatting.slotTimeShort(drop))
+        if let loc = drop.location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty {
+            let nbl = (drop.neighborhood ?? "").lowercased()
+            if loc.lowercased() != nbl { parts.append(loc.uppercased()) }
         }
-        return parts.joined(separator: " · ")
+        if !parts.isEmpty { return parts.joined(separator: " • ") }
+        if let m = drop.metricsSubtitle?.trimmingCharacters(in: .whitespacesAndNewlines), !m.isEmpty {
+            return m.uppercased()
+        }
+        return ""
     }
 
-    private var hasURL: Bool { drop.effectiveResyBookingURL != nil }
-
-    private var urgencyProgress: CGFloat {
-        guard let avg = drop.avgDropDurationSeconds, avg > 0 else {
-            return min(1, CGFloat(drop.secondsSinceDetected) / 120.0)
+    private var slotChips: [DropSlot] {
+        let raw = drop.slots
+        if raw.isEmpty, drop.dateStr != nil || drop.effectiveResyBookingURL != nil {
+            return [DropSlot(dateStr: drop.dateStr, time: nil, resyUrl: drop.resyUrl)]
         }
-        return CGFloat(min(1, max(0, Double(drop.secondsSinceDetected) / avg)))
+        return Array(raw.prefix(8))
     }
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(alignment: .top, spacing: 0) {
-                // Timeline rail (event node + stem — fixed height avoids ScrollView layout blow-up)
-                VStack(spacing: 0) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(red: 0.95, green: 0.25, blue: 0.22))
-                            .frame(width: 11, height: 11)
-                        TimelineView(.periodic(from: .now, by: 0.9)) { ctx in
-                            let phase = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
-                            Circle()
-                                .stroke(Color(red: 0.95, green: 0.25, blue: 0.22).opacity(0.35 + 0.4 * phase), lineWidth: 2)
-                                .frame(width: 18, height: 18)
-                        }
-                    }
-                    .padding(.top, 6)
-                    Rectangle()
-                        .fill(Color(red: 0.95, green: 0.25, blue: 0.22).opacity(0.22))
-                        .frame(width: 2, height: 112)
-                }
-                .frame(width: 22)
-
-                HStack(alignment: .center, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Button {
+                    onTap()
+                } label: {
                     HStack(spacing: 0) {
                         Group {
-                            if let u = imageURL {
-                                CardAsyncImage(url: u, contentMode: .fill, skeletonTone: .lightOnLight) {
-                                    Color(red: 0.93, green: 0.93, blue: 0.95)
+                            if let urlStr = drop.imageUrl, let url = URL(string: urlStr) {
+                                CardAsyncImage(url: url, contentMode: .fill, skeletonTone: .lightOnLight) {
+                                    Color(white: 0.94)
                                 }
                             } else {
-                                Color(red: 0.93, green: 0.93, blue: 0.95)
+                                Color(white: 0.94)
                             }
                         }
-                        .frame(width: 64, height: 64)
+                        .frame(width: 76, height: 76)
                         .clipped()
+
                         Rectangle()
-                            .fill(Color(red: 0.95, green: 0.25, blue: 0.22))
-                            .frame(width: 3)
-                            .frame(height: 64)
+                            .fill(EditorialReservationCardChrome.accentRed)
+                            .frame(width: EditorialReservationCardChrome.redBarWidth)
+                            .frame(height: 76)
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: EditorialReservationCardChrome.imageCorner, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: EditorialReservationCardChrome.imageCorner, style: .continuous)
+                            .stroke(EditorialReservationCardChrome.slotBorder.opacity(0.6), lineWidth: 0.5)
                     )
+                }
+                .buttonStyle(.plain)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(eventBadge)
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundColor(Color(red: 0.95, green: 0.25, blue: 0.22))
-                                .tracking(0.65)
-                            Spacer(minLength: 4)
-                            Text(agoLabel.uppercased())
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color(red: 0.95, green: 0.25, blue: 0.22))
-                                .tracking(0.4)
-                        }
-
-                        Text(eventSubtitle)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(red: 0.48, green: 0.48, blue: 0.52))
-
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(drop.name)
-                            .font(.system(size: 17, weight: .bold, design: .serif))
-                            .foregroundColor(Color(red: 0.06, green: 0.06, blue: 0.08))
+                            .font(.system(size: 20, weight: .bold, design: .serif))
+                            .foregroundColor(EditorialReservationCardChrome.title)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                            .minimumScaleFactor(0.88)
 
-                        if !neighborhoodLine.isEmpty {
-                            Text(neighborhoodLine)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(red: 0.52, green: 0.52, blue: 0.56))
-                                .lineLimit(1)
-                        }
+                        Spacer(minLength: 4)
 
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.black.opacity(0.06))
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 0.95, green: 0.35, blue: 0.28),
-                                            Color(red: 0.85, green: 0.2, blue: 0.22),
-                                        ],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(maxWidth: .infinity)
-                                .scaleEffect(x: max(0.08, min(1, urgencyProgress)), y: 1, anchor: .leading)
-                        }
-                        .frame(height: 3)
-                        .padding(.top, 2)
-
-                        HStack {
-                            Text(LiveStreamCardFormatting.slotTimeShort(drop))
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(hasURL ? .white : Color(red: 0.55, green: 0.55, blue: 0.58))
-                                .tracking(1.1)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background(hasURL ? Color(red: 0.08, green: 0.08, blue: 0.10) : Color(red: 0.90, green: 0.90, blue: 0.92))
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.top, 4)
+                        Text(freshnessUppercased)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(EditorialReservationCardChrome.accentRed)
                     }
-                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+                    if !metaCapsLine.isEmpty {
+                        Text(metaCapsLine)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(EditorialReservationCardChrome.meta)
+                            .lineLimit(2)
+                    }
                 }
-                .padding(.leading, 6)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { onTap() }
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.95, green: 0.35, blue: 0.28).opacity(0.45),
-                                Color.black.opacity(0.06),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 5)
+
+            if !slotChips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(slotChips.enumerated()), id: \.offset) { _, slot in
+                            let timeRaw = (slot.time ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                            let timeLabel = timeRaw.isEmpty ? "Book" : LiveStreamCardFormatting.slotTimeCompact(timeRaw)
+                            let urlStr = slot.resyUrl ?? drop.effectiveResyBookingURL
+                            Button {
+                                if let s = urlStr, let u = URL(string: s) {
+                                    UIApplication.shared.open(u)
+                                } else {
+                                    onTap()
+                                }
+                            } label: {
+                                VStack(spacing: 2) {
+                                    Text(timeLabel)
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundColor(EditorialReservationCardChrome.slotTime)
+                                    Text("\(preferredParty)P")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(EditorialReservationCardChrome.slotParty)
+                                }
+                                .frame(minWidth: 52)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(EditorialReservationCardChrome.cardFill)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(EditorialReservationCardChrome.slotBorder, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(urlStr == nil && drop.effectiveResyBookingURL == nil)
+                            .opacity((urlStr == nil && drop.effectiveResyBookingURL == nil) ? 0.45 : 1)
+                        }
+                    }
+                }
+            }
         }
-        .buttonStyle(.plain)
+        .padding(14)
+        .background(EditorialReservationCardChrome.cardFill)
+        .clipShape(RoundedRectangle(cornerRadius: EditorialReservationCardChrome.cardCorner, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: EditorialReservationCardChrome.cardCorner, style: .continuous)
+                .stroke(EditorialReservationCardChrome.slotBorder.opacity(0.9), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 }

@@ -574,7 +574,6 @@ struct FeedView: View {
                         LiveStreamEventCard(
                             drop: drop,
                             preferredParty: mockPreferredParty(for: drop),
-                            todayDateStr: vm.todayDateStr,
                             onTap: { liveStreamOpenResy(drop) }
                         )
                         .padding(.horizontal, 18)
@@ -3361,7 +3360,7 @@ private enum LatestDropCardChrome {
     static let slotTime = Color.black
     static let slotParty = Color(red: 0.557, green: 0.557, blue: 0.576)
     static let imageCorner: CGFloat = 12
-    static let cardCorner: CGFloat = 20
+    static let cardCorner: CGFloat = 22
     static let redBarWidth: CGFloat = 3
 }
 
@@ -3549,9 +3548,9 @@ struct LatestDropRowView: View {
         .clipShape(RoundedRectangle(cornerRadius: LatestDropCardChrome.cardCorner, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: LatestDropCardChrome.cardCorner, style: .continuous)
-                .stroke(LatestDropCardChrome.slotBorder.opacity(0.85), lineWidth: 1)
+                .stroke(LatestDropCardChrome.slotBorder.opacity(0.9), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.07), radius: 10, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 }
 
